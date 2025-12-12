@@ -7,23 +7,23 @@ import java.util.UUID;
 
 /**
  * A headless Fragment that listens for Picture-in-Picture mode changes
- * and notifies the WebRTCView.
+ * and notifies the PIPManager.
  */
 public class PIPHelperFragment extends Fragment {
     private final String fragmentId;
-    private final WeakReference<WebRTCView> webRTCViewRef;
+    private final WeakReference<PIPManager> pipManagerRef;
 
     /**
      * Required public no-argument constructor for fragment recreation.
-     * After process death, webRTCView will be null and callbacks become no-ops.
+     * After process death, pipManager will be null and callbacks become no-ops.
      */
     public PIPHelperFragment() {
-        this.webRTCViewRef = new WeakReference<>(null);
+        this.pipManagerRef = new WeakReference<>(null);
         this.fragmentId = "PIPHelperFragment_orphaned";
     }
 
-    public PIPHelperFragment(WebRTCView webRTCView) {
-        this.webRTCViewRef = new WeakReference<>(webRTCView);
+    public PIPHelperFragment(PIPManager pipManager) {
+        this.pipManagerRef = new WeakReference<>(pipManager);
         this.fragmentId = "PIPHelperFragment_" + UUID.randomUUID().toString();
     }
 
@@ -35,15 +35,15 @@ public class PIPHelperFragment extends Fragment {
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
 
-        WebRTCView webRTCView = webRTCViewRef.get();
-        if (webRTCView == null) {
+        PIPManager pipManager = pipManagerRef.get();
+        if (pipManager == null) {
             return;
         }
 
         if (isInPictureInPictureMode) {
-            webRTCView.onPipEnter();
+            pipManager.onPipEnter();
         } else {
-            webRTCView.onPipExit();
+            pipManager.onPipExit();
         }
     }
 }

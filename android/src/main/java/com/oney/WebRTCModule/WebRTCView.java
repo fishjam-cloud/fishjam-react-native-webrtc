@@ -1,20 +1,14 @@
 package com.oney.WebRTCModule;
 
 import android.annotation.SuppressLint;
-import android.app.PictureInPictureParams;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Point;
-import android.os.Build;
 import android.util.Log;
-import android.util.Rational;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 
-import androidx.annotation.RequiresApi;
 import androidx.core.view.ViewCompat;
-import androidx.fragment.app.FragmentActivity;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
@@ -32,10 +26,8 @@ import org.webrtc.RendererCommon.ScalingType;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoTrack;
 
-import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -162,30 +154,10 @@ public class WebRTCView extends ViewGroup {
      */
     private boolean onDimensionsChangeEnabled = false;
 
-    // PIP-related fields
-    private boolean pipEnabled = false;
-    private boolean pipActive = false;
-    private boolean startAutomatically = true;
     /**
-     * Note: This property is stored for API consistency with iOS but has no effect on Android.
-     * On Android, PIP mode exit is controlled by the system - when the user expands the PIP
-     * window or returns to the app, Android automatically exits PIP mode. There is no way to
-     * keep PIP active while the app is in the foreground on Android (unlike iOS where we can
-     * observe UIApplicationWillEnterForegroundNotification and conditionally stop PIP).
+     * The PIP manager for this view (lazily initialized).
      */
-    private boolean stopAutomatically = true;
-    private int preferredWidth = 0;
-    private int preferredHeight = 0;
-    private String pipHelperFragmentTag;
-    private WeakReference<FragmentActivity> activityRef;
-    private ViewGroup rootView;
-    private final List<Integer> rootViewChildrenOriginalVisibility = new ArrayList<>();
-    private FrameLayout pipContentContainer;
-    private ViewGroup pipViewOriginalParent;
-    private int pipViewOriginalIndex;
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private PictureInPictureParams.Builder pictureInPictureParamsBuilder;
+    private PIPManager pipManager;
 
     public WebRTCView(Context context) {
         super(context);
@@ -195,19 +167,18 @@ public class WebRTCView extends ViewGroup {
 
         setMirror(false);
         setScalingType(DEFAULT_SCALING_TYPE);
+    }
 
-        ReactContext reactContext = (ReactContext) context;
-        FragmentActivity activity = (FragmentActivity) reactContext.getCurrentActivity();
-        activityRef = new WeakReference<>(activity);
-
-        if (activity != null) {
-            View decorView = activity.getWindow().getDecorView();
-            rootView = decorView.findViewById(android.R.id.content);
+    /**
+     * Gets the PIP manager for this view, creating it if necessary.
+     *
+     * @return The PIP manager.
+     */
+    public PIPManager getPipManager() {
+        if (pipManager == null) {
+            pipManager = new PIPManager(this);
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            pictureInPictureParamsBuilder = new PictureInPictureParams.Builder();
-        }
+        return pipManager;
     }
 
     /**
@@ -278,9 +249,9 @@ public class WebRTCView extends ViewGroup {
             // on iOS.
             tryAddRendererToVideoTrack();
 
-            // Attach PIP helper fragment if PIP is enabled
-            if (pipEnabled) {
-                attachPipHelperFragment();
+            // Notify PIP manager if it exists
+            if (pipManager != null) {
+                pipManager.onAttachedToWindow();
             }
         } finally {
             super.onAttachedToWindow();
@@ -297,8 +268,10 @@ public class WebRTCView extends ViewGroup {
             // on iOS.
             removeRendererFromVideoTrack();
 
-            // Detach PIP helper fragment
-            detachPipHelperFragment();
+            // Notify PIP manager if it exists
+            if (pipManager != null) {
+                pipManager.onDetachedFromWindow();
+            }
         } finally {
             super.onDetachedFromWindow();
         }
@@ -661,271 +634,5 @@ public class WebRTCView extends ViewGroup {
      */
     public void setOnDimensionsChange(boolean enabled) {
         this.onDimensionsChangeEnabled = enabled;
-    }
-
-    // ==================== PIP Methods ====================
-
-    /**
-     * Sets whether this view should be shown in Picture-in-Picture mode.
-     *
-     * @param enabled Whether PIP is enabled for this view.
-     */
-    public void setPipEnabled(boolean enabled) {
-        if (this.pipEnabled == enabled) {
-            return;
-        }
-        this.pipEnabled = enabled;
-
-        if (enabled && ViewCompat.isAttachedToWindow(this)) {
-            attachPipHelperFragment();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                updateAutoEnterEnabled();
-            }
-        } else if (!enabled) {
-            detachPipHelperFragment();
-        }
-    }
-
-    /**
-     * Returns whether this view should be shown in PIP mode.
-     *
-     * @return Whether PIP is enabled for this view.
-     */
-    public boolean isPipEnabled() {
-        return pipEnabled;
-    }
-
-    /**
-     * Sets whether PIP should start automatically when the app goes to background.
-     *
-     * @param value Whether to start automatically.
-     */
-    public void setStartAutomatically(boolean value) {
-        this.startAutomatically = value;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            updateAutoEnterEnabled();
-        }
-    }
-
-    /**
-     * Sets whether PIP should stop automatically when the app returns to foreground.
-     *
-     * Note: This property is stored for API consistency with iOS but has no effect on Android.
-     * On Android, PIP mode exit is controlled by the system - when the user expands the PIP
-     * window or returns to the app, Android automatically exits PIP mode via
-     * {@link #onPipExit()}. There is no way to keep PIP active while the app is in the
-     * foreground on Android (unlike iOS where the app can observe foreground notifications
-     * and conditionally stop PIP).
-     *
-     * @param value Whether to stop automatically (iOS-only, ignored on Android).
-     */
-    public void setStopAutomatically(boolean value) {
-        this.stopAutomatically = value;
-    }
-
-    /**
-     * Sets the preferred size for the PIP window.
-     * This is used to calculate the aspect ratio for the PIP window.
-     *
-     * @param width The preferred width.
-     * @param height The preferred height.
-     */
-    public void setPreferredSize(int width, int height) {
-        this.preferredWidth = width;
-        this.preferredHeight = height;
-    }
-
-    @RequiresApi(Build.VERSION_CODES.S)
-    private void updateAutoEnterEnabled() {
-        if (pictureInPictureParamsBuilder != null && pipEnabled) {
-            pictureInPictureParamsBuilder.setAutoEnterEnabled(startAutomatically);
-            updatePictureInPictureParams();
-        }
-    }
-
-    @RequiresApi(Build.VERSION_CODES.O)
-    private void updatePictureInPictureParams() {
-        FragmentActivity activity = activityRef != null ? activityRef.get() : null;
-        if (activity == null) {
-            Log.w(TAG, "Cannot update PiP params: activity reference is null");
-            return;
-        }
-
-        try {
-            activity.setPictureInPictureParams(pictureInPictureParamsBuilder.build());
-        } catch (IllegalStateException e) {
-            Log.e(TAG, "Failed to update PiP params - PiP may not be enabled in manifest", e);
-        }
-    }
-
-    /**
-     * Starts Picture-in-Picture mode.
-     */
-    @RequiresApi(Build.VERSION_CODES.O)
-    public void startPictureInPicture() {
-        FragmentActivity activity = activityRef != null ? activityRef.get() : null;
-        if (activity == null) {
-            Log.w(TAG, "Cannot start PiP: activity reference is null");
-            return;
-        }
-
-        try {
-            // Use preferred size if set, otherwise fall back to current view dimensions
-            int width = preferredWidth > 0 ? preferredWidth : getWidth();
-            int height = preferredHeight > 0 ? preferredHeight : getHeight();
-            if (width > 0 && height > 0) {
-                pictureInPictureParamsBuilder.setAspectRatio(new Rational(width, height));
-            }
-            activity.enterPictureInPictureMode(pictureInPictureParamsBuilder.build());
-        } catch (IllegalStateException e) {
-            Log.e(TAG, "Failed to enter PiP mode", e);
-        }
-    }
-
-    /**
-     * Stops Picture-in-Picture mode (no-op on Android, PIP exits when user dismisses or expands).
-     */
-    public void stopPictureInPicture() {
-        Log.d(TAG, "stopPictureInPicture called - on Android, PIP exits when user dismisses or expands");
-    }
-
-    /**
-     * Called by PIPHelperFragment when PIP mode is entered.
-     */
-    public void onPipEnter() {
-        if (rootView == null) {
-            Log.w(TAG, "Cannot enter PiP layout: rootView is null");
-            return;
-        }
-
-        pipActive = true;
-        Log.d(TAG, "PIP mode entered");
-
-        // Hide all root view children
-        hideAllRootViewChildren();
-
-        // Create a container for the pip content
-        pipContentContainer = new FrameLayout(getContext());
-        pipContentContainer.setLayoutParams(new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ));
-
-        // Store original parent info and move this view to our container
-        pipViewOriginalParent = (ViewGroup) getParent();
-        if (pipViewOriginalParent != null) {
-            pipViewOriginalIndex = pipViewOriginalParent.indexOfChild(this);
-            pipViewOriginalParent.removeView(this);
-        }
-
-        pipContentContainer.addView(this, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ));
-
-        // Add our container to rootView
-        rootView.addView(pipContentContainer);
-    }
-
-    /**
-     * Called by PIPHelperFragment when PIP mode is exited.
-     */
-    public void onPipExit() {
-        if (rootView == null) {
-            Log.w(TAG, "Cannot exit PiP layout: rootView is null");
-            return;
-        }
-
-        pipActive = false;
-        Log.d(TAG, "PIP mode exited");
-
-        // Remove pip content container from rootView
-        if (pipContentContainer != null) {
-            // Restore this view to its original parent
-            pipContentContainer.removeView(this);
-
-            if (pipViewOriginalParent != null) {
-                // Restore to original position
-                int index = Math.min(pipViewOriginalIndex, pipViewOriginalParent.getChildCount());
-                pipViewOriginalParent.addView(this, index);
-            }
-
-            rootView.removeView(pipContentContainer);
-            pipContentContainer = null;
-        }
-
-        // Restore root view children visibility
-        restoreRootViewChildren();
-
-        // Clean up references
-        pipViewOriginalParent = null;
-        pipViewOriginalIndex = 0;
-    }
-
-    private void hideAllRootViewChildren() {
-        rootViewChildrenOriginalVisibility.clear();
-
-        for (int i = 0; i < rootView.getChildCount(); i++) {
-            View child = rootView.getChildAt(i);
-            rootViewChildrenOriginalVisibility.add(child.getVisibility());
-            child.setVisibility(View.GONE);
-        }
-    }
-
-    private void restoreRootViewChildren() {
-        for (int i = 0; i < rootViewChildrenOriginalVisibility.size() && i < rootView.getChildCount(); i++) {
-            rootView.getChildAt(i).setVisibility(rootViewChildrenOriginalVisibility.get(i));
-        }
-        rootViewChildrenOriginalVisibility.clear();
-    }
-
-    private void attachPipHelperFragment() {
-        FragmentActivity activity = activityRef != null ? activityRef.get() : null;
-        if (activity == null) {
-            Log.w(TAG, "Cannot attach PIP helper: activity reference is null");
-            return;
-        }
-
-        if (pipHelperFragmentTag != null) {
-            // Already attached
-            return;
-        }
-
-        PIPHelperFragment fragment = new PIPHelperFragment(this);
-        pipHelperFragmentTag = fragment.getFragmentId();
-        activity.getSupportFragmentManager()
-            .beginTransaction()
-            .add(fragment, pipHelperFragmentTag)
-            .commitAllowingStateLoss();
-
-        Log.d(TAG, "PIP helper fragment attached");
-    }
-
-    private void detachPipHelperFragment() {
-        FragmentActivity activity = activityRef != null ? activityRef.get() : null;
-        if (activity == null || pipHelperFragmentTag == null) {
-            return;
-        }
-
-        androidx.fragment.app.Fragment fragment =
-            activity.getSupportFragmentManager().findFragmentByTag(pipHelperFragmentTag);
-        if (fragment != null) {
-            activity.getSupportFragmentManager()
-                .beginTransaction()
-                .remove(fragment)
-                .commitAllowingStateLoss();
-        }
-
-        pipHelperFragmentTag = null;
-        Log.d(TAG, "PIP helper fragment detached");
-    }
-
-    /**
-     * Returns whether PIP mode is currently active.
-     *
-     * @return Whether PIP is active.
-     */
-    public boolean isPipActive() {
-        return pipActive;
     }
 }

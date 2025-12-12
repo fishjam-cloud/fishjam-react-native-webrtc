@@ -111,8 +111,10 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
      */
     @ReactProp(name = "pip")
     public void setPIP(WebRTCView view, @Nullable ReadableMap pipOptions) {
+        PIPManager pipManager = view.getPipManager();
+
         if (pipOptions == null) {
-            view.setPipEnabled(false);
+            pipManager.setPipEnabled(false);
             return;
         }
 
@@ -143,10 +145,10 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
             }
         }
 
-        view.setPipEnabled(enabled);
-        view.setStartAutomatically(startAutomatically);
-        view.setStopAutomatically(stopAutomatically);
-        view.setPreferredSize(preferredWidth, preferredHeight);
+        pipManager.setPipEnabled(enabled);
+        pipManager.setStartAutomatically(startAutomatically);
+        pipManager.setStopAutomatically(stopAutomatically);
+        pipManager.setPreferredSize(preferredWidth, preferredHeight);
     }
 
     @Override
@@ -195,7 +197,7 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
      */
     private void startPIP(WebRTCView view) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            view.startPictureInPicture();
+            view.getPipManager().startPictureInPicture();
         } else {
             Log.w(TAG, "PIP requires Android 8.0 (API level 26) or higher");
         }
@@ -207,6 +209,6 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
      * @param view The {@code WebRTCView} for which PIP should be stopped.
      */
     private void stopPIP(WebRTCView view) {
-        view.stopPictureInPicture();
+        view.getPipManager().stopPictureInPicture();
     }
 }
