@@ -185,6 +185,8 @@
         if ([width isKindOfClass:[NSNumber class]] && [height isKindOfClass:[NSNumber class]]) {
             preferredSize = CGSizeMake([width doubleValue], [height doubleValue]);
         }
+    } else {
+        preferredSize = CGSizeMake(1920, 1080);
     }
 
     if (!enabled) {
