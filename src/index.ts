@@ -18,7 +18,7 @@ import permissions from './Permissions';
 import RTCAudioSession from './RTCAudioSession';
 import RTCErrorEvent from './RTCErrorEvent';
 import RTCIceCandidate from './RTCIceCandidate';
-import RTCPIPView, { startPIP, stopPIP } from './RTCPIPView';
+import RTCPIPView, { startPIP, stopPIP, type RTCPIPViewProps } from './RTCPIPView';
 import RTCPeerConnection from './RTCPeerConnection';
 import RTCRtpReceiver from './RTCRtpReceiver';
 import RTCRtpSender from './RTCRtpSender';
@@ -48,6 +48,7 @@ export {
     MediaStreamTrack,
     type MediaTrackSettings,
     type RTCVideoViewProps,
+    type RTCPIPViewProps,
     type RTCPIPOptions,
     mediaDevices,
     permissions,
