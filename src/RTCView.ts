@@ -117,6 +117,11 @@ export interface RTCPIPOptions {
    * when the app returns to the foreground.
    *
    * Defaults to true.
+   *
+   * Note: This property only has effect on iOS. On Android, PIP mode exit is
+   * controlled by the system - when the user expands the PIP window or returns
+   * to the app, Android automatically exits PIP mode. There is no way to keep
+   * PIP active while the app is in the foreground on Android.
    */
   stopAutomatically?: boolean;
 }

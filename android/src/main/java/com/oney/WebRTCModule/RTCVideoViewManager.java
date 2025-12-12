@@ -106,7 +106,7 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
      * @param pipOptions The PIP options map containing:
      *                   - enabled: boolean
      *                   - startAutomatically: boolean
-     *                   - stopAutomatically: boolean
+     *                   - stopAutomatically: boolean (iOS-only, stored but ignored on Android)
      *                   - preferredSize: { width: number, height: number }
      */
     @ReactProp(name = "pip")

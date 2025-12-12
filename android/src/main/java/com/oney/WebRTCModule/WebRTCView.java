@@ -166,6 +166,13 @@ public class WebRTCView extends ViewGroup {
     private boolean pipEnabled = false;
     private boolean pipActive = false;
     private boolean startAutomatically = true;
+    /**
+     * Note: This property is stored for API consistency with iOS but has no effect on Android.
+     * On Android, PIP mode exit is controlled by the system - when the user expands the PIP
+     * window or returns to the app, Android automatically exits PIP mode. There is no way to
+     * keep PIP active while the app is in the foreground on Android (unlike iOS where we can
+     * observe UIApplicationWillEnterForegroundNotification and conditionally stop PIP).
+     */
     private boolean stopAutomatically = true;
     private int preferredWidth = 0;
     private int preferredHeight = 0;
@@ -703,7 +710,14 @@ public class WebRTCView extends ViewGroup {
     /**
      * Sets whether PIP should stop automatically when the app returns to foreground.
      *
-     * @param value Whether to stop automatically.
+     * Note: This property is stored for API consistency with iOS but has no effect on Android.
+     * On Android, PIP mode exit is controlled by the system - when the user expands the PIP
+     * window or returns to the app, Android automatically exits PIP mode via
+     * {@link #onPipExit()}. There is no way to keep PIP active while the app is in the
+     * foreground on Android (unlike iOS where the app can observe foreground notifications
+     * and conditionally stop PIP).
+     *
+     * @param value Whether to stop automatically (iOS-only, ignored on Android).
      */
     public void setStopAutomatically(boolean value) {
         this.stopAutomatically = value;
