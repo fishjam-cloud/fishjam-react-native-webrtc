@@ -69,8 +69,8 @@ export interface RTCVideoViewProps extends ViewProps {
    * as the local camera may stop while in the background.
    *
    * iOS: Requires iOS 15.0 or above, and the PIP background mode capability.
-   * Android: PIP works at the Activity level, the actual implementation needs
-   * to be handled by the containing Activity. Requires Android 8.0 (API level 26) or above.
+   * Android: The library handles PIP automatically. Requires Android 8.0 (API level 26) or above.
+   * You must add `android:supportsPictureInPicture="true"` to your Activity in AndroidManifest.xml.
    */
   pip?: RTCPIPOptions;
 
