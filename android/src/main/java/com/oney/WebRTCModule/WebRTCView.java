@@ -167,6 +167,8 @@ public class WebRTCView extends ViewGroup {
     private boolean pipActive = false;
     private boolean startAutomatically = true;
     private boolean stopAutomatically = true;
+    private int preferredWidth = 0;
+    private int preferredHeight = 0;
     private String pipHelperFragmentTag;
     private WeakReference<FragmentActivity> activityRef;
     private ViewGroup rootView;
@@ -707,6 +709,18 @@ public class WebRTCView extends ViewGroup {
         this.stopAutomatically = value;
     }
 
+    /**
+     * Sets the preferred size for the PIP window.
+     * This is used to calculate the aspect ratio for the PIP window.
+     *
+     * @param width The preferred width.
+     * @param height The preferred height.
+     */
+    public void setPreferredSize(int width, int height) {
+        this.preferredWidth = width;
+        this.preferredHeight = height;
+    }
+
     @RequiresApi(Build.VERSION_CODES.S)
     private void updateAutoEnterEnabled() {
         if (pictureInPictureParamsBuilder != null && pipEnabled) {
@@ -742,9 +756,9 @@ public class WebRTCView extends ViewGroup {
         }
 
         try {
-            // Set aspect ratio based on current view dimensions
-            int width = getWidth();
-            int height = getHeight();
+            // Use preferred size if set, otherwise fall back to current view dimensions
+            int width = preferredWidth > 0 ? preferredWidth : getWidth();
+            int height = preferredHeight > 0 ? preferredHeight : getHeight();
             if (width > 0 && height > 0) {
                 pictureInPictureParamsBuilder.setAspectRatio(new Rational(width, height));
             }

@@ -166,7 +166,7 @@
     BOOL startAutomatically = YES;
     BOOL stopAutomatically = YES;
 
-    CGSize preferredSize = CGSizeZero;
+    CGSize preferredSize = CGSizeMake(1920, 1080);
 
     if ([pipOptions objectForKey:@"enabled"]) {
         enabled = [pipOptions[@"enabled"] boolValue];

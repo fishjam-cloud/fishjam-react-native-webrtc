@@ -119,6 +119,8 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
         boolean enabled = false;
         boolean startAutomatically = false;
         boolean stopAutomatically = false;
+        int preferredWidth = 1920;
+        int preferredHeight = 1080;
 
         if (pipOptions.hasKey("enabled")) {
             enabled = pipOptions.getBoolean("enabled");
@@ -129,10 +131,22 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
         if (pipOptions.hasKey("stopAutomatically")) {
             stopAutomatically = pipOptions.getBoolean("stopAutomatically");
         }
+        if (pipOptions.hasKey("preferredSize")) {
+            ReadableMap sizeMap = pipOptions.getMap("preferredSize");
+            if (sizeMap != null) {
+                if (sizeMap.hasKey("width")) {
+                    preferredWidth = sizeMap.getInt("width");
+                }
+                if (sizeMap.hasKey("height")) {
+                    preferredHeight = sizeMap.getInt("height");
+                }
+            }
+        }
 
         view.setPipEnabled(enabled);
         view.setStartAutomatically(startAutomatically);
         view.setStopAutomatically(stopAutomatically);
+        view.setPreferredSize(preferredWidth, preferredHeight);
     }
 
     @Override

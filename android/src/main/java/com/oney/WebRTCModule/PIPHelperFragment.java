@@ -2,6 +2,7 @@ package com.oney.WebRTCModule;
 
 import androidx.fragment.app.Fragment;
 
+import java.lang.ref.WeakReference;
 import java.util.UUID;
 
 /**
@@ -10,10 +11,19 @@ import java.util.UUID;
  */
 public class PIPHelperFragment extends Fragment {
     private final String fragmentId;
-    private final WebRTCView webRTCView;
+    private final WeakReference<WebRTCView> webRTCViewRef;
+
+    /**
+     * Required public no-argument constructor for fragment recreation.
+     * After process death, webRTCView will be null and callbacks become no-ops.
+     */
+    public PIPHelperFragment() {
+        this.webRTCViewRef = new WeakReference<>(null);
+        this.fragmentId = "PIPHelperFragment_orphaned";
+    }
 
     public PIPHelperFragment(WebRTCView webRTCView) {
-        this.webRTCView = webRTCView;
+        this.webRTCViewRef = new WeakReference<>(webRTCView);
         this.fragmentId = "PIPHelperFragment_" + UUID.randomUUID().toString();
     }
 
@@ -24,6 +34,11 @@ public class PIPHelperFragment extends Fragment {
     @Override
     public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode);
+
+        WebRTCView webRTCView = webRTCViewRef.get();
+        if (webRTCView == null) {
+            return;
+        }
 
         if (isInPictureInPictureMode) {
             webRTCView.onPipEnter();
