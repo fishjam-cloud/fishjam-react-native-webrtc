@@ -154,6 +154,11 @@ public class WebRTCView extends ViewGroup {
      */
     private boolean onDimensionsChangeEnabled = false;
 
+    /**
+     * The PIP manager for this view (lazily initialized).
+     */
+    private PIPManager pipManager;
+
     public WebRTCView(Context context) {
         super(context);
 
@@ -162,6 +167,18 @@ public class WebRTCView extends ViewGroup {
 
         setMirror(false);
         setScalingType(DEFAULT_SCALING_TYPE);
+    }
+
+    /**
+     * Gets the PIP manager for this view, creating it if necessary.
+     *
+     * @return The PIP manager.
+     */
+    public PIPManager getPipManager() {
+        if (pipManager == null) {
+            pipManager = new PIPManager(this);
+        }
+        return pipManager;
     }
 
     /**
@@ -231,6 +248,11 @@ public class WebRTCView extends ViewGroup {
             // window. Additionally, a memory leak was solved in a similar way
             // on iOS.
             tryAddRendererToVideoTrack();
+
+            // Notify PIP manager if it exists
+            if (pipManager != null) {
+                pipManager.onAttachedToWindow();
+            }
         } finally {
             super.onAttachedToWindow();
         }
@@ -245,6 +267,11 @@ public class WebRTCView extends ViewGroup {
             // window. Additionally, a memory leak was solved in a similar way
             // on iOS.
             removeRendererFromVideoTrack();
+
+            // Notify PIP manager if it exists
+            if (pipManager != null) {
+                pipManager.onDetachedFromWindow();
+            }
         } finally {
             super.onDetachedFromWindow();
         }

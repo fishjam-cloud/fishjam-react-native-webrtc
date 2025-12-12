@@ -1,12 +1,12 @@
 import { Component, forwardRef } from 'react';
 import ReactNative, { UIManager } from 'react-native';
 
-import RTCView, { RTCIOSPIPOptions, RTCVideoViewProps } from './RTCView';
+import RTCView, { RTCPIPOptions, RTCVideoViewProps } from './RTCView';
 
 export interface RTCPIPViewProps extends RTCVideoViewProps {
-  iosPIP?: RTCIOSPIPOptions & {
-    fallbackView?: Component;
-  };
+    pip?: RTCPIPOptions & {
+        fallbackView?: Component;
+    };
 }
 
 type RTCViewInstance = InstanceType<typeof RTCView>;
@@ -14,32 +14,33 @@ type RTCViewInstance = InstanceType<typeof RTCView>;
 /**
  * A convenience wrapper around RTCView to handle the fallback view as a prop.
  */
-const RTCPIPView = forwardRef<RTCViewInstance, RTCPIPViewProps>((props, ref) => {
-    const rtcViewProps = { ...props };
-    const fallbackView = rtcViewProps.iosPIP?.fallbackView;
+const RTCPIPView = forwardRef<RTCViewInstance, RTCPIPViewProps>(
+    (props, ref) => {
+        const rtcViewProps = { ...props };
+        const fallbackView = rtcViewProps.pip?.fallbackView;
 
-    delete rtcViewProps.iosPIP?.fallbackView;
+        delete rtcViewProps.pip?.fallbackView;
 
-    return (
-        <RTCView ref={ref}
-            {...rtcViewProps}>
-            {fallbackView}
-        </RTCView>
-    );
-});
+        return (
+            <RTCView ref={ref} {...rtcViewProps}>
+                {fallbackView}
+            </RTCView>
+        );
+    }
+);
 
-export function startIOSPIP(ref) {
+export function startPIP(ref: React.RefObject<RTCViewInstance>) {
     UIManager.dispatchViewManagerCommand(
         ReactNative.findNodeHandle(ref.current),
-        UIManager.getViewManagerConfig('RTCVideoView').Commands.startIOSPIP,
+        UIManager.getViewManagerConfig('RTCVideoView').Commands.startPIP,
         []
     );
 }
 
-export function stopIOSPIP(ref) {
+export function stopPIP(ref: React.RefObject<RTCViewInstance>) {
     UIManager.dispatchViewManagerCommand(
         ReactNative.findNodeHandle(ref.current),
-        UIManager.getViewManagerConfig('RTCVideoView').Commands.stopIOSPIP,
+        UIManager.getViewManagerConfig('RTCVideoView').Commands.stopPIP,
         []
     );
 }

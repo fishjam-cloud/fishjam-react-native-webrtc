@@ -1,5 +1,12 @@
 package com.oney.WebRTCModule;
 
+import android.os.Build;
+import android.util.Log;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.uimanager.SimpleViewManager;
 import com.facebook.react.uimanager.ThemedReactContext;
@@ -11,6 +18,11 @@ import java.util.Map;
 
 public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
     private static final String REACT_CLASS = "RTCVideoView";
+    private static final String TAG = WebRTCModule.TAG;
+
+    // Command constants for PIP
+    private static final int COMMAND_START_PIP = 1;
+    private static final int COMMAND_STOP_PIP = 2;
 
     @Override
     public String getName() {
@@ -87,6 +99,58 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
         view.setOnDimensionsChange(onDimensionsChange);
     }
 
+    /**
+     * Sets the PIP options for this view.
+     *
+     * @param view The {@code WebRTCView} on which the PIP options are to be set.
+     * @param pipOptions The PIP options map containing:
+     *                   - enabled: boolean
+     *                   - startAutomatically: boolean
+     *                   - stopAutomatically: boolean (iOS-only, stored but ignored on Android)
+     *                   - preferredSize: { width: number, height: number }
+     */
+    @ReactProp(name = "pip")
+    public void setPIP(WebRTCView view, @Nullable ReadableMap pipOptions) {
+        PIPManager pipManager = view.getPipManager();
+
+        if (pipOptions == null) {
+            pipManager.setPipEnabled(false);
+            return;
+        }
+
+        boolean enabled = false;
+        boolean startAutomatically = false;
+        boolean stopAutomatically = false;
+        int preferredWidth = 1920;
+        int preferredHeight = 1080;
+
+        if (pipOptions.hasKey("enabled")) {
+            enabled = pipOptions.getBoolean("enabled");
+        }
+        if (pipOptions.hasKey("startAutomatically")) {
+            startAutomatically = pipOptions.getBoolean("startAutomatically");
+        }
+        if (pipOptions.hasKey("stopAutomatically")) {
+            stopAutomatically = pipOptions.getBoolean("stopAutomatically");
+        }
+        if (pipOptions.hasKey("preferredSize")) {
+            ReadableMap sizeMap = pipOptions.getMap("preferredSize");
+            if (sizeMap != null) {
+                if (sizeMap.hasKey("width")) {
+                    preferredWidth = sizeMap.getInt("width");
+                }
+                if (sizeMap.hasKey("height")) {
+                    preferredHeight = sizeMap.getInt("height");
+                }
+            }
+        }
+
+        pipManager.setPipEnabled(enabled);
+        pipManager.setStartAutomatically(startAutomatically);
+        pipManager.setStopAutomatically(stopAutomatically);
+        pipManager.setPreferredSize(preferredWidth, preferredHeight);
+    }
+
     @Override
     public Map<String, Object> getExportedCustomDirectEventTypeConstants() {
         Map<String, Object> eventTypeConstants = new HashMap<>();
@@ -94,5 +158,57 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
         dimensionsChangeEvent.put("registrationName", "onDimensionsChange");
         eventTypeConstants.put("onDimensionsChange", dimensionsChangeEvent);
         return eventTypeConstants;
+    }
+
+    @Nullable
+    @Override
+    public Map<String, Integer> getCommandsMap() {
+        Map<String, Integer> commands = new HashMap<>();
+        commands.put("startPIP", COMMAND_START_PIP);
+        commands.put("stopPIP", COMMAND_STOP_PIP);
+        return commands;
+    }
+
+    @Override
+    public void receiveCommand(@NonNull WebRTCView view, String commandId, @Nullable ReadableArray args) {
+        int commandIdInt = Integer.parseInt(commandId);
+        receiveCommand(view, commandIdInt, args);
+    }
+
+    @Override
+    public void receiveCommand(@NonNull WebRTCView view, int commandId, @Nullable ReadableArray args) {
+        switch (commandId) {
+            case COMMAND_START_PIP:
+                startPIP(view);
+                break;
+            case COMMAND_STOP_PIP:
+                stopPIP(view);
+                break;
+            default:
+                Log.w(TAG, "Unknown command: " + commandId);
+                break;
+        }
+    }
+
+    /**
+     * Starts Picture-in-Picture mode.
+     *
+     * @param view The {@code WebRTCView} for which PIP should be started.
+     */
+    private void startPIP(WebRTCView view) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            view.getPipManager().startPictureInPicture();
+        } else {
+            Log.w(TAG, "PIP requires Android 8.0 (API level 26) or higher");
+        }
+    }
+
+    /**
+     * Stops Picture-in-Picture mode.
+     *
+     * @param view The {@code WebRTCView} for which PIP should be stopped.
+     */
+    private void stopPIP(WebRTCView view) {
+        view.getPipManager().stopPictureInPicture();
     }
 }

@@ -166,7 +166,7 @@
     BOOL startAutomatically = YES;
     BOOL stopAutomatically = YES;
 
-    CGSize preferredSize = CGSizeZero;
+    CGSize preferredSize = CGSizeMake(1920, 1080);
 
     if ([pipOptions objectForKey:@"enabled"]) {
         enabled = [pipOptions[@"enabled"] boolValue];
@@ -371,13 +371,13 @@ RCT_CUSTOM_VIEW_PROPERTY(streamURL, NSString *, RTCVideoView) {
     });
 }
 
-RCT_CUSTOM_VIEW_PROPERTY(iosPIP, NSDictionary *, RTCVideoView) {
+RCT_CUSTOM_VIEW_PROPERTY(pip, NSDictionary *, RTCVideoView) {
     if (@available(iOS 15.0, *)) {
         [view setPIPOptions:json];
     }
 }
 
-RCT_EXPORT_METHOD(startIOSPIP : (nonnull NSNumber *)reactTag) {
+RCT_EXPORT_METHOD(startPIP : (nonnull NSNumber *)reactTag) {
     if (@available(iOS 15.0, *)) {
         RCTUIManager *uiManager = [self.bridge moduleForClass:[RCTUIManager class]];
         [uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
@@ -391,7 +391,7 @@ RCT_EXPORT_METHOD(startIOSPIP : (nonnull NSNumber *)reactTag) {
     }
 }
 
-RCT_EXPORT_METHOD(stopIOSPIP : (nonnull NSNumber *)reactTag) {
+RCT_EXPORT_METHOD(stopPIP : (nonnull NSNumber *)reactTag) {
     if (@available(iOS 15.0, *)) {
         RCTUIManager *uiManager = [self.bridge moduleForClass:[RCTUIManager class]];
         [uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {

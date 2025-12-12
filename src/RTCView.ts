@@ -68,9 +68,11 @@ export interface RTCVideoViewProps extends ViewProps {
    * Note: this should only be generally only used with remote video tracks,
    * as the local camera may stop while in the background.
    *
-   * iOS only. Requires iOS 15.0 or above, and the PIP background mode capability.
+   * iOS: Requires iOS 15.0 or above, and the PIP background mode capability.
+   * Android: The library handles PIP automatically. Requires Android 8.0 (API level 26) or above.
+   * You must add `android:supportsPictureInPicture="true"` to your Activity in AndroidManifest.xml.
    */
-  iosPIP?: RTCIOSPIPOptions;
+  pip?: RTCPIPOptions;
 
   /**
    * Callback function that is called when the dimensions of the video change.
@@ -83,7 +85,7 @@ export interface RTCVideoViewProps extends ViewProps {
   onDimensionsChange?: (event: { nativeEvent: { width: number; height: number } }) => void;
 }
 
-export interface RTCIOSPIPOptions {
+export interface RTCPIPOptions {
 
   /**
    * Whether PIP can be launched from this view.
@@ -102,12 +104,11 @@ export interface RTCIOSPIPOptions {
 
   /**
    * Indicates whether Picture in Picture starts automatically
-   * when the controller embeds its content inline and the app
-   * transitions to the background.
+   * when the app transitions to the background.
    *
    * Defaults to true.
    *
-   * See: AVPictureInPictureController.canStartPictureInPictureAutomaticallyFromInline
+   * iOS: See AVPictureInPictureController.canStartPictureInPictureAutomaticallyFromInline
    */
   startAutomatically?: boolean;
 
@@ -116,7 +117,13 @@ export interface RTCIOSPIPOptions {
    * when the app returns to the foreground.
    *
    * Defaults to true.
+   *
+   * Note: This property only has effect on iOS. On Android, PIP mode exit is
+   * controlled by the system - when the user expands the PIP window or returns
+   * to the app, Android automatically exits PIP mode. There is no way to keep
+   * PIP active while the app is in the foreground on Android.
    */
   stopAutomatically?: boolean;
 }
+
 export default requireNativeComponent<RTCVideoViewProps>('RTCVideoView');
