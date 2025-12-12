@@ -1,5 +1,6 @@
 package com.oney.WebRTCModule;
 
+import android.os.Build;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -100,8 +101,6 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
 
     /**
      * Sets the PIP options for this view.
-     * Note: Android PIP works at the Activity level, not the view level.
-     * The actual PIP implementation needs to be handled by the containing Activity.
      *
      * @param view The {@code WebRTCView} on which the PIP options are to be set.
      * @param pipOptions The PIP options map containing:
@@ -112,11 +111,28 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
      */
     @ReactProp(name = "pip")
     public void setPIP(WebRTCView view, @Nullable ReadableMap pipOptions) {
-        // Android PIP is handled at the Activity level, not the view level.
-        // The actual PIP implementation needs to be handled by the containing Activity.
-        if (pipOptions != null) {
-            Log.d(TAG, "pip prop set - Android PIP is handled at Activity level");
+        if (pipOptions == null) {
+            view.setPipEnabled(false);
+            return;
         }
+
+        boolean enabled = false;
+        boolean startAutomatically = false;
+        boolean stopAutomatically = false;
+
+        if (pipOptions.hasKey("enabled")) {
+            enabled = pipOptions.getBoolean("enabled");
+        }
+        if (pipOptions.hasKey("startAutomatically")) {
+            startAutomatically = pipOptions.getBoolean("startAutomatically");
+        }
+        if (pipOptions.hasKey("stopAutomatically")) {
+            stopAutomatically = pipOptions.getBoolean("stopAutomatically");
+        }
+
+        view.setPipEnabled(enabled);
+        view.setStartAutomatically(startAutomatically);
+        view.setStopAutomatically(stopAutomatically);
     }
 
     @Override
@@ -160,27 +176,23 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
 
     /**
      * Starts Picture-in-Picture mode.
-     * Note: Android PIP works at the Activity level, not the view level.
-     * The actual PIP implementation needs to be handled by the containing Activity.
      *
      * @param view The {@code WebRTCView} for which PIP should be started.
      */
     private void startPIP(WebRTCView view) {
-        // Android PIP is handled at the Activity level, not the view level.
-        // The actual PIP implementation needs to be handled by the containing Activity.
-        Log.d(TAG, "startPIP called - Android PIP is handled at Activity level");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            view.startPictureInPicture();
+        } else {
+            Log.w(TAG, "PIP requires Android 8.0 (API level 26) or higher");
+        }
     }
 
     /**
      * Stops Picture-in-Picture mode.
-     * Note: Android PIP works at the Activity level, not the view level.
-     * The actual PIP implementation needs to be handled by the containing Activity.
      *
      * @param view The {@code WebRTCView} for which PIP should be stopped.
      */
     private void stopPIP(WebRTCView view) {
-        // Android PIP is handled at the Activity level, not the view level.
-        // The actual PIP implementation needs to be handled by the containing Activity.
-        Log.d(TAG, "stopPIP called - Android PIP is handled at Activity level");
+        view.stopPictureInPicture();
     }
 }

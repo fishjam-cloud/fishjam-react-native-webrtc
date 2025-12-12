@@ -28,17 +28,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-
-    // FISHJAM: Add Kotlin source directory
-    sourceSets {
-        main.java.srcDirs += 'src/main/kotlin'
-    }
 }
 
 dependencies {
     implementation "com.facebook.react:react-android:+"
     api 'org.jitsi:webrtc:124.+'
     implementation "androidx.core:core:1.7.0"
-    // FISHJAM: Kotlin support
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:${safeExtGet('kotlinVersion', '1.9.0')}"
 }
