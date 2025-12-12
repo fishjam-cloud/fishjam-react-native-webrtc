@@ -162,9 +162,9 @@
         return;
     }
 
-    BOOL enabled = YES;
-    BOOL startAutomatically = YES;
-    BOOL stopAutomatically = YES;
+    BOOL enabled = NO;
+    BOOL startAutomatically = NO;
+    BOOL stopAutomatically = NO;
 
     CGSize preferredSize = CGSizeMake(1920, 1080);
 
@@ -185,6 +185,8 @@
         if ([width isKindOfClass:[NSNumber class]] && [height isKindOfClass:[NSNumber class]]) {
             preferredSize = CGSizeMake([width doubleValue], [height doubleValue]);
         }
+    } else {
+        preferredSize = CGSizeMake(1920, 1080);
     }
 
     if (!enabled) {
@@ -379,22 +381,20 @@ RCT_CUSTOM_VIEW_PROPERTY(pip, NSDictionary *, RTCVideoView) {
 
 RCT_EXPORT_METHOD(startPIP : (nonnull NSNumber *)reactTag) {
     if (@available(iOS 15.0, *)) {
-        RCTUIManager *uiManager = [self.bridge moduleForClass:[RCTUIManager class]];
-        [uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-            UIView *view = viewRegistry[reactTag];
-            if (!view || ![view isKindOfClass:[RTCVideoView class]]) {
-                RCTLogError(@"Cannot find RTCVideoView with tag #%@", reactTag);
-                return;
-            }
-            [(RTCVideoView *)view startPIP];
+        [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *,UIView *> *viewRegistry) {
+                    UIView *view = viewRegistry[reactTag];
+                    if (!view || ![view isKindOfClass:[RTCVideoView class]]) {
+                        RCTLogError(@"Cannot find RTCVideoView with tag #%@", reactTag);
+                        return;
+                    }
+                    [(RTCVideoView *)view startPIP];
         }];
     }
 }
 
 RCT_EXPORT_METHOD(stopPIP : (nonnull NSNumber *)reactTag) {
     if (@available(iOS 15.0, *)) {
-        RCTUIManager *uiManager = [self.bridge moduleForClass:[RCTUIManager class]];
-        [uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+        [self.bridge.uiManager addUIBlock:^(RCTUIManager *uiManager, NSDictionary<NSNumber *,UIView *> *viewRegistry) {
             UIView *view = viewRegistry[reactTag];
             if (!view || ![view isKindOfClass:[RTCVideoView class]]) {
                 RCTLogError(@"Cannot find RTCVideoView with tag #%@", reactTag);
