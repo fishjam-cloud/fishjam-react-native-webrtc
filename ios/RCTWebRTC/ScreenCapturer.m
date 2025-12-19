@@ -226,9 +226,11 @@ const NSUInteger kMaxReadLength = 10 * 1024;
             break;
     }
 
-    RTCVideoFrame *videoFrame = [[RTCVideoFrame alloc] initWithBuffer:rtcPixelBuffer
-                                                             rotation:rotation
-                                                          timeStampNs:frameTimeStampNs];
+    // NOTE: Local Metal renderer for RTCCVPixelBuffer does not render the video on iOS screen sharing.
+    // Converting to I420 format fixes the local preview rendering issue.
+    RTCVideoFrame *videoFrame = [[[RTCVideoFrame alloc] initWithBuffer:rtcPixelBuffer
+                                                              rotation:rotation
+                                                           timeStampNs:frameTimeStampNs] newI420VideoFrame];
 
     [self.delegate capturer:self didCaptureVideoFrame:videoFrame];
 }
