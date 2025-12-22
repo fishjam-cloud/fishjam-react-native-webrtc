@@ -15,7 +15,7 @@ public class WebRTCModuleOptions {
     public Loggable injectableLogger;
     public Logging.Severity loggingSeverity;
     public String fieldTrials;
-    public boolean enableMediaProjectionService;
+    public boolean enableMediaProjectionService = true;
 
     public static WebRTCModuleOptions getInstance() {
         if (instance == null) {

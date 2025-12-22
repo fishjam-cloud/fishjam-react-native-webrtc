@@ -26,6 +26,7 @@ public class MediaProjectionService extends Service {
 
     public static void launch(Context context) {
         if (!WebRTCModuleOptions.getInstance().enableMediaProjectionService) {
+            Log.w(TAG, "Media projection service launch aborted. enableMediaProjectionService is false");
             return;
         }
 
