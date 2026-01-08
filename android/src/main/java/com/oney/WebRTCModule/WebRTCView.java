@@ -182,6 +182,35 @@ public class WebRTCView extends ViewGroup {
     }
 
     /**
+     * Gets the current video track being rendered.
+     *
+     * @return The video track, or null if none is set.
+     */
+    VideoTrack getVideoTrack() {
+        return videoTrack;
+    }
+
+    /**
+     * Gets the current scaling type.
+     *
+     * @return The scaling type.
+     */
+    ScalingType getScalingType() {
+        synchronized (layoutSyncRoot) {
+            return scalingType;
+        }
+    }
+
+    /**
+     * Gets whether the video is mirrored.
+     *
+     * @return Whether the video is mirrored.
+     */
+    boolean getMirror() {
+        return mirror;
+    }
+
+    /**
      * "Cleans" the {@code SurfaceViewRenderer} by setting the view part to
      * opaque black and the surface part to transparent.
      */
