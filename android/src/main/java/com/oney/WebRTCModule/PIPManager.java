@@ -98,6 +98,9 @@ public class PIPManager {
     }
 
     public void onDetachedFromWindow() {
+        if (pipActive) {
+            onPipExit();
+        }
         detachPipHelperFragment();
     }
 
@@ -232,6 +235,7 @@ public class PIPManager {
             new ViewTreeObserver.OnGlobalLayoutListener() {
                 @Override
                 public void onGlobalLayout() {
+                    if (pipSurfaceViewRenderer == null) return;
                     pipSurfaceViewRenderer.getViewTreeObserver().removeOnGlobalLayoutListener(this);
                     initializePipRenderer(webRTCView, videoTrack);
                 }
