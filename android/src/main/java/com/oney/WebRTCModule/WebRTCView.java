@@ -207,7 +207,9 @@ public class WebRTCView extends ViewGroup {
      * @return Whether the video is mirrored.
      */
     boolean getMirror() {
-        return mirror;
+        synchronized (layoutSyncRoot) {
+            return mirror;
+        }
     }
 
     /**
