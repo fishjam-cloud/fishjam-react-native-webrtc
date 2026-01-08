@@ -15,6 +15,7 @@ import androidx.core.view.ViewCompat;
 import androidx.fragment.app.FragmentActivity;
 
 import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.bridge.UiThreadUtil;
 
 import org.webrtc.EglBase;
 import org.webrtc.RendererCommon.RendererEvents;
@@ -275,21 +276,27 @@ public class PIPManager {
         pipActive = false;
 
         if (pipSurfaceViewRenderer != null) {
-            if (pipRendererAttached && webRTCView != null) {
-                VideoTrack videoTrack = webRTCView.getVideoTrack();
-                if (videoTrack != null) {
-                    ThreadUtils.runOnExecutor(() -> {
-                        try {
-                            videoTrack.removeSink(pipSurfaceViewRenderer);
-                        } catch (Throwable tr) {
-                            // Ignore - track may already be released
-                        }
-                    });
-                }
-            }
+            final SurfaceViewRenderer renderer = pipSurfaceViewRenderer;
+            final boolean wasAttached = pipRendererAttached;
+
             pipRendererAttached = false;
-            pipSurfaceViewRenderer.release();
             pipSurfaceViewRenderer = null;
+
+            VideoTrack videoTrack = wasAttached && webRTCView != null
+                ? webRTCView.getVideoTrack()
+                : null;
+
+            if (videoTrack != null) {
+                ThreadUtils.runOnExecutor(() -> {
+                    try {
+                        videoTrack.removeSink(renderer);
+                    } catch (Throwable tr) {
+                    }
+                    UiThreadUtil.runOnUiThread(renderer::release);
+                });
+            } else {
+                renderer.release();
+            }
         }
 
         if (pipContentContainer != null) {
