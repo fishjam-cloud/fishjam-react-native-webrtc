@@ -102,6 +102,14 @@ public class PIPManager {
             onPipExit();
         }
         detachPipHelperFragment();
+
+        // Disable auto enter when view unmounts.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (pictureInPictureParamsBuilder != null) {
+                pictureInPictureParamsBuilder.setAutoEnterEnabled(false);
+                updatePictureInPictureParams();
+            }
+        }
     }
 
     public void setPipEnabled(boolean enabled) {
