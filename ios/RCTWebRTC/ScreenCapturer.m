@@ -127,6 +127,7 @@ const NSUInteger kMaxReadLength = 10 * 1024;
 
 @property(nonatomic, strong) SocketConnection *connection;
 @property(nonatomic, strong) Message *message;
+@property(nonatomic, assign) BOOL isCaptureReady;
 
 @end
 
@@ -179,6 +180,10 @@ const NSUInteger kMaxReadLength = 10 * 1024;
         __weak __typeof__(self) weakSelf = self;
         self.message.didComplete = ^(BOOL success, Message *message) {
             if (success) {
+                if (!weakSelf.isCaptureReady) {
+                    weakSelf.isCaptureReady = true;
+                    [weakSelf.eventsDelegate capturerReady:weakSelf];
+                }
                 [weakSelf didCaptureVideoFrame:message.imageBuffer withOrientation:message.imageOrientation];
             }
 

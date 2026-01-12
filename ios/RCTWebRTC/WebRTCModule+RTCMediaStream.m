@@ -15,6 +15,14 @@
 #import "ScreenCapturer.h"
 #import "TrackCapturerEventsEmitter.h"
 #import "VideoCaptureController.h"
+#import <React/RCTUIManager.h>
+
+#if TARGET_OS_IOS
+
+#import <ReplayKit/ReplayKit.h>
+#import <React/RCTLog.h>
+
+#endif
 
 @implementation WebRTCModule (RTCMediaStream)
 
@@ -139,9 +147,15 @@
 #endif
 }
 
-- (RTCVideoTrack *)createScreenCaptureVideoTrack {
+RCT_EXPORT_METHOD(getDisplayMedia : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
+#if TARGET_OS_TV
+    reject(@"unsupported_platform", @"tvOS is not supported", nil);
+    return;
+#else
+    
 #if TARGET_IPHONE_SIMULATOR || TARGET_OS_OSX || TARGET_OS_TV
-    return nil;
+    reject(@"DOMException", @"AbortError", nil);
+    return;
 #endif
 
     RTCVideoSource *videoSource = [self.peerConnectionFactory videoSourceForScreenCast:YES];
@@ -158,39 +172,50 @@
     videoTrack.captureController = screenCaptureController;
     [screenCaptureController startCapture];
 
-    return videoTrack;
-}
 
-RCT_EXPORT_METHOD(getDisplayMedia : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
-#if TARGET_OS_TV
-    reject(@"unsupported_platform", @"tvOS is not supported", nil);
-    return;
-#else
-
-    RTCVideoTrack *videoTrack = [self createScreenCaptureVideoTrack];
-
-    if (videoTrack == nil) {
-        reject(@"DOMException", @"AbortError", nil);
+    if (@available(iOS 12, *)) {
+        [self.bridge.uiManager
+         addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+            NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+            NSString *preferredExtension = infoDictionary[@"RTCScreenSharingExtension"];
+            
+            RPSystemBroadcastPickerView *view = [[RPSystemBroadcastPickerView alloc] init];
+            view.preferredExtension = preferredExtension;
+            view.showsMicrophoneButton = false;
+            
+            SEL selector = NSSelectorFromString(@"buttonPressed:");
+            if ([view respondsToSelector:selector]) {
+                [view performSelector:selector withObject:nil];
+            }
+        }];
+    } else {
+        RCTLogError(@"showPicker requires iOS 12 or later");
         return;
     }
-
-    NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
-    RTCMediaStream *mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
-    [mediaStream addVideoTrack:videoTrack];
-
-    NSString *trackId = videoTrack.trackId;
-    self.localTracks[trackId] = videoTrack;
-
-    NSDictionary *trackInfo = @{
-        @"enabled" : @(videoTrack.isEnabled),
-        @"id" : videoTrack.trackId,
-        @"kind" : videoTrack.kind,
-        @"readyState" : @"live",
-        @"remote" : @(NO)
+    
+    __weak __typeof__(self) weakSelf = self;
+    screenCaptureController.onCaptureReady = ^{
+        [weakSelf.bridge.uiManager
+         addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+            NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
+            RTCMediaStream *mediaStream = [weakSelf.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+            [mediaStream addVideoTrack:videoTrack];
+            
+            NSString *trackId = videoTrack.trackId;
+            weakSelf.localTracks[trackId] = videoTrack;
+            
+            NSDictionary *trackInfo = @{
+                @"enabled" : @(videoTrack.isEnabled),
+                @"id" : videoTrack.trackId,
+                @"kind" : videoTrack.kind,
+                @"readyState" : @"live",
+                @"remote" : @(NO)
+            };
+            
+            weakSelf.localStreams[mediaStreamId] = mediaStream;
+            resolve(@{@"streamId" : mediaStreamId, @"track" : trackInfo});
+        }];
     };
-
-    self.localStreams[mediaStreamId] = mediaStream;
-    resolve(@{@"streamId" : mediaStreamId, @"track" : trackInfo});
 #endif
 }
 
