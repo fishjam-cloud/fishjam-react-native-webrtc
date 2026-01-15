@@ -1,6 +1,8 @@
 #import "PIPController.h"
 #import <AVKit/AVKit.h>
 #import "SampleBufferVideoCallView.h"
+#import "RTCMediaStreamTrack+React.h"
+#import "VideoCaptureController.h"
 
 @interface PIPController ()
 
@@ -86,6 +88,7 @@
 
     _videoTrack = videoTrack;
     [videoTrack addRenderer:_sampleView];
+    [self applyMultitaskingCameraAccess];
 
     if (_videoTrack) {
         if (!_sampleView.superview) {
@@ -133,6 +136,27 @@
 
 - (void)setStartAutomatically:(BOOL)value {
     _pipController.canStartPictureInPictureAutomaticallyFromInline = value;
+}
+
+- (void)setAllowsCameraInBackground:(BOOL)value {
+    _allowsCameraInBackground = value;
+    [self applyMultitaskingCameraAccess];
+}
+
+- (void)applyMultitaskingCameraAccess {
+#if !TARGET_OS_TV
+    if (!_videoTrack) {
+        return;
+    }
+
+    CaptureController *captureController = _videoTrack.captureController;
+    if (![captureController isKindOfClass:[VideoCaptureController class]]) {
+        return;
+    }
+
+    VideoCaptureController *vcc = (VideoCaptureController *)captureController;
+    [vcc setMultitaskingCameraAccessEnabled:_allowsCameraInBackground];
+#endif
 }
 
 - (void)togglePIP {
