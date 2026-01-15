@@ -21,6 +21,7 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.oney.WebRTCModule.foregroundService.ForegroundServiceController;
 import com.oney.WebRTCModule.webrtcutils.H264AndSoftwareVideoDecoderFactory;
 import com.oney.WebRTCModule.webrtcutils.H264AndSoftwareVideoEncoderFactory;
 
@@ -50,6 +51,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     final Map<String, MediaStream> localStreams;
 
     private final GetUserMediaImpl getUserMediaImpl;
+    private final ForegroundServiceController foregroundServiceController;
 
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -111,6 +113,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         mAudioDeviceModule = adm;
 
         getUserMediaImpl = new GetUserMediaImpl(this, reactContext);
+        foregroundServiceController = new ForegroundServiceController(reactContext);
     }
 
     @NonNull
@@ -1414,7 +1417,18 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void startForegroundService(ReadableMap config, Promise promise) {
+        foregroundServiceController.start(config, promise);
+    }
+
+    @ReactMethod
+    public void stopForegroundService(Promise promise) {
+        foregroundServiceController.stop(promise);
+    }
+
+    @ReactMethod
     public void removeListeners(Integer count) {
         // Keep: Required for RN built in Event Emitter Calls.
     }
+
 }
