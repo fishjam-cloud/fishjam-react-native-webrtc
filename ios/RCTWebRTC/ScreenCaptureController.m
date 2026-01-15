@@ -63,6 +63,12 @@ NSString *const kRTCAppGroupIdentifier = @"RTCAppGroupIdentifier";
     [self.eventsDelegate capturerDidEnd:capturer];
 }
 
+- (void)capturerReady:(RTCVideoCapturer *)capturer {
+    if (self.onCaptureReady != nil) {
+        self.onCaptureReady();
+    }
+}
+
 // MARK: Private Methods
 
 - (NSString *)appGroupIdentifier {
