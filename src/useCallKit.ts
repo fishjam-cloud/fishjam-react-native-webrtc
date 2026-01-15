@@ -68,8 +68,11 @@ const useCallKitEventIos = <T extends keyof CallKitAction>(
 
     useEffect(() => {
         addListener(listener.current, 'callKitActionPerformed', (event) => {
-            if (event && event[action]) {
-                callback(event[action]);
+            if (event && typeof event === 'object') {
+                const payload = event as Record<string, unknown>;
+                if (action in payload) {
+                    callback(payload[action] as CallKitAction[T]);
+                }
             }
         });
         return () => {

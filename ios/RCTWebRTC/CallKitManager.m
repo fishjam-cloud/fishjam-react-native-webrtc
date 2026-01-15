@@ -43,7 +43,7 @@
 
     CXHandle *handle = [[CXHandle alloc] initWithType:CXHandleTypeGeneric value:displayName];
     CXStartCallAction *startCallAction = [[CXStartCallAction alloc] initWithCallUUID:uuid handle:handle];
-    startCallAction.isVideo = isVideo;
+    startCallAction.video = isVideo;
     startCallAction.contactIdentifier = displayName;
 
     CXTransaction *transaction = [[CXTransaction alloc] initWithAction:startCallAction];
