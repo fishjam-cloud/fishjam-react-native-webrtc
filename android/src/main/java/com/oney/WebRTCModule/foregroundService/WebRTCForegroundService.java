@@ -92,7 +92,7 @@ public class WebRTCForegroundService extends Service {
                 channelName,
                 NotificationManager.IMPORTANCE_HIGH
         );
-        NotificationManager notificationManager = getSystemService(NOTIFICATION_SERVICE, NotificationManager.class);
+        NotificationManager notificationManager = getSystemService(NotificationManager.class);
         if (notificationManager != null) {
             notificationManager.createNotificationChannel(serviceChannel);
         }
