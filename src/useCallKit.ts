@@ -50,10 +50,10 @@ const useCallKitServiceIos = (config: CallKitConfig) => {
     const { startCallKitSession, endCallKitSession } = useCallKitIos();
 
     useEffect(() => {
-        startCallKitSession({ displayName, isVideo });
+        startCallKitSession({ displayName, isVideo }).catch(console.error);
 
         return () => {
-            endCallKitSession();
+            endCallKitSession().catch(console.error);
         };
     }, [startCallKitSession, endCallKitSession, displayName, isVideo]);
 };
