@@ -26,6 +26,9 @@ import RTCRtpTransceiver from './RTCRtpTransceiver';
 import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
+import { type CallKitAction, type CallKitConfig } from './CallKit';
+import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
+import { type ForegroundServiceConfig, useForegroundService } from './useForegroundService';
 
 Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 
@@ -55,6 +58,13 @@ export {
     registerGlobals,
     startPIP,
     stopPIP,
+    useCallKit,
+    useCallKitEvent,
+    useCallKitService,
+    useForegroundService,
+    type CallKitAction,
+    type CallKitConfig,
+    type ForegroundServiceConfig,
 };
 
 declare const global: any;

@@ -16,6 +16,9 @@
 - (void)stopCapture;
 - (void)switchCamera;
 - (void)applyConstraints:(NSDictionary *)constraints error:(NSError **)outError;
+- (BOOL)isMultitaskingCameraAccessSupported;
+- (BOOL)setMultitaskingCameraAccessEnabled:(BOOL)enabled;
+- (BOOL)isMultitaskingCameraAccessEnabled;
 
 @end
 #endif

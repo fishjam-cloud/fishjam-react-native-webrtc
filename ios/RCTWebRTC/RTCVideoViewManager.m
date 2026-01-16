@@ -165,6 +165,7 @@
     BOOL enabled = NO;
     BOOL startAutomatically = NO;
     BOOL stopAutomatically = NO;
+    BOOL allowsCameraInBackground = NO;
 
     CGSize preferredSize = CGSizeMake(1920, 1080);
 
@@ -176,6 +177,9 @@
     }
     if ([pipOptions objectForKey:@"stopAutomatically"]) {
         stopAutomatically = [pipOptions[@"stopAutomatically"] boolValue];
+    }
+    if ([pipOptions objectForKey:@"allowsCameraInBackground"]) {
+        allowsCameraInBackground = [pipOptions[@"allowsCameraInBackground"] boolValue];
     }
     if ([pipOptions objectForKey:@"preferredSize"]) {
         NSDictionary *sizeDict = pipOptions[@"preferredSize"];
@@ -201,6 +205,7 @@
 
     _pipController.startAutomatically = startAutomatically;
     _pipController.stopAutomatically = stopAutomatically;
+    _pipController.allowsCameraInBackground = allowsCameraInBackground;
     _pipController.objectFit = _objectFit;
     _pipController.preferredSize = preferredSize;
 }

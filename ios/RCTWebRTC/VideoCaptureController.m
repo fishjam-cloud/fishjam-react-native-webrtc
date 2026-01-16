@@ -315,6 +315,38 @@
     [device unlockForConfiguration];
 }
 
+- (BOOL)isMultitaskingCameraAccessSupported {
+    if (@available(iOS 16.0, *)) {
+        return self.capturer.captureSession.isMultitaskingCameraAccessSupported;
+    }
+    return NO;
+}
+
+- (BOOL)setMultitaskingCameraAccessEnabled:(BOOL)enabled {
+    self.enableMultitaskingCameraAccess = enabled;
+    if (@available(iOS 16.0, *)) {
+        AVCaptureSession *session = self.capturer.captureSession;
+        if (!session.isMultitaskingCameraAccessSupported) {
+            return NO;
+        }
+        if (session.isMultitaskingCameraAccessEnabled == enabled) {
+            return YES;
+        }
+        [session beginConfiguration];
+        [session setMultitaskingCameraAccessEnabled:enabled];
+        [session commitConfiguration];
+        return YES;
+    }
+    return NO;
+}
+
+- (BOOL)isMultitaskingCameraAccessEnabled {
+    if (@available(iOS 16.0, *)) {
+        return self.capturer.captureSession.isMultitaskingCameraAccessEnabled;
+    }
+    return NO;
+}
+
 @end
 
 #endif

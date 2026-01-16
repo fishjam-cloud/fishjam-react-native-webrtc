@@ -23,6 +23,7 @@ const NATIVE_EVENTS = [
     'dataChannelDidChangeBufferedAmount',
     'mediaStreamTrackMuteChanged',
     'mediaStreamTrackEnded',
+    'callKitActionPerformed',
 ];
 
 const eventEmitter = new EventEmitter();

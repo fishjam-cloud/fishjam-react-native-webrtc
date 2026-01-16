@@ -124,6 +124,15 @@ export interface RTCPIPOptions {
    * PIP active while the app is in the foreground on Android.
    */
   stopAutomatically?: boolean;
+
+  /**
+   * Allows the local camera to continue running while in Picture in Picture mode.
+   *
+   * iOS only. Requires iOS 16.0+ and device support for multitasking camera access.
+   *
+   * Defaults to false.
+   */
+  allowsCameraInBackground?: boolean;
 }
 
 export default requireNativeComponent<RTCVideoViewProps>('RTCVideoView');
