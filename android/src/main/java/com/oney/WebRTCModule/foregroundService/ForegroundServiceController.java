@@ -10,6 +10,7 @@ import androidx.core.content.ContextCompat;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.oney.WebRTCModule.WebRTCModuleOptions;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,11 +40,14 @@ public class ForegroundServiceController {
                 ? config.getString("notificationContent")
                 : "[PLACEHOLDER] Your video call is ongoing";
 
-        int[] foregroundServiceTypes = buildForegroundServiceTypes(enableCamera, enableMicrophone, enableScreenSharing);
+        int[] foregroundServiceTypes = buildForegroundServiceTypes(enableCamera, enableMicrophone);
         if (foregroundServiceTypes.length == 0) {
             stop(promise);
             return;
         }
+
+        WebRTCModuleOptions options = WebRTCModuleOptions.getInstance();
+        options.enableMediaProjectionService = enableScreenSharing;
 
         Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
         serviceIntent.putExtra("channelId", channelId);
@@ -69,8 +73,7 @@ public class ForegroundServiceController {
 
     private int[] buildForegroundServiceTypes(
             boolean enableCamera,
-            boolean enableMicrophone,
-            boolean enableScreenSharing) {
+            boolean enableMicrophone) {
         List<Integer> serviceTypes = new ArrayList<>();
 
         if (enableCamera && hasPermission(Manifest.permission.CAMERA)) {
@@ -78,9 +81,6 @@ public class ForegroundServiceController {
         }
         if (enableMicrophone && hasPermission(Manifest.permission.RECORD_AUDIO)) {
             serviceTypes.add(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
-        }
-        if (enableScreenSharing) {
-            serviceTypes.add(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         }
 
         int[] result = new int[serviceTypes.size()];
