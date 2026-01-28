@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
-import { addListener, removeListener } from './EventEmitter';
+
 import {
     CallKitAction,
     CallKitConfig,
@@ -8,6 +8,7 @@ import {
     hasActiveCallKitSession,
     startCallKitSession,
 } from './CallKit';
+import { addListener, removeListener } from './EventEmitter';
 
 export type UseCallKitResult = {
     startCallKitSession: (config: CallKitConfig) => Promise<void>;
