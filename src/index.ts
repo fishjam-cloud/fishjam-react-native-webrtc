@@ -2,12 +2,16 @@ import { NativeModules, Platform } from 'react-native';
 const { WebRTCModule } = NativeModules;
 
 if (WebRTCModule === null) {
-    throw new Error(`WebRTC native module not found.\n${Platform.OS === 'ios' ?
-        'Try executing the "pod install" command inside your projects ios folder.' :
-        'Try executing the "npm install" command inside your projects folder.'
-    }`);
+    throw new Error(
+        `WebRTC native module not found.\n${
+            Platform.OS === 'ios'
+                ? 'Try executing the "pod install" command inside your projects ios folder.'
+                : 'Try executing the "npm install" command inside your projects folder.'
+        }`,
+    );
 }
 
+import { type CallKitAction, type CallKitConfig } from './CallKit';
 import { setupNativeEvents } from './EventEmitter';
 import Logger from './Logger';
 import mediaDevices from './MediaDevices';
@@ -18,7 +22,11 @@ import permissions from './Permissions';
 import RTCAudioSession from './RTCAudioSession';
 import RTCErrorEvent from './RTCErrorEvent';
 import RTCIceCandidate from './RTCIceCandidate';
-import RTCPIPView, { startPIP, stopPIP, type RTCPIPViewProps } from './RTCPIPView';
+import RTCPIPView, {
+    startPIP,
+    stopPIP,
+    type RTCPIPViewProps,
+} from './RTCPIPView';
 import RTCPeerConnection from './RTCPeerConnection';
 import RTCRtpReceiver from './RTCRtpReceiver';
 import RTCRtpSender from './RTCRtpSender';
@@ -26,9 +34,11 @@ import RTCRtpTransceiver from './RTCRtpTransceiver';
 import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
-import { type CallKitAction, type CallKitConfig } from './CallKit';
 import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
-import { type ForegroundServiceConfig, useForegroundService } from './useForegroundService';
+import {
+    type ForegroundServiceConfig,
+    useForegroundService,
+} from './useForegroundService';
 
 Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 
@@ -79,9 +89,12 @@ function registerGlobals(): void {
         global.navigator.mediaDevices = {};
     }
 
-    global.navigator.mediaDevices.getUserMedia = mediaDevices.getUserMedia.bind(mediaDevices);
-    global.navigator.mediaDevices.getDisplayMedia = mediaDevices.getDisplayMedia.bind(mediaDevices);
-    global.navigator.mediaDevices.enumerateDevices = mediaDevices.enumerateDevices.bind(mediaDevices);
+    global.navigator.mediaDevices.getUserMedia =
+        mediaDevices.getUserMedia.bind(mediaDevices);
+    global.navigator.mediaDevices.getDisplayMedia =
+        mediaDevices.getDisplayMedia.bind(mediaDevices);
+    global.navigator.mediaDevices.enumerateDevices =
+        mediaDevices.enumerateDevices.bind(mediaDevices);
 
     global.RTCIceCandidate = RTCIceCandidate;
     global.RTCPeerConnection = RTCPeerConnection;

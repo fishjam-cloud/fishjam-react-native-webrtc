@@ -1,4 +1,8 @@
-import { EventTarget, Event, defineEventAttribute } from 'event-target-shim/index';
+import {
+    EventTarget,
+    Event,
+    defineEventAttribute,
+} from 'event-target-shim/index';
 import { NativeModules } from 'react-native';
 
 import { MediaTrackConstraints } from './Constraints';
@@ -8,7 +12,6 @@ import { deepClone, normalizeConstraints } from './RTCUtil';
 
 const log = new Logger('pc');
 const { WebRTCModule } = NativeModules;
-
 
 type MediaStreamTrackState = 'live' | 'ended';
 
@@ -21,7 +24,7 @@ export type MediaStreamTrackInfo = {
     settings: object;
     peerConnectionId: number;
     readyState: MediaStreamTrackState;
-}
+};
 
 export type MediaTrackSettings = {
     width?: number;
@@ -30,13 +33,13 @@ export type MediaTrackSettings = {
     facingMode?: string;
     deviceId?: string;
     groupId?: string;
-}
+};
 
 type MediaStreamTrackEventMap = {
     ended: Event<'ended'>;
     mute: Event<'mute'>;
     unmute: Event<'unmute'>;
-}
+};
 
 export default class MediaStreamTrack extends EventTarget<MediaStreamTrackEventMap> {
     _constraints: MediaTrackConstraints;
@@ -85,7 +88,11 @@ export default class MediaStreamTrack extends EventTarget<MediaStreamTrackEventM
             return;
         }
 
-        WebRTCModule.mediaStreamTrackSetEnabled(this.remote ? this._peerConnectionId : -1, this.id, this._enabled);
+        WebRTCModule.mediaStreamTrackSetEnabled(
+            this.remote ? this._peerConnectionId : -1,
+            this.id,
+            this._enabled,
+        );
     }
 
     get muted(): boolean {
@@ -122,7 +129,8 @@ export default class MediaStreamTrack extends EventTarget<MediaStreamTrackEventM
         const constraints = deepClone(this._settings);
 
         delete constraints.deviceId;
-        constraints.facingMode = this._settings.facingMode === 'user' ? 'environment' : 'user';
+        constraints.facingMode =
+            this._settings.facingMode === 'user' ? 'environment' : 'user';
 
         this.applyConstraints(constraints);
     }
@@ -140,7 +148,7 @@ export default class MediaStreamTrack extends EventTarget<MediaStreamTrackEventM
     }
 
     _setVideoEffect(name: string) {
-        this._setVideoEffects([ name ]);
+        this._setVideoEffects([name]);
     }
 
     /**
@@ -168,7 +176,11 @@ export default class MediaStreamTrack extends EventTarget<MediaStreamTrackEventM
             throw new Error('Only implemented for audio tracks');
         }
 
-        WebRTCModule.mediaStreamTrackSetVolume(this.remote ? this._peerConnectionId : -1, this.id, volume);
+        WebRTCModule.mediaStreamTrackSetVolume(
+            this.remote ? this._peerConnectionId : -1,
+            this.id,
+            volume,
+        );
     }
 
     /**
@@ -188,7 +200,10 @@ export default class MediaStreamTrack extends EventTarget<MediaStreamTrackEventM
 
         const normalized = normalizeConstraints({ video: constraints ?? true });
 
-        this._settings = await WebRTCModule.mediaStreamTrackApplyConstraints(this.id, normalized.video);
+        this._settings = await WebRTCModule.mediaStreamTrackApplyConstraints(
+            this.id,
+            normalized.video,
+        );
         this._constraints = constraints ?? {};
     }
 

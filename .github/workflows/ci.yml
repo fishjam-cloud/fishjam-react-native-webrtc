@@ -3,16 +3,22 @@ name: Simple CI
 on: [pull_request]
 
 jobs:
-  run-ci:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
-      with:
-        node-version-file: '.nvmrc'
-        cache: 'npm'
-    - run: npm install
-    - name: Check if the git repository is clean
-      run: $(exit $(git status --porcelain --untracked-files=no | head -255 | wc -l)) || (echo "Dirty git tree"; git diff; exit 1)
-    - run: npm run lint
+    run-ci:
+        name: Lint
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version-file: '.nvmrc'
+                  cache: 'npm'
+            - run: npm install
+            - name: Check formatting
+              run: |
+                  npm run format
+                  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+                    echo "Code is not formatted. Run 'npm run format' and commit the changes."
+                    git diff
+                    exit 1
+                  fi
+            - run: npm run lint

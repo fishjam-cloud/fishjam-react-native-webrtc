@@ -10,7 +10,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property(nonatomic, weak) id<CapturerEventsDelegate> eventsDelegate;
 
-
 - (instancetype)initWithDelegate:(__weak id<RTCVideoCapturerDelegate>)delegate;
 - (void)startCaptureWithConnection:(nonnull SocketConnection *)connection;
 - (void)stopCapture;

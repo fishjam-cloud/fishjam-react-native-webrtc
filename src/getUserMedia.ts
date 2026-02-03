@@ -1,6 +1,4 @@
-
 import { NativeModules } from 'react-native';
-
 
 import { MediaTrackConstraints } from './Constraints';
 import MediaStream from './MediaStream';
@@ -15,7 +13,9 @@ export interface Constraints {
     video?: boolean | MediaTrackConstraints;
 }
 
-export default function getUserMedia(constraints: Constraints = {}): Promise<MediaStream> {
+export default function getUserMedia(
+    constraints: Constraints = {},
+): Promise<MediaStream> {
     // According to
     // https://www.w3.org/TR/mediacapture-streams/#dom-mediadevices-getusermedia,
     // the constraints argument is a dictionary of type MediaStreamConstraints.
@@ -49,8 +49,8 @@ export default function getUserMedia(constraints: Constraints = {}): Promise<Med
     }
 
     return new Promise((resolve, reject) => {
-        Promise.all(reqPermissions).then(results => {
-            const [ audioPerm, videoPerm ] = results;
+        Promise.all(reqPermissions).then((results) => {
+            const [audioPerm, videoPerm] = results;
 
             // Check permission results and remove unneeded permissions.
 
@@ -59,7 +59,7 @@ export default function getUserMedia(constraints: Constraints = {}): Promise<Med
                 // step 4
                 const error = {
                     message: 'Permission denied.',
-                    name: 'SecurityError'
+                    name: 'SecurityError',
                 };
 
                 reject(new MediaStreamError(error));
@@ -67,8 +67,12 @@ export default function getUserMedia(constraints: Constraints = {}): Promise<Med
                 return;
             }
 
-            audioPerm || delete constraints.audio;
-            videoPerm || delete constraints.video;
+            if (!audioPerm) {
+                delete constraints.audio;
+            }
+            if (!videoPerm) {
+                delete constraints.video;
+            }
 
             const success = (id, tracks) => {
                 // Store initial constraints.
@@ -83,7 +87,7 @@ export default function getUserMedia(constraints: Constraints = {}): Promise<Med
                 const info = {
                     streamId: id,
                     streamReactTag: id,
-                    tracks
+                    tracks,
                 };
 
                 resolve(new MediaStream(info));

@@ -5,7 +5,7 @@ typedef void (^CallKitVoidCallback)(void);
 typedef void (^CallKitStringCallback)(NSString *);
 typedef void (^CallKitBoolCallback)(BOOL);
 
-@interface CallKitManager : NSObject <CXProviderDelegate>
+@interface CallKitManager : NSObject<CXProviderDelegate>
 
 @property(nonatomic, copy) CallKitVoidCallback onCallStarted;
 @property(nonatomic, copy) CallKitVoidCallback onCallEnded;

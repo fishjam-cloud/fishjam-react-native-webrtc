@@ -38,14 +38,8 @@ static void *CallKitManagerKey = &CallKitManagerKey;
     return manager;
 }
 
-RCT_EXPORT_METHOD(startCallKitSession
-                  : (NSString *)displayName
-                  isVideo
-                  : (BOOL)isVideo
-                  resolver
-                  : (RCTPromiseResolveBlock)resolve
-                  rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(startCallKitSession : (NSString *)displayName isVideo : (BOOL)
+                      isVideo resolver : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
     if (displayName == nil || displayName.length == 0) {
         reject(@"E_CALLKIT_INVALID_DISPLAY_NAME", @"displayName is required", nil);
         return;
@@ -59,10 +53,7 @@ RCT_EXPORT_METHOD(startCallKitSession
     }
 }
 
-RCT_EXPORT_METHOD(endCallKitSession
-                  : (RCTPromiseResolveBlock)resolve
-                  rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(endCallKitSession : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
     @try {
         [[self callKitManager] endCall];
         resolve(nil);

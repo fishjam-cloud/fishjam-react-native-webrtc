@@ -16,7 +16,9 @@ interface IMessageEventInitDict extends Event.EventInit {
  * @see
  * {@link https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel/message_event#event_type MDN} for details.
  */
-export default class MessageEvent<TEventType extends MESSAGE_EVENTS> extends Event<TEventType> {
+export default class MessageEvent<
+    TEventType extends MESSAGE_EVENTS,
+> extends Event<TEventType> {
     /** @eventProperty */
     data: MessageEventData;
     constructor(type: TEventType, eventInitDict: IMessageEventInitDict) {

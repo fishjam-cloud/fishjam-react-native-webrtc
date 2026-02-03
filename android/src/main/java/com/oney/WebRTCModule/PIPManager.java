@@ -28,7 +28,7 @@ import java.util.List;
 
 /**
  * Manages Picture-in-Picture functionality for WebRTCView.
- * 
+ *
  * Creates a new SurfaceViewRenderer for PiP mode rather than moving the existing view,
  * which avoids manipulating React's managed view hierarchy.
  */
@@ -68,8 +68,7 @@ public class PIPManager {
         }
 
         @Override
-        public void onFrameResolutionChanged(int videoWidth, int videoHeight, int rotation) {
-        }
+        public void onFrameResolutionChanged(int videoWidth, int videoHeight, int rotation) {}
     };
 
     public PIPManager(WebRTCView webRTCView) {
@@ -223,32 +222,28 @@ public class PIPManager {
 
         pipContentContainer = new FrameLayout(webRTCView.getContext());
         pipContentContainer.setLayoutParams(new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ));
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         pipSurfaceViewRenderer = new SurfaceViewRenderer(webRTCView.getContext());
         pipSurfaceViewRenderer.setBackgroundColor(Color.BLACK);
         pipSurfaceViewRenderer.setMirror(webRTCView.getMirror());
         pipSurfaceViewRenderer.setScalingType(webRTCView.getScalingType());
 
-        pipContentContainer.addView(pipSurfaceViewRenderer, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ));
+        pipContentContainer.addView(pipSurfaceViewRenderer,
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         rootView.addView(pipContentContainer);
 
         pipSurfaceViewRenderer.getViewTreeObserver().addOnGlobalLayoutListener(
-            new ViewTreeObserver.OnGlobalLayoutListener() {
-                @Override
-                public void onGlobalLayout() {
-                    if (pipSurfaceViewRenderer == null) return;
-                    pipSurfaceViewRenderer.getViewTreeObserver().removeOnGlobalLayoutListener(this);
-                    initializePipRenderer(webRTCView, videoTrack);
-                }
-            }
-        );
+                new ViewTreeObserver.OnGlobalLayoutListener() {
+                    @Override
+                    public void onGlobalLayout() {
+                        if (pipSurfaceViewRenderer == null) return;
+                        pipSurfaceViewRenderer.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+                        initializePipRenderer(webRTCView, videoTrack);
+                    }
+                });
     }
 
     private void initializePipRenderer(WebRTCView webRTCView, VideoTrack videoTrack) {
@@ -294,9 +289,7 @@ public class PIPManager {
             pipRendererAttached = false;
             pipSurfaceViewRenderer = null;
 
-            VideoTrack videoTrack = wasAttached && webRTCView != null
-                ? webRTCView.getVideoTrack()
-                : null;
+            VideoTrack videoTrack = wasAttached && webRTCView != null ? webRTCView.getVideoTrack() : null;
 
             if (videoTrack != null) {
                 ThreadUtils.runOnExecutor(() -> {
@@ -344,9 +337,9 @@ public class PIPManager {
         PIPHelperFragment fragment = new PIPHelperFragment(this);
         pipHelperFragmentTag = fragment.getFragmentId();
         activity.getSupportFragmentManager()
-            .beginTransaction()
-            .add(fragment, pipHelperFragmentTag)
-            .commitAllowingStateLoss();
+                .beginTransaction()
+                .add(fragment, pipHelperFragmentTag)
+                .commitAllowingStateLoss();
     }
 
     private void detachPipHelperFragment() {
@@ -356,12 +349,9 @@ public class PIPManager {
         }
 
         androidx.fragment.app.Fragment fragment =
-            activity.getSupportFragmentManager().findFragmentByTag(pipHelperFragmentTag);
+                activity.getSupportFragmentManager().findFragmentByTag(pipHelperFragmentTag);
         if (fragment != null) {
-            activity.getSupportFragmentManager()
-                .beginTransaction()
-                .remove(fragment)
-                .commitAllowingStateLoss();
+            activity.getSupportFragmentManager().beginTransaction().remove(fragment).commitAllowingStateLoss();
         }
 
         pipHelperFragmentTag = null;

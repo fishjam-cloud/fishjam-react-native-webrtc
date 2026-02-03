@@ -10,17 +10,17 @@
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModuleOptions.h"
 
+#import <React/RCTUIManager.h>
 #import "ProcessorProvider.h"
 #import "ScreenCaptureController.h"
 #import "ScreenCapturer.h"
 #import "TrackCapturerEventsEmitter.h"
 #import "VideoCaptureController.h"
-#import <React/RCTUIManager.h>
 
 #if TARGET_OS_IOS
 
-#import <ReplayKit/ReplayKit.h>
 #import <React/RCTLog.h>
+#import <ReplayKit/ReplayKit.h>
 
 #endif
 
@@ -152,7 +152,7 @@ RCT_EXPORT_METHOD(getDisplayMedia : (RCTPromiseResolveBlock)resolve rejecter : (
     reject(@"unsupported_platform", @"tvOS is not supported", nil);
     return;
 #else
-    
+
 #if TARGET_IPHONE_SIMULATOR || TARGET_OS_OSX || TARGET_OS_TV
     reject(@"DOMException", @"AbortError", nil);
     return;
@@ -172,49 +172,48 @@ RCT_EXPORT_METHOD(getDisplayMedia : (RCTPromiseResolveBlock)resolve rejecter : (
     videoTrack.captureController = screenCaptureController;
     [screenCaptureController startCapture];
 
-
     if (@available(iOS 12, *)) {
         [self.bridge.uiManager
-         addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-            NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-            NSString *preferredExtension = infoDictionary[@"RTCScreenSharingExtension"];
-            
-            RPSystemBroadcastPickerView *view = [[RPSystemBroadcastPickerView alloc] init];
-            view.preferredExtension = preferredExtension;
-            view.showsMicrophoneButton = false;
-            
-            SEL selector = NSSelectorFromString(@"buttonPressed:");
-            if ([view respondsToSelector:selector]) {
-                [view performSelector:selector withObject:nil];
-            }
-        }];
+            addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+                NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+                NSString *preferredExtension = infoDictionary[@"RTCScreenSharingExtension"];
+
+                RPSystemBroadcastPickerView *view = [[RPSystemBroadcastPickerView alloc] init];
+                view.preferredExtension = preferredExtension;
+                view.showsMicrophoneButton = false;
+
+                SEL selector = NSSelectorFromString(@"buttonPressed:");
+                if ([view respondsToSelector:selector]) {
+                    [view performSelector:selector withObject:nil];
+                }
+            }];
     } else {
         RCTLogError(@"showPicker requires iOS 12 or later");
         return;
     }
-    
+
     __weak __typeof__(self) weakSelf = self;
     screenCaptureController.onCaptureReady = ^{
         [weakSelf.bridge.uiManager
-         addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-            NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
-            RTCMediaStream *mediaStream = [weakSelf.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
-            [mediaStream addVideoTrack:videoTrack];
-            
-            NSString *trackId = videoTrack.trackId;
-            weakSelf.localTracks[trackId] = videoTrack;
-            
-            NSDictionary *trackInfo = @{
-                @"enabled" : @(videoTrack.isEnabled),
-                @"id" : videoTrack.trackId,
-                @"kind" : videoTrack.kind,
-                @"readyState" : @"live",
-                @"remote" : @(NO)
-            };
-            
-            weakSelf.localStreams[mediaStreamId] = mediaStream;
-            resolve(@{@"streamId" : mediaStreamId, @"track" : trackInfo});
-        }];
+            addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+                NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
+                RTCMediaStream *mediaStream = [weakSelf.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+                [mediaStream addVideoTrack:videoTrack];
+
+                NSString *trackId = videoTrack.trackId;
+                weakSelf.localTracks[trackId] = videoTrack;
+
+                NSDictionary *trackInfo = @{
+                    @"enabled" : @(videoTrack.isEnabled),
+                    @"id" : videoTrack.trackId,
+                    @"kind" : videoTrack.kind,
+                    @"readyState" : @"live",
+                    @"remote" : @(NO)
+                };
+
+                weakSelf.localStreams[mediaStreamId] = mediaStream;
+                resolve(@{@"streamId" : mediaStreamId, @"track" : trackInfo});
+            }];
     };
 #endif
 }

@@ -202,8 +202,8 @@ class GetUserMediaImpl {
                 return;
             }
 
-            CameraCaptureController cameraCaptureController = new CameraCaptureController(
-                    currentActivity, getCameraEnumerator(), videoConstraintsMap);
+            CameraCaptureController cameraCaptureController =
+                    new CameraCaptureController(currentActivity, getCameraEnumerator(), videoConstraintsMap);
 
             videoTrack = createVideoTrack(cameraCaptureController);
         }

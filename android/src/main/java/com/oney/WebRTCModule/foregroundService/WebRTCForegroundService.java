@@ -57,18 +57,14 @@ public class WebRTCForegroundService extends Service {
         }
 
         PendingIntent pendingIntent = PendingIntent.getActivity(
-                this,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE
-        );
+                this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, channelId)
-                .setContentTitle(notificationTitle)
-                .setContentText(notificationContent)
-                .setContentIntent(pendingIntent)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .build();
+                                            .setContentTitle(notificationTitle)
+                                            .setContentText(notificationContent)
+                                            .setContentIntent(pendingIntent)
+                                            .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                            .build();
 
         createNotificationChannel(channelId, channelName);
         startForegroundWithNotification(notification, foregroundServiceType);
@@ -87,11 +83,8 @@ public class WebRTCForegroundService extends Service {
             return;
         }
 
-        NotificationChannel serviceChannel = new NotificationChannel(
-                channelId,
-                channelName,
-                NotificationManager.IMPORTANCE_HIGH
-        );
+        NotificationChannel serviceChannel =
+                new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH);
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         if (notificationManager != null) {
             notificationManager.createNotificationChannel(serviceChannel);
