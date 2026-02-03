@@ -30,7 +30,7 @@
     "scripts": {
         "lint": "eslint --max-warnings 0 . && tsc --noEmit",
         "lintfix": "eslint --max-warnings 0 --fix . && tsc --noEmit",
-        "prepare": "husky install && bob build",
+        "prepare": "bob build",
         "format": "tools/format.sh && npx prettier --write 'src/**/*.{ts,tsx}' 'metro.config.js' 'metro.config.macos.js' 'react-native.config.js'"
     },
     "bugs": {
@@ -45,7 +45,6 @@
         "eslint": "^8.57.0",
         "eslint-config-prettier": "^9.1.0",
         "eslint-plugin-import": "^2.26.0",
-        "husky": "7.0.2",
         "prettier": "3.4.2",
         "react-native-builder-bob": "0.18.2",
         "typescript": "~5.9.2"
