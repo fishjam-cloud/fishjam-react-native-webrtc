@@ -8,9 +8,9 @@ import { uniqueID } from './RTCUtil';
 const { WebRTCModule } = NativeModules;
 
 type MediaStreamEventMap = {
-    addtrack: MediaStreamTrackEvent<'addtrack'>
-    removetrack: MediaStreamTrackEvent<'removetrack'>
-}
+    addtrack: MediaStreamTrackEvent<'addtrack'>;
+    removetrack: MediaStreamTrackEvent<'removetrack'>;
+};
 
 export default class MediaStream extends EventTarget<MediaStreamEventMap> {
     _tracks: MediaStreamTrack[] = [];
@@ -37,10 +37,15 @@ export default class MediaStream extends EventTarget<MediaStreamEventMap> {
      *   done internally, when the stream is first created in native and the JS wrapper is
      *   built afterwards.
      */
-    constructor(arg?:
-        MediaStream |
-        MediaStreamTrack[] |
-        { streamId: string, streamReactTag: string, tracks: MediaStreamTrackInfo[] }
+    constructor(
+        arg?:
+            | MediaStream
+            | MediaStreamTrack[]
+            | {
+                  streamId: string;
+                  streamReactTag: string;
+                  tracks: MediaStreamTrackInfo[];
+              },
     ) {
         super();
 
@@ -67,7 +72,12 @@ export default class MediaStream extends EventTarget<MediaStreamEventMap> {
             for (const track of arg) {
                 this.addTrack(track);
             }
-        } else if (typeof arg === 'object' && arg.streamId && arg.streamReactTag && arg.tracks) {
+        } else if (
+            typeof arg === 'object' &&
+            arg.streamId &&
+            arg.streamReactTag &&
+            arg.tracks
+        ) {
             this._id = arg.streamId;
             this._reactTag = arg.streamReactTag;
 
@@ -99,7 +109,11 @@ export default class MediaStream extends EventTarget<MediaStreamEventMap> {
         }
 
         this._tracks.push(track);
-        WebRTCModule.mediaStreamAddTrack(this._reactTag, track.remote ? track._peerConnectionId : -1, track.id);
+        WebRTCModule.mediaStreamAddTrack(
+            this._reactTag,
+            track.remote ? track._peerConnectionId : -1,
+            track.id,
+        );
     }
 
     removeTrack(track: MediaStreamTrack): void {
@@ -110,7 +124,11 @@ export default class MediaStream extends EventTarget<MediaStreamEventMap> {
         }
 
         this._tracks.splice(index, 1);
-        WebRTCModule.mediaStreamRemoveTrack(this._reactTag, track.remote ? track._peerConnectionId : -1, track.id);
+        WebRTCModule.mediaStreamRemoveTrack(
+            this._reactTag,
+            track.remote ? track._peerConnectionId : -1,
+            track.id,
+        );
     }
 
     getTracks(): MediaStreamTrack[] {
@@ -118,15 +136,15 @@ export default class MediaStream extends EventTarget<MediaStreamEventMap> {
     }
 
     getTrackById(trackId): MediaStreamTrack | undefined {
-        return this._tracks.find(track => track.id === trackId);
+        return this._tracks.find((track) => track.id === trackId);
     }
 
     getAudioTracks(): MediaStreamTrack[] {
-        return this._tracks.filter(track => track.kind === 'audio');
+        return this._tracks.filter((track) => track.kind === 'audio');
     }
 
     getVideoTracks(): MediaStreamTrack[] {
-        return this._tracks.filter(track => track.kind === 'video');
+        return this._tracks.filter((track) => track.kind === 'video');
     }
 
     clone(): never {
@@ -138,7 +156,7 @@ export default class MediaStream extends EventTarget<MediaStreamEventMap> {
     }
 
     release(releaseTracks = true): void {
-        const tracks = [ ...this._tracks ];
+        const tracks = [...this._tracks];
 
         for (const track of tracks) {
             this.removeTrack(track);

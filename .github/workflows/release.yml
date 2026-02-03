@@ -1,0 +1,47 @@
+# Publishes to npm when a GitHub release is published.
+# Required: Add NPM_TOKEN (npm automation token with publish permission) in
+# Repository → Settings → Secrets and variables → Actions before merging.
+
+name: Publish Package to npmjs
+
+on:
+    release:
+        types: [published]
+
+jobs:
+    publish-npm:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - uses: actions/setup-node@v4
+              with:
+                  node-version-file: '.nvmrc'
+                  registry-url: 'https://registry.npmjs.org'
+                  cache: 'npm'
+            - name: Verify NPM_TOKEN
+              run: |
+                  if [ -z "${{ secrets.NPM_TOKEN }}" ]; then
+                    echo "::error::NPM_TOKEN secret is not set. Add it in Repository → Settings → Secrets and variables → Actions."
+                    exit 1
+                  fi
+            - run: npm ci
+            - name: Install clang-format
+              run: sudo apt-get update && sudo apt-get install -y clang-format-15
+            - name: Check formatting
+              env:
+                  CLANG_FORMAT: clang-format-15
+              run: |
+                  npm run format
+                  if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+                    echo "Code is not formatted. Run 'npm run format' and commit the changes."
+                    git diff
+                    exit 1
+                  fi
+            - name: Lint
+              run: npm run lint
+            - name: Build
+              run: npm run prepare
+            - name: Publish to npm
+              run: npm publish --access public
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

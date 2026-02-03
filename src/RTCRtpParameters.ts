@@ -1,13 +1,16 @@
 import RTCRtcpParameters, { RTCRtcpParametersInit } from './RTCRtcpParameters';
-import RTCRtpCodecParameters, { RTCRtpCodecParametersInit } from './RTCRtpCodecParameters';
-import RTCRtpHeaderExtension, { RTCRtpHeaderExtensionInit } from './RTCRtpHeaderExtension';
+import RTCRtpCodecParameters, {
+    RTCRtpCodecParametersInit,
+} from './RTCRtpCodecParameters';
+import RTCRtpHeaderExtension, {
+    RTCRtpHeaderExtensionInit,
+} from './RTCRtpHeaderExtension';
 import { deepClone } from './RTCUtil';
 
-
 export interface RTCRtpParametersInit {
-    codecs: RTCRtpCodecParametersInit[],
-    headerExtensions: RTCRtpHeaderExtensionInit[],
-    rtcp: RTCRtcpParametersInit
+    codecs: RTCRtpCodecParametersInit[];
+    headerExtensions: RTCRtpHeaderExtensionInit[];
+    rtcp: RTCRtcpParametersInit;
 }
 
 export default class RTCRtpParameters {
@@ -29,9 +32,9 @@ export default class RTCRtpParameters {
 
     toJSON() {
         return {
-            codecs: this.codecs.map(c => deepClone(c)),
-            headerExtensions: this.headerExtensions.map(he => deepClone(he)),
-            rtcp: deepClone(this.rtcp)
+            codecs: this.codecs.map((c) => deepClone(c)),
+            headerExtensions: this.headerExtensions.map((he) => deepClone(he)),
+            rtcp: deepClone(this.rtcp),
         };
     }
 }

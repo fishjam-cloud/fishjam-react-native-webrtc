@@ -2,10 +2,10 @@ import { Event } from 'event-target-shim/index';
 
 import type RTCIceCandidate from './RTCIceCandidate';
 
-type RTC_ICECANDIDATE_EVENTS = 'icecandidate' | 'icecandidateerror'
+type RTC_ICECANDIDATE_EVENTS = 'icecandidate' | 'icecandidateerror';
 
 interface IRTCDataChannelEventInitDict extends Event.EventInit {
-    candidate: RTCIceCandidate | null
+    candidate: RTCIceCandidate | null;
 }
 
 /**
@@ -16,7 +16,9 @@ interface IRTCDataChannelEventInitDict extends Event.EventInit {
  * @param {IRTCDataChannelEventInitDict} eventInitDict - The event init properties.
  * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/RTCPeerConnection#events MDN} for details.
  */
-export default class RTCIceCandidateEvent<TEventType extends RTC_ICECANDIDATE_EVENTS> extends Event<TEventType> {
+export default class RTCIceCandidateEvent<
+    TEventType extends RTC_ICECANDIDATE_EVENTS,
+> extends Event<TEventType> {
     /** @eventProperty */
     candidate: RTCIceCandidate | null;
     constructor(type: TEventType, eventInitDict: IRTCDataChannelEventInitDict) {

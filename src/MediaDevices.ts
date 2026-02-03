@@ -1,4 +1,8 @@
-import { EventTarget, Event, defineEventAttribute } from 'event-target-shim/index';
+import {
+    EventTarget,
+    Event,
+    defineEventAttribute,
+} from 'event-target-shim/index';
 import { NativeModules } from 'react-native';
 
 import getDisplayMedia from './getDisplayMedia';
@@ -7,8 +11,8 @@ import getUserMedia, { Constraints } from './getUserMedia';
 const { WebRTCModule } = NativeModules;
 
 type MediaDevicesEventMap = {
-    devicechange: Event<'devicechange'>
-}
+    devicechange: Event<'devicechange'>;
+};
 
 class MediaDevices extends EventTarget<MediaDevicesEventMap> {
     /**
@@ -16,7 +20,7 @@ class MediaDevices extends EventTarget<MediaDevicesEventMap> {
      * implementation.
      */
     enumerateDevices() {
-        return new Promise(resolve => WebRTCModule.enumerateDevices(resolve));
+        return new Promise((resolve) => WebRTCModule.enumerateDevices(resolve));
     }
 
     /**
@@ -48,6 +52,5 @@ class MediaDevices extends EventTarget<MediaDevicesEventMap> {
 const proto = MediaDevices.prototype;
 
 defineEventAttribute(proto, 'devicechange');
-
 
 export default new MediaDevices();

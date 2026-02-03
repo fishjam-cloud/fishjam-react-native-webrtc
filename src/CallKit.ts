@@ -15,7 +15,9 @@ export type CallKitAction = {
     held?: boolean;
 };
 
-export async function startCallKitSession(config: CallKitConfig): Promise<void> {
+export async function startCallKitSession(
+    config: CallKitConfig,
+): Promise<void> {
     if (Platform.OS !== 'ios') {
         return;
     }

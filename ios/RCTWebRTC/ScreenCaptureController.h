@@ -11,7 +11,7 @@ extern NSString *const kRTCAppGroupIdentifier;
 
 @interface ScreenCaptureController : CaptureController
 
-@property (nonatomic, copy, nullable) void (^onCaptureReady)(void);
+@property(nonatomic, copy, nullable) void (^onCaptureReady)(void);
 
 - (instancetype)initWithCapturer:(nonnull ScreenCapturer *)capturer;
 - (void)startCapture;

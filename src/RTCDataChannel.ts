@@ -96,23 +96,39 @@ export default class RTCDataChannel extends EventTarget<DataChannelEventMap> {
     send(data: ArrayBufferView): void;
     send(data: string | ArrayBuffer | ArrayBufferView): void {
         if (typeof data === 'string') {
-            WebRTCModule.dataChannelSend(this._peerConnectionId, this._reactTag, data, 'text');
+            WebRTCModule.dataChannelSend(
+                this._peerConnectionId,
+                this._reactTag,
+                data,
+                'text',
+            );
 
             return;
         }
 
         // Safely convert the buffer object to an Uint8Array for base64-encoding
         if (ArrayBuffer.isView(data)) {
-            data = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+            data = new Uint8Array(
+                data.buffer,
+                data.byteOffset,
+                data.byteLength,
+            );
         } else if (data instanceof ArrayBuffer) {
             data = new Uint8Array(data);
         } else {
-            throw new TypeError('Data must be either string, ArrayBuffer, or ArrayBufferView');
+            throw new TypeError(
+                'Data must be either string, ArrayBuffer, or ArrayBufferView',
+            );
         }
 
         const base64data = base64.fromByteArray(data as Uint8Array);
 
-        WebRTCModule.dataChannelSend(this._peerConnectionId, this._reactTag, base64data, 'binary');
+        WebRTCModule.dataChannelSend(
+            this._peerConnectionId,
+            this._reactTag,
+            base64data,
+            'binary',
+        );
     }
 
     close(): void {
@@ -136,16 +152,25 @@ export default class RTCDataChannel extends EventTarget<DataChannelEventMap> {
             }
 
             if (this._readyState === 'open') {
-                this.dispatchEvent(new RTCDataChannelEvent('open', { channel: this }));
+                this.dispatchEvent(
+                    new RTCDataChannelEvent('open', { channel: this }),
+                );
             } else if (this._readyState === 'closing') {
-                this.dispatchEvent(new RTCDataChannelEvent('closing', { channel: this }));
+                this.dispatchEvent(
+                    new RTCDataChannelEvent('closing', { channel: this }),
+                );
             } else if (this._readyState === 'closed') {
-                this.dispatchEvent(new RTCDataChannelEvent('close', { channel: this }));
+                this.dispatchEvent(
+                    new RTCDataChannelEvent('close', { channel: this }),
+                );
 
                 // This DataChannel is done, clean up event handlers.
                 removeListener(this);
 
-                WebRTCModule.dataChannelDispose(this._peerConnectionId, this._reactTag);
+                WebRTCModule.dataChannelDispose(
+                    this._peerConnectionId,
+                    this._reactTag,
+                );
             }
         });
 
@@ -171,7 +196,11 @@ export default class RTCDataChannel extends EventTarget<DataChannelEventMap> {
             this._bufferedAmount = ev.bufferedAmount;
 
             if (this._bufferedAmount < this.bufferedAmountLowThreshold) {
-                this.dispatchEvent(new RTCDataChannelEvent('bufferedamountlow', { channel: this }));
+                this.dispatchEvent(
+                    new RTCDataChannelEvent('bufferedamountlow', {
+                        channel: this,
+                    }),
+                );
             }
         });
     }

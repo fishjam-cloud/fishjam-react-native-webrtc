@@ -8,8 +8,8 @@ import android.os.Build;
 import androidx.core.content.ContextCompat;
 
 import com.facebook.react.bridge.Promise;
-import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReadableMap;
 import com.oney.WebRTCModule.WebRTCModuleOptions;
 
 import java.util.ArrayList;
@@ -27,18 +27,13 @@ public class ForegroundServiceController {
         boolean enableMicrophone = config.hasKey("enableMicrophone") && config.getBoolean("enableMicrophone");
         boolean enableScreenSharing = config.hasKey("enableScreenSharing") && config.getBoolean("enableScreenSharing");
 
-        String channelId = config.hasKey("channelId")
-                ? config.getString("channelId")
-                : "com.fishjam.foregroundservice.channel";
-        String channelName = config.hasKey("channelName")
-                ? config.getString("channelName")
-                : "Fishjam Notifications";
-        String notificationTitle = config.hasKey("notificationTitle")
-                ? config.getString("notificationTitle")
-                : "[PLACEHOLDER] Tap to return to the call.";
-        String notificationContent = config.hasKey("notificationContent")
-                ? config.getString("notificationContent")
-                : "[PLACEHOLDER] Your video call is ongoing";
+        String channelId =
+                config.hasKey("channelId") ? config.getString("channelId") : "com.fishjam.foregroundservice.channel";
+        String channelName = config.hasKey("channelName") ? config.getString("channelName") : "Fishjam Notifications";
+        String notificationTitle = config.hasKey("notificationTitle") ? config.getString("notificationTitle")
+                                                                      : "[PLACEHOLDER] Tap to return to the call.";
+        String notificationContent = config.hasKey("notificationContent") ? config.getString("notificationContent")
+                                                                          : "[PLACEHOLDER] Your video call is ongoing";
 
         int[] foregroundServiceTypes = buildForegroundServiceTypes(enableCamera, enableMicrophone);
         if (foregroundServiceTypes.length == 0) {
@@ -71,9 +66,7 @@ public class ForegroundServiceController {
         promise.resolve(null);
     }
 
-    private int[] buildForegroundServiceTypes(
-            boolean enableCamera,
-            boolean enableMicrophone) {
+    private int[] buildForegroundServiceTypes(boolean enableCamera, boolean enableMicrophone) {
         List<Integer> serviceTypes = new ArrayList<>();
 
         if (enableCamera && hasPermission(Manifest.permission.CAMERA)) {

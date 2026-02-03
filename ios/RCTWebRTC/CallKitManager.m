@@ -49,23 +49,25 @@
     CXTransaction *transaction = [[CXTransaction alloc] initWithAction:startCallAction];
 
     __weak typeof(self) weakSelf = self;
-    [self.callController requestTransaction:transaction completion:^(NSError *error) {
-        if (error) {
-            NSLog(@"[CallKitManager] Failed to start call: %@", error.localizedDescription);
-            weakSelf.currentCallUUID = nil;
-            if (weakSelf.onCallFailed) {
-                weakSelf.onCallFailed(error.localizedDescription);
-            }
-            [weakSelf cleanup];
-            return;
-        }
+    [self.callController
+        requestTransaction:transaction
+                completion:^(NSError *error) {
+                    if (error) {
+                        NSLog(@"[CallKitManager] Failed to start call: %@", error.localizedDescription);
+                        weakSelf.currentCallUUID = nil;
+                        if (weakSelf.onCallFailed) {
+                            weakSelf.onCallFailed(error.localizedDescription);
+                        }
+                        [weakSelf cleanup];
+                        return;
+                    }
 
-        [weakSelf.provider reportOutgoingCallWithUUID:uuid startedConnectingAtDate:[NSDate date]];
-        [weakSelf.provider reportOutgoingCallWithUUID:uuid connectedAtDate:[NSDate date]];
-        if (weakSelf.onCallStarted) {
-            weakSelf.onCallStarted();
-        }
-    }];
+                    [weakSelf.provider reportOutgoingCallWithUUID:uuid startedConnectingAtDate:[NSDate date]];
+                    [weakSelf.provider reportOutgoingCallWithUUID:uuid connectedAtDate:[NSDate date]];
+                    if (weakSelf.onCallStarted) {
+                        weakSelf.onCallStarted();
+                    }
+                }];
 }
 
 - (void)endCall {
@@ -78,16 +80,17 @@
     CXTransaction *transaction = [[CXTransaction alloc] initWithAction:endCallAction];
 
     __weak typeof(self) weakSelf = self;
-    [self.callController requestTransaction:transaction completion:^(NSError *error) {
-        if (error) {
-            NSLog(@"[CallKitManager] Failed to end call: %@", error.localizedDescription);
-            return;
-        }
-        if (weakSelf.onCallEnded) {
-            weakSelf.onCallEnded();
-        }
-        [weakSelf cleanup];
-    }];
+    [self.callController requestTransaction:transaction
+                                 completion:^(NSError *error) {
+                                     if (error) {
+                                         NSLog(@"[CallKitManager] Failed to end call: %@", error.localizedDescription);
+                                         return;
+                                     }
+                                     if (weakSelf.onCallEnded) {
+                                         weakSelf.onCallEnded();
+                                     }
+                                     [weakSelf cleanup];
+                                 }];
 }
 
 - (void)cleanup {
