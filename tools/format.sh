@@ -2,5 +2,6 @@
 
 #set -x
 
-exec git ls-files | grep -e "\(\.java\|\.h\|\.m\)$" | grep -v examples | xargs clang-format -i
+CLANG_FORMAT="${CLANG_FORMAT:-clang-format}"
+exec git ls-files | grep -e "\(\.java\|\.h\|\.m\)$" | grep -v examples | xargs "$CLANG_FORMAT" -i
 

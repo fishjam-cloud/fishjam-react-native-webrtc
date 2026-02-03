@@ -12,8 +12,12 @@ jobs:
               with:
                   node-version-file: '.nvmrc'
                   cache: 'npm'
+            - name: Install clang-format
+              run: sudo apt-get update && sudo apt-get install -y clang-format-15
             - run: npm install
             - name: Check formatting
+              env:
+                  CLANG_FORMAT: clang-format-15
               run: |
                   npm run format
                   if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
