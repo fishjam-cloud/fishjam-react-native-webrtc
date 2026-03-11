@@ -28,9 +28,13 @@ import RTCPIPView, {
     type RTCPIPViewProps,
 } from './RTCPIPView';
 import RTCPeerConnection from './RTCPeerConnection';
-import RTCRtpEncodingParameters, { type RTCRtpEncodingParametersInit } from './RTCRtpEncodingParameters';
+import RTCRtpEncodingParameters, {
+    type RTCRtpEncodingParametersInit,
+} from './RTCRtpEncodingParameters';
 import RTCRtpReceiver from './RTCRtpReceiver';
-import RTCRtpSendParameters, { type RTCRtpSendParametersInit } from './RTCRtpSendParameters';
+import RTCRtpSendParameters, {
+    type RTCRtpSendParametersInit,
+} from './RTCRtpSendParameters';
 import RTCRtpSender from './RTCRtpSender';
 import RTCRtpTransceiver from './RTCRtpTransceiver';
 import RTCSessionDescription from './RTCSessionDescription';
