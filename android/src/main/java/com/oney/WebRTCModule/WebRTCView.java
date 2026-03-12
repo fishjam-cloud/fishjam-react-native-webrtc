@@ -26,10 +26,13 @@ import org.webrtc.RendererCommon.ScalingType;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoTrack;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class WebRTCView extends ViewGroup {
     /**
@@ -58,6 +61,8 @@ public class WebRTCView extends ViewGroup {
      * be created before the exception is thrown.
      */
     private static int surfaceViewRendererInstances;
+    private static final CopyOnWriteArrayList<WeakReference<WebRTCView>> streamTrackObservers =
+            new CopyOnWriteArrayList<>();
 
     /**
      * The height of the last video frame rendered by
@@ -169,6 +174,49 @@ public class WebRTCView extends ViewGroup {
         setScalingType(DEFAULT_SCALING_TYPE);
     }
 
+    public static void notifyStreamVideoTrackChanged(String streamId) {
+        for (WeakReference<WebRTCView> weakRef : streamTrackObservers) {
+            WebRTCView view = weakRef.get();
+            if (view == null) {
+                streamTrackObservers.remove(weakRef);
+                continue;
+            }
+            view.onStreamVideoTrackChanged(streamId);
+        }
+    }
+
+    private void registerStreamTrackObserver() {
+        for (WeakReference<WebRTCView> weakRef : streamTrackObservers) {
+            WebRTCView view = weakRef.get();
+            if (view == null) {
+                streamTrackObservers.remove(weakRef);
+                continue;
+            }
+            if (view == this) {
+                return;
+            }
+        }
+        streamTrackObservers.add(new WeakReference<>(this));
+    }
+
+    private void unregisterStreamTrackObserver() {
+        List<WeakReference<WebRTCView>> toRemove = new ArrayList<>();
+        for (WeakReference<WebRTCView> weakRef : streamTrackObservers) {
+            WebRTCView view = weakRef.get();
+            if (view == null || view == this) {
+                toRemove.add(weakRef);
+            }
+        }
+        streamTrackObservers.removeAll(toRemove);
+    }
+
+    private void onStreamVideoTrackChanged(String streamId) {
+        if (!Objects.equals(streamId, streamURL)) {
+            return;
+        }
+        getVideoTrackForStreamURL(streamURL, this::setVideoTrack);
+    }
+
     /**
      * Gets the PIP manager for this view, creating it if necessary.
      *
@@ -273,6 +321,7 @@ public class WebRTCView extends ViewGroup {
     @Override
     protected void onAttachedToWindow() {
         try {
+            registerStreamTrackObserver();
             // Generally, OpenGL is only necessary while this View is attached
             // to a window so there is no point in having the whole rendering
             // infrastructure hooked up while this View is not attached to a
@@ -292,6 +341,7 @@ public class WebRTCView extends ViewGroup {
     @Override
     protected void onDetachedFromWindow() {
         try {
+            unregisterStreamTrackObserver();
             // Generally, OpenGL is only necessary while this View is attached
             // to a window so there is no point in having the whole rendering
             // infrastructure hooked up while this View is not attached to a
