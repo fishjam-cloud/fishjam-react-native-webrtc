@@ -340,6 +340,10 @@
     RTCMediaStream *stream = [module streamForReactTag:streamId];
     RTCVideoTrack *videoTrack = stream.videoTracks.firstObject;
 
+    if (!videoTrack) {
+        return;
+    }
+
     dispatch_async(dispatch_get_main_queue(), ^{
         if (![streamId isEqualToString:self.streamReactTag]) {
             return;
