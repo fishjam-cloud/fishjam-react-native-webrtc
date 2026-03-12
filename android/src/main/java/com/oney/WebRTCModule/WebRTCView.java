@@ -26,10 +26,13 @@ import org.webrtc.RendererCommon.ScalingType;
 import org.webrtc.SurfaceViewRenderer;
 import org.webrtc.VideoTrack;
 
+import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class WebRTCView extends ViewGroup {
     /**
@@ -58,6 +61,8 @@ public class WebRTCView extends ViewGroup {
      * be created before the exception is thrown.
      */
     private static int surfaceViewRendererInstances;
+    private static final CopyOnWriteArrayList<WeakReference<WebRTCView>> streamTrackObservers =
+            new CopyOnWriteArrayList<>();
 
     /**
      * The height of the last video frame rendered by
@@ -94,7 +99,7 @@ public class WebRTCView extends ViewGroup {
      * Indicates if the {@link SurfaceViewRenderer} is attached to the video
      * track.
      */
-    private boolean rendererAttached;
+    private volatile boolean rendererAttached;
 
     /**
      * The {@code RendererEvents} which listens to rendering events reported by
@@ -167,6 +172,58 @@ public class WebRTCView extends ViewGroup {
 
         setMirror(false);
         setScalingType(DEFAULT_SCALING_TYPE);
+    }
+
+    public static void notifyStreamVideoTrackChanged(String streamId) {
+        for (WeakReference<WebRTCView> weakRef : streamTrackObservers) {
+            WebRTCView view = weakRef.get();
+            if (view == null) {
+                streamTrackObservers.remove(weakRef);
+                continue;
+            }
+            view.post(() -> view.onStreamVideoTrackChanged(streamId));
+        }
+    }
+
+    private void registerStreamTrackObserver() {
+        for (WeakReference<WebRTCView> weakRef : streamTrackObservers) {
+            WebRTCView view = weakRef.get();
+            if (view == null) {
+                streamTrackObservers.remove(weakRef);
+                continue;
+            }
+            if (view == this) {
+                return;
+            }
+        }
+        streamTrackObservers.add(new WeakReference<>(this));
+    }
+
+    private void unregisterStreamTrackObserver() {
+        List<WeakReference<WebRTCView>> toRemove = new ArrayList<>();
+        for (WeakReference<WebRTCView> weakRef : streamTrackObservers) {
+            WebRTCView view = weakRef.get();
+            if (view == null || view == this) {
+                toRemove.add(weakRef);
+            }
+        }
+        streamTrackObservers.removeAll(toRemove);
+    }
+
+    private void onStreamVideoTrackChanged(String streamId) {
+        if (!Objects.equals(streamId, streamURL)) {
+            return;
+        }
+        String expectedStreamURL = this.streamURL;
+        getVideoTrackForStreamURL(expectedStreamURL, videoTrack -> {
+            if (!Objects.equals(expectedStreamURL, this.streamURL)) {
+                return;
+            }
+            if (videoTrack == null) {
+                return;
+            }
+            setVideoTrack(videoTrack);
+        });
     }
 
     /**
@@ -273,6 +330,16 @@ public class WebRTCView extends ViewGroup {
     @Override
     protected void onAttachedToWindow() {
         try {
+            registerStreamTrackObserver();
+            if (streamURL != null) {
+                String expectedStreamURL = this.streamURL;
+                getVideoTrackForStreamURL(expectedStreamURL, videoTrack -> {
+                    if (!Objects.equals(expectedStreamURL, this.streamURL)) {
+                        return;
+                    }
+                    setVideoTrack(videoTrack);
+                });
+            }
             // Generally, OpenGL is only necessary while this View is attached
             // to a window so there is no point in having the whole rendering
             // infrastructure hooked up while this View is not attached to a
@@ -292,6 +359,7 @@ public class WebRTCView extends ViewGroup {
     @Override
     protected void onDetachedFromWindow() {
         try {
+            unregisterStreamTrackObserver();
             // Generally, OpenGL is only necessary while this View is attached
             // to a window so there is no point in having the whole rendering
             // infrastructure hooked up while this View is not attached to a
@@ -434,13 +502,12 @@ public class WebRTCView extends ViewGroup {
     private void removeRendererFromVideoTrack() {
         if (rendererAttached) {
             if (videoTrack != null) {
+                final VideoTrack trackToRemove = videoTrack;
                 ThreadUtils.runOnExecutor(() -> {
                     try {
-                        videoTrack.removeSink(surfaceViewRenderer);
+                        trackToRemove.removeSink(surfaceViewRenderer);
                     } catch (Throwable tr) {
-                        // XXX If WebRTCModule#mediaStreamTrackRelease has already been
-                        // invoked on videoTrack, then it is no longer safe to call removeSink
-                        // on the instance, it will throw IllegalStateException.
+                        Log.w(TAG, "Failed to remove sink from track", tr);
                     }
                 });
             }
@@ -540,26 +607,11 @@ public class WebRTCView extends ViewGroup {
             return;
         }
 
-        // The value of this.streamURL is really changing. Before
-        // realizing/applying the change, let go of the old videoTrack. Of
-        // course, that is only necessary if the value of videoTrack will
-        // really change. Please note though that letting go of the old
-        // videoTrack before assigning to this.streamURL is vital;
-        // otherwise, removeRendererFromVideoTrack will fail to remove the
-        // old videoTrack from the associated videoRenderer, two
-        // VideoTracks (the old and the new) may start rendering and, most
-        // importantly the videoRender may eventually crash when the old
-        // videoTrack is disposed.
+        this.streamURL = streamURL;
         getVideoTrackForStreamURL(streamURL, videoTrack -> {
-            Log.d(TAG, "Got video track for stream URL " + streamURL + " -> " + videoTrack);
-            if (this.videoTrack != videoTrack) {
-                setVideoTrack(null);
+            if (!Objects.equals(streamURL, this.streamURL)) {
+                return;
             }
-
-            this.streamURL = streamURL;
-
-            // After realizing/applying the change in the value of
-            // this.streamURL, reflect it on the value of videoTrack.
             setVideoTrack(videoTrack);
         });
     }
@@ -574,10 +626,30 @@ public class WebRTCView extends ViewGroup {
         VideoTrack oldVideoTrack = this.videoTrack;
 
         if (oldVideoTrack != videoTrack) {
+            if (oldVideoTrack != null && videoTrack != null && rendererAttached) {
+                final VideoTrack capturedOld = oldVideoTrack;
+                final VideoTrack capturedNew = videoTrack;
+                this.videoTrack = videoTrack;
+                ThreadUtils.runOnExecutor(() -> {
+                    try {
+                        capturedOld.removeSink(surfaceViewRenderer);
+                    } catch (Throwable tr) {
+                        Log.w(TAG, "Failed to remove sink from old track", tr);
+                    }
+                    if (!rendererAttached) {
+                        return;
+                    }
+                    try {
+                        capturedNew.addSink(surfaceViewRenderer);
+                    } catch (Throwable tr) {
+                        Log.e(TAG, "Failed to add renderer", tr);
+                    }
+                });
+                return;
+            }
+
             if (oldVideoTrack != null) {
                 if (videoTrack == null) {
-                    // If we are not going to render any stream, clean the
-                    // surface.
                     cleanSurfaceViewRenderer();
                 }
                 removeRendererFromVideoTrack();
@@ -588,8 +660,6 @@ public class WebRTCView extends ViewGroup {
             if (videoTrack != null) {
                 tryAddRendererToVideoTrack();
                 if (oldVideoTrack == null) {
-                    // If there was no old track, clean the surface so we start
-                    // with black.
                     cleanSurfaceViewRenderer();
                 }
             }
@@ -642,14 +712,11 @@ public class WebRTCView extends ViewGroup {
                 return;
             }
 
+            final VideoTrack trackToAdd = videoTrack;
             ThreadUtils.runOnExecutor(() -> {
                 try {
-                    videoTrack.addSink(surfaceViewRenderer);
+                    trackToAdd.addSink(surfaceViewRenderer);
                 } catch (Throwable tr) {
-                    // XXX If WebRTCModule#mediaStreamTrackRelease has already been
-                    // invoked on videoTrack, then it is no longer safe to call addSink
-                    // on the instance, it will throw IllegalStateException.
-
                     Log.e(TAG, "Failed to add renderer", tr);
                 }
             });

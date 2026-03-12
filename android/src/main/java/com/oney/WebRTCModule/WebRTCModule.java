@@ -804,6 +804,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                 stream.addTrack((AudioTrack) track);
             } else if ("video".equals(kind)) {
                 stream.addTrack((VideoTrack) track);
+                WebRTCView.notifyStreamVideoTrackChanged(streamId);
             }
         });
     }
@@ -828,6 +829,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                 stream.removeTrack((AudioTrack) track);
             } else if ("video".equals(kind)) {
                 stream.removeTrack((VideoTrack) track);
+                WebRTCView.notifyStreamVideoTrackChanged(streamId);
             }
         });
     }

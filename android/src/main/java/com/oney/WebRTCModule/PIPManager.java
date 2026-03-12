@@ -51,6 +51,7 @@ public class PIPManager {
     private FrameLayout pipContentContainer;
     private SurfaceViewRenderer pipSurfaceViewRenderer;
     private boolean pipRendererAttached = false;
+    private VideoTrack pipAttachedVideoTrack;
 
     @RequiresApi(Build.VERSION_CODES.O)
     private PictureInPictureParams.Builder pictureInPictureParamsBuilder;
@@ -261,6 +262,7 @@ public class PIPManager {
             pipSurfaceViewRenderer.setZOrderMediaOverlay(true);
             pipSurfaceViewRenderer.init(sharedContext, pipRendererEvents);
 
+            pipAttachedVideoTrack = videoTrack;
             ThreadUtils.runOnExecutor(() -> {
                 try {
                     videoTrack.addSink(pipSurfaceViewRenderer);
@@ -285,17 +287,18 @@ public class PIPManager {
         if (pipSurfaceViewRenderer != null) {
             final SurfaceViewRenderer renderer = pipSurfaceViewRenderer;
             final boolean wasAttached = pipRendererAttached;
+            final VideoTrack trackToDetach = pipAttachedVideoTrack;
 
             pipRendererAttached = false;
             pipSurfaceViewRenderer = null;
+            pipAttachedVideoTrack = null;
 
-            VideoTrack videoTrack = wasAttached && webRTCView != null ? webRTCView.getVideoTrack() : null;
-
-            if (videoTrack != null) {
+            if (wasAttached && trackToDetach != null) {
                 ThreadUtils.runOnExecutor(() -> {
                     try {
-                        videoTrack.removeSink(renderer);
+                        trackToDetach.removeSink(renderer);
                     } catch (Throwable tr) {
+                        Log.w(TAG, "Failed to remove PiP sink", tr);
                     }
                     UiThreadUtil.runOnUiThread(renderer::release);
                 });

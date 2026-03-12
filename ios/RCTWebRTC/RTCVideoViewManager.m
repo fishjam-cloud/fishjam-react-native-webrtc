@@ -60,6 +60,7 @@
  * The {@link RTCVideoTrack}, if any, which this instance renders.
  */
 @property(nonatomic, strong) RTCVideoTrack *videoTrack;
+@property(nonatomic, copy) NSString *streamReactTag;
 
 /**
  * Reference to the main WebRTC RN module.
@@ -119,9 +120,17 @@
         _objectFit = RTCVideoViewObjectFitCover;
         [self addSubview:self.videoView];
         self.videoView.delegate = self;
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(onStreamVideoTracksChanged:)
+                                                     name:kMediaStreamVideoTracksChangedNotification
+                                                   object:nil];
     }
 
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 #if TARGET_OS_OSX
@@ -317,6 +326,32 @@
     }
 }
 
+- (void)onStreamVideoTracksChanged:(NSNotification *)notification {
+    NSString *streamId = notification.userInfo[@"streamId"];
+    if (!streamId) {
+        return;
+    }
+
+    WebRTCModule *module = self.module;
+    if (!module) {
+        return;
+    }
+
+    RTCMediaStream *stream = [module streamForReactTag:streamId];
+    RTCVideoTrack *videoTrack = stream.videoTracks.firstObject;
+
+    if (!videoTrack) {
+        return;
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (![streamId isEqualToString:self.streamReactTag]) {
+            return;
+        }
+        self.videoTrack = videoTrack;
+    });
+}
+
 @end
 
 @implementation RTCVideoViewManager
@@ -357,11 +392,13 @@ RCT_EXPORT_VIEW_PROPERTY(onDimensionsChange, RCTDirectEventBlock)
 
 RCT_CUSTOM_VIEW_PROPERTY(streamURL, NSString *, RTCVideoView) {
     if (!json) {
+        view.streamReactTag = nil;
         view.videoTrack = nil;
         return;
     }
 
     NSString *streamReactTag = json;
+    view.streamReactTag = streamReactTag;
     WebRTCModule *module = view.module;
 
     dispatch_async(module.workerQueue, ^{
