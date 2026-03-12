@@ -19,8 +19,6 @@
 #import "RTCVideoViewManager.h"
 #import "WebRTCModule.h"
 
-static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaStreamVideoTracksChangedNotification";
-
 /**
  * Implements an equivalent of {@code HTMLVideoElement} i.e. Web's video
  * element.
@@ -330,17 +328,23 @@ static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaSt
 
 - (void)onStreamVideoTracksChanged:(NSNotification *)notification {
     NSString *streamId = notification.userInfo[@"streamId"];
-    if (!streamId || !self.streamReactTag || ![self.streamReactTag isEqualToString:streamId]) {
+    if (!streamId) {
         return;
     }
 
     WebRTCModule *module = self.module;
-    dispatch_async(module.workerQueue, ^{
-        RTCMediaStream *stream = [module streamForReactTag:streamId];
-        RTCVideoTrack *videoTrack = stream.videoTracks.firstObject;
-        dispatch_async(dispatch_get_main_queue(), ^{
-            self.videoTrack = videoTrack;
-        });
+    if (!module) {
+        return;
+    }
+
+    RTCMediaStream *stream = [module streamForReactTag:streamId];
+    RTCVideoTrack *videoTrack = stream.videoTracks.firstObject;
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (![streamId isEqualToString:self.streamReactTag]) {
+            return;
+        }
+        self.videoTrack = videoTrack;
     });
 }
 
