@@ -375,6 +375,10 @@ export default class RTCPeerConnection extends EventTarget<RTCPeerConnectionEven
     }
 
     async addIceCandidate(candidate): Promise<void> {
+        if (this.connectionState === 'closed') {
+            throw new Error('Peer Connection is closed');
+        }
+
         log.debug(`${this._pcId} addIceCandidate`);
 
         if (!candidate || !candidate.candidate) {
