@@ -24,6 +24,8 @@
 
 #endif
 
+static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaStreamVideoTracksChangedNotification";
+
 @implementation WebRTCModule (RTCMediaStream)
 
 - (VideoEffectProcessor *)videoEffectProcessor {
@@ -391,6 +393,9 @@ RCT_EXPORT_METHOD(mediaStreamAddTrack
         [mediaStream addAudioTrack:(RTCAudioTrack *)track];
     } else if ([track.kind isEqualToString:@"video"]) {
         [mediaStream addVideoTrack:(RTCVideoTrack *)track];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kMediaStreamVideoTracksChangedNotification
+                                                            object:nil
+                                                          userInfo:@{@"streamId" : streamID}];
     }
 }
 
@@ -412,6 +417,9 @@ RCT_EXPORT_METHOD(mediaStreamRemoveTrack
         [mediaStream removeAudioTrack:(RTCAudioTrack *)track];
     } else if ([track.kind isEqualToString:@"video"]) {
         [mediaStream removeVideoTrack:(RTCVideoTrack *)track];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kMediaStreamVideoTracksChangedNotification
+                                                            object:nil
+                                                          userInfo:@{@"streamId" : streamID}];
     }
 }
 

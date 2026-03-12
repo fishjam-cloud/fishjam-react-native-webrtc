@@ -19,6 +19,8 @@
 #import "RTCVideoViewManager.h"
 #import "WebRTCModule.h"
 
+static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaStreamVideoTracksChangedNotification";
+
 /**
  * Implements an equivalent of {@code HTMLVideoElement} i.e. Web's video
  * element.
@@ -60,6 +62,7 @@
  * The {@link RTCVideoTrack}, if any, which this instance renders.
  */
 @property(nonatomic, strong) RTCVideoTrack *videoTrack;
+@property(nonatomic, copy) NSString *streamReactTag;
 
 /**
  * Reference to the main WebRTC RN module.
@@ -119,9 +122,17 @@
         _objectFit = RTCVideoViewObjectFitCover;
         [self addSubview:self.videoView];
         self.videoView.delegate = self;
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(onStreamVideoTracksChanged:)
+                                                     name:kMediaStreamVideoTracksChangedNotification
+                                                   object:nil];
     }
 
     return self;
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 #if TARGET_OS_OSX
@@ -317,6 +328,22 @@
     }
 }
 
+- (void)onStreamVideoTracksChanged:(NSNotification *)notification {
+    NSString *streamId = notification.userInfo[@"streamId"];
+    if (!streamId || !self.streamReactTag || ![self.streamReactTag isEqualToString:streamId]) {
+        return;
+    }
+
+    WebRTCModule *module = self.module;
+    dispatch_async(module.workerQueue, ^{
+        RTCMediaStream *stream = [module streamForReactTag:streamId];
+        RTCVideoTrack *videoTrack = stream.videoTracks.firstObject;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.videoTrack = videoTrack;
+        });
+    });
+}
+
 @end
 
 @implementation RTCVideoViewManager
@@ -357,11 +384,13 @@ RCT_EXPORT_VIEW_PROPERTY(onDimensionsChange, RCTDirectEventBlock)
 
 RCT_CUSTOM_VIEW_PROPERTY(streamURL, NSString *, RTCVideoView) {
     if (!json) {
+        view.streamReactTag = nil;
         view.videoTrack = nil;
         return;
     }
 
     NSString *streamReactTag = json;
+    view.streamReactTag = streamReactTag;
     WebRTCModule *module = view.module;
 
     dispatch_async(module.workerQueue, ^{
