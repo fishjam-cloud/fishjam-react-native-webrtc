@@ -16,10 +16,7 @@
 }
 
 - (void)sendEventWithName:(NSString *)name body:(id)body {
-    [self.capturedEvents addObject:@{
-        @"name": name ?: @"",
-        @"body": body ?: [NSNull null]
-    }];
+    [self.capturedEvents addObject:@{@"name" : name ?: @"", @"body" : body ?: [NSNull null]}];
 }
 
 @end
