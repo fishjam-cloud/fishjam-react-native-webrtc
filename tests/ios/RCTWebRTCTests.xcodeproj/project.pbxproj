@@ -1,0 +1,251 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		100000000000000000000001 /* AudioOutputDevicesTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000011 /* AudioOutputDevicesTests.m */; };
+		100000000000000000000002 /* ReactStubs.m in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000012 /* ReactStubs.m */; };
+		100000000000000000000003 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 100000000000000000000021 /* XCTest.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		100000000000000000000010 /* RCTWebRTCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RCTWebRTCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		100000000000000000000011 /* AudioOutputDevicesTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AudioOutputDevicesTests.m; sourceTree = "<group>"; };
+		100000000000000000000012 /* ReactStubs.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ReactStubs.m; sourceTree = "<group>"; };
+		100000000000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100000000000000000000021 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		100000000000000000000060 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000003 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		100000000000000000000070 = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000071 /* Frameworks */,
+				100000000000000000000072 /* Stubs */,
+				100000000000000000000073 /* Tests */,
+				100000000000000000000074 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		100000000000000000000071 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000021 /* XCTest.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		100000000000000000000072 /* Stubs */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000012 /* ReactStubs.m */,
+			);
+			path = Stubs;
+			sourceTree = "<group>";
+		};
+		100000000000000000000073 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000011 /* AudioOutputDevicesTests.m */,
+				100000000000000000000013 /* Info.plist */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		100000000000000000000074 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000010 /* RCTWebRTCTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		100000000000000000000050 /* RCTWebRTCTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 100000000000000000000080 /* Build configuration list for PBXNativeTarget "RCTWebRTCTests" */;
+			buildPhases = (
+				100000000000000000000081 /* Sources */,
+				100000000000000000000060 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RCTWebRTCTests;
+			productName = RCTWebRTCTests;
+			productReference = 100000000000000000000010 /* RCTWebRTCTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		100000000000000000000040 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1530;
+			};
+			buildConfigurationList = 100000000000000000000090 /* Build configuration list for PBXProject "RCTWebRTCTests" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 100000000000000000000070;
+			productRefGroup = 100000000000000000000074 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				100000000000000000000050 /* RCTWebRTCTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		100000000000000000000081 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				100000000000000000000001 /* AudioOutputDevicesTests.m in Sources */,
+				100000000000000000000002 /* ReactStubs.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1000000000000000000000A0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Stubs",
+					"$(SRCROOT)/../../ios/RCTWebRTC",
+					"$(SRCROOT)/../../ios/RCTWebRTC/videoEffects",
+				);
+				INFOPLIST_FILE = Tests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fishjam.RCTWebRTCTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphonesimulator;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		1000000000000000000000A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Stubs",
+					"$(SRCROOT)/../../ios/RCTWebRTC",
+					"$(SRCROOT)/../../ios/RCTWebRTC/videoEffects",
+				);
+				INFOPLIST_FILE = Tests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fishjam.RCTWebRTCTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphonesimulator;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		1000000000000000000000B0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				SDKROOT = iphonesimulator;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		1000000000000000000000B1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGNING_ALLOWED = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				SDKROOT = iphonesimulator;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		100000000000000000000080 /* Build configuration list for PBXNativeTarget "RCTWebRTCTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1000000000000000000000A0 /* Debug */,
+				1000000000000000000000A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		100000000000000000000090 /* Build configuration list for PBXProject "RCTWebRTCTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1000000000000000000000B0 /* Debug */,
+				1000000000000000000000B1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 100000000000000000000040 /* Project object */;
+}
