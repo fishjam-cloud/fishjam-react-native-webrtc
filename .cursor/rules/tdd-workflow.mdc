@@ -1,0 +1,44 @@
+---
+description: Red/green test-driven development workflow for all code changes
+alwaysApply: true
+---
+
+# Red/Green TDD Workflow
+
+Use red/green TDD. Every code change must be driven by tests.
+
+## First, run the tests
+
+At the start of every task, run the existing suite:
+
+    npm test
+
+This establishes a green baseline, reveals project scope, and ensures you know how to run the tests. Read existing test files to understand how the codebase works before writing new code.
+
+Use layer-specific commands while iterating:
+
+- `npm run test:ts` for TypeScript tests
+- `npm run test:android` for Android native tests
+- `npm run test:ios` for iOS native tests
+- `npm test` for the full suite
+
+## Red/Green/Refactor cycle
+
+1. **Red** -- Write or update tests that describe the new behavior. Run the relevant layer command and confirm the new tests _fail_. A test that passes before you've written the implementation proves nothing about the new code.
+2. **Green** -- Implement the minimal code to make the failing tests pass. Run the relevant layer command and confirm tests pass.
+3. **Refactor** -- Clean up if needed, then run `npm test` to confirm nothing broke.
+
+## Rules
+
+- Never skip the red phase -- always verify tests fail before implementing
+- When fixing a bug, write a test that reproduces it first
+- When refactoring, run the full suite before and after to confirm identical behavior
+- Type-level `.tdd.ts` checks are validated by `tsc --noEmit` as part of `npm run lint`
+- After completing any task (or sub-task), run `npm test` as the final step
+- Don't apply this in Plan Mode. This should only be used for coding tasks when they are ongoing.
+
+## Anti-patterns
+
+- Writing a test that already passes and calling it coverage for new code
+- Shipping code that has never been executed by any test
+- Implementing before a failing test exists

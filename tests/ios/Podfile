@@ -1,0 +1,7 @@
+platform :ios, '12.0'
+
+project 'RCTWebRTCTests.xcodeproj'
+
+target 'RCTWebRTCTests' do
+  pod 'JitsiWebRTC', '~> 124.0.0'
+end
