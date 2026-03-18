@@ -41,7 +41,7 @@ import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
 import {
-    audioOutputManager,
+    AudioOutputManager,
     AudioOutputDeviceType,
     AVAudioSessionPort,
     type AudioPort,
@@ -62,7 +62,7 @@ Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 setupNativeEvents();
 
 export {
-    audioOutputManager,
+    AudioOutputManager,
     AudioOutputDeviceType,
     AVAudioSessionPort,
     type AudioPort,

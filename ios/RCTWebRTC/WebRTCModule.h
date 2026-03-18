@@ -38,5 +38,6 @@ static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaSt
 @property(nonatomic, strong) NSMutableDictionary<NSString *, RTCMediaStreamTrack *> *localTracks;
 
 - (RTCMediaStream *)streamForReactTag:(NSString *)reactTag;
+- (void)removeAudioRouteObserver;
 
 @end

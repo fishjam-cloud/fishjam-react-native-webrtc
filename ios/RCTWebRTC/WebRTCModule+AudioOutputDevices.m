@@ -13,6 +13,14 @@ static void *AudioRouteObserverKey = &AudioRouteObserverKey;
 
 @implementation WebRTCModule (AudioOutputDevices)
 
+- (void)removeAudioRouteObserver {
+    id observer = objc_getAssociatedObject(self, AudioRouteObserverKey);
+    if (observer) {
+        [[NSNotificationCenter defaultCenter] removeObserver:observer];
+        objc_setAssociatedObject(self, AudioRouteObserverKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
 - (void)ensureAudioRouteObserver {
     if (objc_getAssociatedObject(self, AudioRouteObserverKey))
         return;
@@ -109,35 +117,33 @@ RCT_EXPORT_METHOD(showAudioRoutePicker) {
     [self ensureAudioRouteObserver];
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (@available(iOS 11.0, *)) {
-            AVRoutePickerView *routePickerView = [[AVRoutePickerView alloc] initWithFrame:CGRectZero];
+        AVRoutePickerView *routePickerView = [[AVRoutePickerView alloc] initWithFrame:CGRectZero];
 
-            UIWindow *keyWindow = nil;
-            for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-                if ([scene isKindOfClass:[UIWindowScene class]]) {
-                    UIWindowScene *windowScene = (UIWindowScene *)scene;
-                    for (UIWindow *window in windowScene.windows) {
-                        if (window.isKeyWindow) {
-                            keyWindow = window;
-                            break;
-                        }
+        UIWindow *keyWindow = nil;
+        for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                for (UIWindow *window in windowScene.windows) {
+                    if (window.isKeyWindow) {
+                        keyWindow = window;
+                        break;
                     }
                 }
             }
-
-            if (keyWindow) {
-                [keyWindow addSubview:routePickerView];
-            }
-
-            for (UIView *subview in routePickerView.subviews) {
-                if ([subview isKindOfClass:[UIButton class]]) {
-                    [(UIButton *)subview sendActionsForControlEvents:UIControlEventTouchUpInside];
-                    break;
-                }
-            }
-
-            [routePickerView removeFromSuperview];
         }
+
+        if (keyWindow) {
+            [keyWindow addSubview:routePickerView];
+        }
+
+        for (UIView *subview in routePickerView.subviews) {
+            if ([subview isKindOfClass:[UIButton class]]) {
+                [(UIButton *)subview sendActionsForControlEvents:UIControlEventTouchUpInside];
+                break;
+            }
+        }
+
+        [routePickerView removeFromSuperview];
     });
 }
 

@@ -119,6 +119,12 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         audioOutputManager.startObserving();
     }
 
+    @Override
+    public void invalidate() {
+        super.invalidate();
+        audioOutputManager.stopObserving();
+    }
+
     @NonNull
     @Override
     public String getName() {

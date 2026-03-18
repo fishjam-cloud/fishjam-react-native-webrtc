@@ -21,6 +21,8 @@
 }
 
 - (void)dealloc {
+    [self removeAudioRouteObserver];
+
     [_localTracks removeAllObjects];
     _localTracks = nil;
     [_localStreams removeAllObjects];

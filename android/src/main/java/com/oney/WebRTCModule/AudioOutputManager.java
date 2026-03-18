@@ -3,10 +3,7 @@ package com.oney.WebRTCModule;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothProfile;
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.media.AudioDeviceCallback;
 import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
@@ -29,7 +26,7 @@ public class AudioOutputManager {
     private final AudioManager audioManager;
     private final WebRTCModule webRTCModule;
     private AudioDeviceCallback audioDeviceCallback;
-    private BroadcastReceiver headsetReceiver;
+    private AudioManager.OnCommunicationDeviceChangedListener communicationDeviceChangedListener;
     private boolean isObserving = false;
 
     public AudioOutputManager(WebRTCModule module, ReactApplicationContext context) {
@@ -114,6 +111,7 @@ public class AudioOutputManager {
                 selectAudioOutputApi31(deviceType);
             } else {
                 selectAudioOutputLegacy(deviceType);
+                emitOutputChangedEvent();
             }
             promise.resolve(null);
         } catch (Exception e) {
@@ -169,29 +167,22 @@ public class AudioOutputManager {
         if (isObserving) return;
         isObserving = true;
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            audioDeviceCallback = new AudioDeviceCallback() {
-                @Override
-                public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
-                    emitOutputChangedEvent();
-                }
-                @Override
-                public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
-                    emitOutputChangedEvent();
-                }
-            };
-            audioManager.registerAudioDeviceCallback(audioDeviceCallback, new Handler(Looper.getMainLooper()));
-        } else {
-            headsetReceiver = new BroadcastReceiver() {
-                @Override
-                public void onReceive(Context context, Intent intent) {
-                    emitOutputChangedEvent();
-                }
-            };
-            IntentFilter filter = new IntentFilter();
-            filter.addAction(Intent.ACTION_HEADSET_PLUG);
-            filter.addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
-            reactContext.registerReceiver(headsetReceiver, filter);
+        audioDeviceCallback = new AudioDeviceCallback() {
+            @Override
+            public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+                emitOutputChangedEvent();
+            }
+            @Override
+            public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+                emitOutputChangedEvent();
+            }
+        };
+        audioManager.registerAudioDeviceCallback(audioDeviceCallback, new Handler(Looper.getMainLooper()));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            communicationDeviceChangedListener = device -> emitOutputChangedEvent();
+            audioManager.addOnCommunicationDeviceChangedListener(
+                    reactContext.getMainExecutor(), communicationDeviceChangedListener);
         }
     }
 
@@ -199,13 +190,13 @@ public class AudioOutputManager {
         if (!isObserving) return;
         isObserving = false;
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && audioDeviceCallback != null) {
+        if (audioDeviceCallback != null) {
             audioManager.unregisterAudioDeviceCallback(audioDeviceCallback);
             audioDeviceCallback = null;
         }
-        if (headsetReceiver != null) {
-            reactContext.unregisterReceiver(headsetReceiver);
-            headsetReceiver = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && communicationDeviceChangedListener != null) {
+            audioManager.removeOnCommunicationDeviceChangedListener(communicationDeviceChangedListener);
+            communicationDeviceChangedListener = null;
         }
     }
 

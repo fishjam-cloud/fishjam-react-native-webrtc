@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.source              = { :git => 'https://github.com/fishjam-cloud/fishjam-react-native-webrtc.git', :tag => s.version.to_s }
   s.requires_arc        = true
 
-  s.platforms           = { :ios => '12.0', :osx => '10.13', :tvos => '16.0' }
+  s.platforms           = { :ios => '13.4', :osx => '10.13', :tvos => '16.0' }
 
   s.preserve_paths      = 'ios/**/*'
   s.source_files        = 'ios/**/*.{h,m,swift}'
