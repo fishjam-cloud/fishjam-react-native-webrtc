@@ -51,6 +51,7 @@ import {
     type ForegroundServiceConfig,
     useForegroundService,
 } from './useForegroundService';
+import { useAudioOutput, type UseAudioOutputResult } from './useAudioOutput';
 
 Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 
@@ -92,9 +93,11 @@ export {
     useCallKitEvent,
     useCallKitService,
     useForegroundService,
+    useAudioOutput,
     type CallKitAction,
     type CallKitConfig,
     type ForegroundServiceConfig,
+    type UseAudioOutputResult,
 };
 
 declare const global: any;
