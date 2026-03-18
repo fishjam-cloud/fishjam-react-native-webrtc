@@ -14,7 +14,7 @@ export {
     type IOSAudioOutputChangedInfo,
 } from './IOSAudioOutputManager';
 
-export const audioOutputManager = {
+export const AudioOutputManager = {
     android: androidAudioOutputManager,
     ios: iosAudioOutputManager,
 };
