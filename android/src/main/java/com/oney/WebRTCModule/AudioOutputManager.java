@@ -121,16 +121,11 @@ public class AudioOutputManager {
             AudioDeviceInfo[] devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
             for (AudioDeviceInfo device : devices) {
                 int type = device.getType();
-                if (type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                        || type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                        || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                        || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                        || type == AudioDeviceInfo.TYPE_HDMI
-                        || type == AudioDeviceInfo.TYPE_USB_DEVICE
-                        || type == AudioDeviceInfo.TYPE_USB_HEADSET
-                        || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
+                if (type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                        || type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                        || type == AudioDeviceInfo.TYPE_HDMI || type == AudioDeviceInfo.TYPE_USB_DEVICE
+                        || type == AudioDeviceInfo.TYPE_USB_HEADSET || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
                         || type == AudioDeviceInfo.TYPE_HEARING_AID) {
                     result.pushMap(serializeAudioDevice(device));
                 }
@@ -174,7 +169,8 @@ public class AudioOutputManager {
         if (audioManager.isWiredHeadsetOn()) {
             for (AudioDeviceInfo d : devices) {
                 if (d.getType() == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                        || d.getType() == AudioDeviceInfo.TYPE_WIRED_HEADPHONES) return d;
+                        || d.getType() == AudioDeviceInfo.TYPE_WIRED_HEADPHONES)
+                    return d;
             }
         }
         for (AudioDeviceInfo d : devices) {
@@ -252,9 +248,8 @@ public class AudioOutputManager {
             case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
                 break;
             default:
-                throw new RuntimeException(
-                        "Cannot select audio output type on this API level: "
-                                + audioDeviceNativeType(target.getType()));
+                throw new RuntimeException("Cannot select audio output type on this API level: "
+                        + audioDeviceNativeType(target.getType()));
         }
     }
 
@@ -323,16 +318,11 @@ public class AudioOutputManager {
             AudioDeviceInfo[] devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS);
             for (AudioDeviceInfo d : devices) {
                 int type = d.getType();
-                if (type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE
-                        || type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                        || type == AudioDeviceInfo.TYPE_WIRED_HEADSET
-                        || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                        || type == AudioDeviceInfo.TYPE_HDMI
-                        || type == AudioDeviceInfo.TYPE_USB_DEVICE
-                        || type == AudioDeviceInfo.TYPE_USB_HEADSET
-                        || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
+                if (type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+                        || type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                        || type == AudioDeviceInfo.TYPE_HDMI || type == AudioDeviceInfo.TYPE_USB_DEVICE
+                        || type == AudioDeviceInfo.TYPE_USB_HEADSET || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
                         || type == AudioDeviceInfo.TYPE_HEARING_AID) {
                     available.pushMap(serializeAudioDevice(d));
                 }

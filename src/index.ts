@@ -46,12 +46,12 @@ import {
     type AudioDevice,
     type AudioOutputChangedInfo,
 } from './audioOutputManager';
+import { useAudioOutput, type UseAudioOutputResult } from './useAudioOutput';
 import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
 import {
     type ForegroundServiceConfig,
     useForegroundService,
 } from './useForegroundService';
-import { useAudioOutput, type UseAudioOutputResult } from './useAudioOutput';
 
 Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 

@@ -153,16 +153,12 @@ static void *AudioRouteObserverKey = &AudioRouteObserverKey;
                        }];
 }
 
-RCT_EXPORT_METHOD(getAvailableAudioOutputs
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getAvailableAudioOutputs : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
     [self ensureAudioRouteObserver];
     resolve([self buildAvailableDevices]);
 }
 
-RCT_EXPORT_METHOD(getCurrentAudioOutput
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getCurrentAudioOutput : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
     [self ensureAudioRouteObserver];
     NSDictionary *device = [self buildCurrentDevice];
     resolve([device isEqual:[NSNull null]] ? nil : device);
