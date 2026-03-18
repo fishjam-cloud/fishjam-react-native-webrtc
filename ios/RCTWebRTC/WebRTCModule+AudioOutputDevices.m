@@ -36,34 +36,7 @@ static void *AudioRouteObserverKey = &AudioRouteObserverKey;
     objc_setAssociatedObject(self, AudioRouteObserverKey, observer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-- (void)handleAudioRouteChange:(NSNotification *)notification {
-    NSInteger reason = [notification.userInfo[AVAudioSessionRouteChangeReasonKey] integerValue];
-    AVAudioSessionRouteDescription *previousRoute = notification.userInfo[AVAudioSessionRouteChangePreviousRouteKey];
-    AVAudioSessionRouteDescription *currentRoute = [[AVAudioSession sharedInstance] currentRoute];
-
-    [self sendEventWithName:kEventAudioOutputChanged
-                       body:@{
-                           @"reason" : @(reason),
-                           @"currentRoute" : [self routeToDict:currentRoute],
-                           @"previousRoute" : [self routeToDict:previousRoute]
-                       }];
-}
-
-- (NSDictionary *)routeToDict:(AVAudioSessionRouteDescription *)route {
-    NSMutableArray *inputs = [NSMutableArray new];
-    for (AVAudioSessionPortDescription *port in route.inputs) {
-        [inputs addObject:@{@"type" : [self portTypeToString:port.portType], @"name" : port.portName}];
-    }
-
-    NSMutableArray *outputs = [NSMutableArray new];
-    for (AVAudioSessionPortDescription *port in route.outputs) {
-        [outputs addObject:@{@"type" : [self portTypeToString:port.portType], @"name" : port.portName}];
-    }
-
-    return @{@"inputs" : inputs, @"outputs" : outputs};
-}
-
-- (NSString *)portTypeToString:(AVAudioSessionPort)portType {
+- (NSString *)portTypeToNativeString:(AVAudioSessionPort)portType {
     static NSDictionary *map;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -85,6 +58,114 @@ static void *AudioRouteObserverKey = &AudioRouteObserverKey;
         };
     });
     return map[portType] ?: portType;
+}
+
+- (NSString *)portTypeToNormalizedType:(AVAudioSessionPort)portType {
+    static NSDictionary *map;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        map = @{
+            AVAudioSessionPortBuiltInReceiver : @"earpiece",
+            AVAudioSessionPortBuiltInSpeaker : @"speaker",
+            AVAudioSessionPortBluetoothHFP : @"bluetooth",
+            AVAudioSessionPortBluetoothA2DP : @"bluetooth",
+            AVAudioSessionPortBluetoothLE : @"bluetooth",
+            AVAudioSessionPortHeadphones : @"wiredHeadset",
+            AVAudioSessionPortHeadsetMic : @"wiredHeadset",
+            AVAudioSessionPortUSBAudio : @"usb",
+            AVAudioSessionPortHDMI : @"hdmi",
+            AVAudioSessionPortAirPlay : @"airplay",
+            AVAudioSessionPortCarAudio : @"carAudio",
+            AVAudioSessionPortLineOut : @"lineOut",
+        };
+    });
+    return map[portType] ?: @"unknown";
+}
+
+- (NSString *)deviceIdForPort:(AVAudioSessionPortDescription *)port {
+    if ([port.portType isEqualToString:AVAudioSessionPortBuiltInSpeaker]) {
+        return @"speaker";
+    }
+    if ([port.portType isEqualToString:AVAudioSessionPortBuiltInReceiver]) {
+        return @"receiver";
+    }
+    return port.UID;
+}
+
+- (NSDictionary *)serializePort:(AVAudioSessionPortDescription *)port {
+    return @{
+        @"type" : [self portTypeToNormalizedType:port.portType],
+        @"nativeType" : [self portTypeToNativeString:port.portType],
+        @"name" : port.portName,
+        @"id" : [self deviceIdForPort:port],
+    };
+}
+
+- (NSDictionary *)serializeBuiltInSpeaker {
+    return @{
+        @"type" : @"speaker",
+        @"nativeType" : @"builtInSpeaker",
+        @"name" : @"Speaker",
+        @"id" : @"speaker",
+    };
+}
+
+- (NSDictionary *)serializeBuiltInReceiver {
+    return @{
+        @"type" : @"earpiece",
+        @"nativeType" : @"builtInReceiver",
+        @"name" : @"iPhone",
+        @"id" : @"receiver",
+    };
+}
+
+- (NSArray *)buildAvailableDevices {
+    NSMutableArray *devices = [NSMutableArray new];
+    AVAudioSession *session = [AVAudioSession sharedInstance];
+
+    [devices addObject:[self serializeBuiltInSpeaker]];
+    [devices addObject:[self serializeBuiltInReceiver]];
+
+    for (AVAudioSessionPortDescription *port in session.availableInputs) {
+        if ([port.portType isEqualToString:AVAudioSessionPortBuiltInMic]) {
+            continue;
+        }
+        [devices addObject:[self serializePort:port]];
+    }
+
+    return devices;
+}
+
+- (NSDictionary *)buildCurrentDevice {
+    AVAudioSessionRouteDescription *route = [[AVAudioSession sharedInstance] currentRoute];
+    AVAudioSessionPortDescription *output = route.outputs.firstObject;
+    if (!output) {
+        return (id)[NSNull null];
+    }
+    return [self serializePort:output];
+}
+
+- (void)handleAudioRouteChange:(NSNotification *)notification {
+    [self sendEventWithName:kEventAudioOutputChanged
+                       body:@{
+                           @"currentAudioOutput" : [self buildCurrentDevice],
+                           @"availableAudioOutputs" : [self buildAvailableDevices],
+                       }];
+}
+
+RCT_EXPORT_METHOD(getAvailableAudioOutputs
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    [self ensureAudioRouteObserver];
+    resolve([self buildAvailableDevices]);
+}
+
+RCT_EXPORT_METHOD(getCurrentAudioOutput
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    [self ensureAudioRouteObserver];
+    NSDictionary *device = [self buildCurrentDevice];
+    resolve([device isEqual:[NSNull null]] ? nil : device);
 }
 
 RCT_EXPORT_METHOD(overrideAudioOutput
@@ -145,12 +226,6 @@ RCT_EXPORT_METHOD(showAudioRoutePicker) {
 
         [routePickerView removeFromSuperview];
     });
-}
-
-RCT_EXPORT_METHOD(getCurrentAudioOutput : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
-    [self ensureAudioRouteObserver];
-    AVAudioSessionRouteDescription *route = [[AVAudioSession sharedInstance] currentRoute];
-    resolve([self routeToDict:route]);
 }
 
 @end

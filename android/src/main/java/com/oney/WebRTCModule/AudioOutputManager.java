@@ -32,7 +32,7 @@ public class AudioOutputManager {
         this.audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     }
 
-    private static String audioDeviceInfoTypeToString(int type) {
+    private static String audioDeviceNativeType(int type) {
         switch (type) {
             case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE:
                 return "builtInEarpiece";
@@ -68,11 +68,44 @@ public class AudioOutputManager {
         }
     }
 
+    private static String audioDeviceNormalizedType(int type) {
+        switch (type) {
+            case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE:
+                return "earpiece";
+            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:
+                return "speaker";
+            case AudioDeviceInfo.TYPE_WIRED_HEADSET:
+            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                return "wiredHeadset";
+            case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
+            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                return "bluetooth";
+            case AudioDeviceInfo.TYPE_HDMI:
+                return "hdmi";
+            case AudioDeviceInfo.TYPE_USB_DEVICE:
+            case AudioDeviceInfo.TYPE_USB_HEADSET:
+            case AudioDeviceInfo.TYPE_USB_ACCESSORY:
+                return "usb";
+            case AudioDeviceInfo.TYPE_HEARING_AID:
+                return "hearingAid";
+            default:
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (type == AudioDeviceInfo.TYPE_BLE_HEADSET) return "bluetooth";
+                    if (type == AudioDeviceInfo.TYPE_BLE_SPEAKER) return "bluetooth";
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    if (type == AudioDeviceInfo.TYPE_BLE_BROADCAST) return "bluetooth";
+                }
+                return "unknown";
+        }
+    }
+
     private static WritableMap serializeAudioDevice(AudioDeviceInfo device) {
         WritableMap map = Arguments.createMap();
-        map.putString("type", audioDeviceInfoTypeToString(device.getType()));
+        map.putString("type", audioDeviceNormalizedType(device.getType()));
+        map.putString("nativeType", audioDeviceNativeType(device.getType()));
         map.putString("name", device.getProductName().toString());
-        map.putInt("id", device.getId());
+        map.putString("id", String.valueOf(device.getId()));
         return map;
     }
 
@@ -221,7 +254,7 @@ public class AudioOutputManager {
             default:
                 throw new RuntimeException(
                         "Cannot select audio output type on this API level: "
-                                + audioDeviceInfoTypeToString(target.getType()));
+                                + audioDeviceNativeType(target.getType()));
         }
     }
 

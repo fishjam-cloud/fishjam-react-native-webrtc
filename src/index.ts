@@ -42,14 +42,9 @@ import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
 import {
     AudioOutputManager,
-    AudioOutputDeviceType,
-    AVAudioSessionPort,
-    type AndroidAudioDevice,
-    type AudioPort,
-    type AudioOutputRoute,
-    RouteChangeReason,
-    type AndroidAudioOutputChangedInfo,
-    type IOSAudioOutputChangedInfo,
+    AudioDeviceType,
+    type AudioDevice,
+    type AudioOutputChangedInfo,
 } from './audioOutputManager';
 import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
 import {
@@ -64,14 +59,9 @@ setupNativeEvents();
 
 export {
     AudioOutputManager,
-    AudioOutputDeviceType,
-    AVAudioSessionPort,
-    type AudioPort,
-    type AudioOutputRoute,
-    RouteChangeReason,
-    type AndroidAudioDevice,
-    type AndroidAudioOutputChangedInfo,
-    type IOSAudioOutputChangedInfo,
+    AudioDeviceType,
+    type AudioDevice,
+    type AudioOutputChangedInfo,
     RTCIceCandidate,
     RTCPeerConnection,
     RTCSessionDescription,
