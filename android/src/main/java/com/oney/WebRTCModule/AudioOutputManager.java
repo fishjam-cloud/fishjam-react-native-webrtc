@@ -40,13 +40,18 @@ public class AudioOutputManager {
 
     private static String audioDeviceInfoTypeToString(int type) {
         switch (type) {
-            case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE: return "EARPIECE";
-            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:  return "SPEAKERPHONE";
+            case AudioDeviceInfo.TYPE_BUILTIN_EARPIECE:
+                return "EARPIECE";
+            case AudioDeviceInfo.TYPE_BUILTIN_SPEAKER:
+                return "SPEAKERPHONE";
             case AudioDeviceInfo.TYPE_WIRED_HEADSET:
-            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES: return "WIRED_HEADSET";
+            case AudioDeviceInfo.TYPE_WIRED_HEADPHONES:
+                return "WIRED_HEADSET";
             case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
-            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:   return "BLUETOOTH";
-            default: return null;
+            case AudioDeviceInfo.TYPE_BLUETOOTH_A2DP:
+                return "BLUETOOTH";
+            default:
+                return null;
         }
     }
 
@@ -73,7 +78,7 @@ public class AudioOutputManager {
             BluetoothAdapter btAdapter = BluetoothAdapter.getDefaultAdapter();
             if (btAdapter != null && btAdapter.isEnabled()
                     && btAdapter.getProfileConnectionState(BluetoothProfile.HEADSET)
-                        == BluetoothProfile.STATE_CONNECTED) {
+                            == BluetoothProfile.STATE_CONNECTED) {
                 result.pushString("BLUETOOTH");
             }
         }
@@ -139,7 +144,10 @@ public class AudioOutputManager {
     private void selectAudioOutputLegacy(String deviceType) {
         audioManager.setSpeakerphoneOn(false);
         audioManager.setBluetoothScoOn(false);
-        try { audioManager.stopBluetoothSco(); } catch (Exception ignored) {}
+        try {
+            audioManager.stopBluetoothSco();
+        } catch (Exception ignored) {
+        }
 
         switch (deviceType) {
             case "SPEAKERPHONE":
@@ -206,13 +214,17 @@ public class AudioOutputManager {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AudioDeviceInfo device = audioManager.getCommunicationDevice();
-            params.putString("currentAudioOutput",
-                device != null ? audioDeviceInfoTypeToString(device.getType()) : null);
+            params.putString(
+                    "currentAudioOutput", device != null ? audioDeviceInfoTypeToString(device.getType()) : null);
         } else {
-            if (audioManager.isBluetoothScoOn()) params.putString("currentAudioOutput", "BLUETOOTH");
-            else if (audioManager.isSpeakerphoneOn()) params.putString("currentAudioOutput", "SPEAKERPHONE");
-            else if (audioManager.isWiredHeadsetOn()) params.putString("currentAudioOutput", "WIRED_HEADSET");
-            else params.putString("currentAudioOutput", "EARPIECE");
+            if (audioManager.isBluetoothScoOn())
+                params.putString("currentAudioOutput", "BLUETOOTH");
+            else if (audioManager.isSpeakerphoneOn())
+                params.putString("currentAudioOutput", "SPEAKERPHONE");
+            else if (audioManager.isWiredHeadsetOn())
+                params.putString("currentAudioOutput", "WIRED_HEADSET");
+            else
+                params.putString("currentAudioOutput", "EARPIECE");
         }
 
         WritableArray available = Arguments.createArray();
