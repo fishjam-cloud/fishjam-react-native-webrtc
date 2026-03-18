@@ -22,6 +22,7 @@ static NSString *const kEventMediaStreamTrackEnded = @"mediaStreamTrackEnded";
 static NSString *const kEventPeerConnectionOnRemoveTrack = @"peerConnectionOnRemoveTrack";
 static NSString *const kEventPeerConnectionOnTrack = @"peerConnectionOnTrack";
 static NSString *const kEventCallKitActionPerformed = @"callKitActionPerformed";
+static NSString *const kEventAudioOutputChanged = @"audioOutputChanged";
 static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaStreamVideoTracksChangedNotification";
 
 @interface WebRTCModule : RCTEventEmitter<RCTBridgeModule>

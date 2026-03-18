@@ -52,6 +52,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
     private final GetUserMediaImpl getUserMediaImpl;
     private final ForegroundServiceController foregroundServiceController;
+    private final AudioOutputManager audioOutputManager;
 
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -114,6 +115,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
         getUserMediaImpl = new GetUserMediaImpl(this, reactContext);
         foregroundServiceController = new ForegroundServiceController(reactContext);
+        audioOutputManager = new AudioOutputManager(this, reactContext);
+        audioOutputManager.startObserving();
     }
 
     @NonNull
@@ -1411,6 +1414,21 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
             pco.dataChannelSend(reactTag, data, type);
         });
+    }
+
+    @ReactMethod
+    public void selectAudioOutput(String deviceType, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> audioOutputManager.selectAudioOutput(deviceType, promise));
+    }
+
+    @ReactMethod
+    public void getAvailableAudioOutputs(Promise promise) {
+        ThreadUtils.runOnExecutor(() -> audioOutputManager.getAvailableAudioOutputs(promise));
+    }
+
+    @ReactMethod
+    public void getCurrentAudioOutput(Promise promise) {
+        ThreadUtils.runOnExecutor(() -> audioOutputManager.getCurrentAudioOutput(promise));
     }
 
     @ReactMethod

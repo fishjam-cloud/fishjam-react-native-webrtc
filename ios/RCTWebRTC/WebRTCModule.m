@@ -121,7 +121,8 @@ RCT_EXPORT_MODULE();
         kEventMediaStreamTrackEnded,
         kEventPeerConnectionOnRemoveTrack,
         kEventPeerConnectionOnTrack,
-        kEventCallKitActionPerformed
+        kEventCallKitActionPerformed,
+        kEventAudioOutputChanged
     ];
 }
 

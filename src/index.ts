@@ -40,6 +40,16 @@ import RTCRtpTransceiver from './RTCRtpTransceiver';
 import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
+import {
+    audioOutputManager,
+    AudioOutputDeviceType,
+    AVAudioSessionPort,
+    type AudioPort,
+    type AudioOutputRoute,
+    RouteChangeReason,
+    type AndroidAudioOutputChangedInfo,
+    type IOSAudioOutputChangedInfo,
+} from './audioOutputManager';
 import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
 import {
     type ForegroundServiceConfig,
@@ -52,6 +62,14 @@ Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 setupNativeEvents();
 
 export {
+    audioOutputManager,
+    AudioOutputDeviceType,
+    AVAudioSessionPort,
+    type AudioPort,
+    type AudioOutputRoute,
+    RouteChangeReason,
+    type AndroidAudioOutputChangedInfo,
+    type IOSAudioOutputChangedInfo,
     RTCIceCandidate,
     RTCPeerConnection,
     RTCSessionDescription,
