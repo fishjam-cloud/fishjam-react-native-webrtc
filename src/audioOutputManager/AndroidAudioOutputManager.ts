@@ -5,31 +5,48 @@ import { addListener, removeListener } from '../EventEmitter';
 import { ensurePlatform } from './common';
 
 export enum AudioOutputDeviceType {
-    EARPIECE = 'EARPIECE',
-    SPEAKERPHONE = 'SPEAKERPHONE',
-    WIRED_HEADSET = 'WIRED_HEADSET',
-    BLUETOOTH = 'BLUETOOTH',
+    builtInEarpiece = 'builtInEarpiece',
+    builtInSpeaker = 'builtInSpeaker',
+    wiredHeadset = 'wiredHeadset',
+    wiredHeadphones = 'wiredHeadphones',
+    bluetoothSCO = 'bluetoothSCO',
+    bluetoothA2DP = 'bluetoothA2DP',
+    HDMI = 'HDMI',
+    usbDevice = 'usbDevice',
+    usbHeadset = 'usbHeadset',
+    usbAccessory = 'usbAccessory',
+    hearingAid = 'hearingAid',
+    bleHeadset = 'bleHeadset',
+    bleSpeaker = 'bleSpeaker',
+    bleBroadcast = 'bleBroadcast',
+    unknown = 'unknown',
 }
 
+export type AndroidAudioDevice = {
+    type: AudioOutputDeviceType;
+    name: string;
+    id: number;
+};
+
 export type AndroidAudioOutputChangedInfo = {
-    currentAudioOutput: AudioOutputDeviceType | null;
-    availableAudioOutputs: AudioOutputDeviceType[];
+    currentAudioOutput: AndroidAudioDevice | null;
+    availableAudioOutputs: AndroidAudioDevice[];
 };
 
 const { WebRTCModule } = NativeModules;
 
 export const androidAudioOutputManager = {
-    selectAudioOutput(device: AudioOutputDeviceType): Promise<void> {
+    selectAudioOutput(deviceId: number): Promise<void> {
         ensurePlatform('android', 'selectAudioOutput');
-        return WebRTCModule.selectAudioOutput(device);
+        return WebRTCModule.selectAudioOutput(String(deviceId));
     },
 
-    getAvailableAudioOutputs(): Promise<AudioOutputDeviceType[]> {
+    getAvailableAudioOutputs(): Promise<AndroidAudioDevice[]> {
         ensurePlatform('android', 'getAvailableAudioOutputs');
         return WebRTCModule.getAvailableAudioOutputs();
     },
 
-    getCurrentAudioOutput(): Promise<AudioOutputDeviceType | null> {
+    getCurrentAudioOutput(): Promise<AndroidAudioDevice | null> {
         ensurePlatform('android', 'getCurrentAudioOutput');
         return WebRTCModule.getCurrentAudioOutput();
     },

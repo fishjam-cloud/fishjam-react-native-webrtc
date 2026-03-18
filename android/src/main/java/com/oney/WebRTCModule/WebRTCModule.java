@@ -1423,8 +1423,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void selectAudioOutput(String deviceType, Promise promise) {
-        ThreadUtils.runOnExecutor(() -> audioOutputManager.selectAudioOutput(deviceType, promise));
+    public void selectAudioOutput(String deviceId, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> audioOutputManager.selectAudioOutput(deviceId, promise));
     }
 
     @ReactMethod

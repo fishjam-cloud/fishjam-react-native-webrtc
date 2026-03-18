@@ -3,6 +3,7 @@ import { iosAudioOutputManager } from './IOSAudioOutputManager';
 
 export {
     AudioOutputDeviceType,
+    type AndroidAudioDevice,
     type AndroidAudioOutputChangedInfo,
 } from './AndroidAudioOutputManager';
 
