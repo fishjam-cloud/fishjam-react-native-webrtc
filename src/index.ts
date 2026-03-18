@@ -40,6 +40,13 @@ import RTCRtpTransceiver from './RTCRtpTransceiver';
 import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
+import {
+    AudioOutputManager,
+    AudioDeviceType,
+    type AudioDevice,
+    type AudioOutputChangedInfo,
+} from './audioOutputManager';
+import { useAudioOutput, type UseAudioOutputResult } from './useAudioOutput';
 import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
 import {
     type ForegroundServiceConfig,
@@ -52,6 +59,10 @@ Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 setupNativeEvents();
 
 export {
+    AudioOutputManager,
+    AudioDeviceType,
+    type AudioDevice,
+    type AudioOutputChangedInfo,
     RTCIceCandidate,
     RTCPeerConnection,
     RTCSessionDescription,
@@ -82,9 +93,11 @@ export {
     useCallKitEvent,
     useCallKitService,
     useForegroundService,
+    useAudioOutput,
     type CallKitAction,
     type CallKitConfig,
     type ForegroundServiceConfig,
+    type UseAudioOutputResult,
 };
 
 declare const global: any;

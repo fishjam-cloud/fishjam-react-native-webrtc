@@ -21,6 +21,8 @@
 }
 
 - (void)dealloc {
+    [self removeAudioRouteObserver];
+
     [_localTracks removeAllObjects];
     _localTracks = nil;
     [_localStreams removeAllObjects];
@@ -121,7 +123,8 @@ RCT_EXPORT_MODULE();
         kEventMediaStreamTrackEnded,
         kEventPeerConnectionOnRemoveTrack,
         kEventPeerConnectionOnTrack,
-        kEventCallKitActionPerformed
+        kEventCallKitActionPerformed,
+        kEventAudioOutputChanged
     ];
 }
 
