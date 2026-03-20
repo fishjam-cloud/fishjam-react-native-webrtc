@@ -116,6 +116,11 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         getUserMediaImpl = new GetUserMediaImpl(this, reactContext);
         foregroundServiceController = new ForegroundServiceController(reactContext);
         audioOutputManager = new AudioOutputManager(this, reactContext);
+    }
+
+    @Override
+    public void initialize() {
+        super.initialize();
         audioOutputManager.startObserving();
     }
 
@@ -137,9 +142,11 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     void sendEvent(String eventName, @Nullable ReadableMap params) {
-        getReactApplicationContext()
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                .emit(eventName, params);
+        ReactApplicationContext ctx = getReactApplicationContext();
+        if (!ctx.hasActiveReactInstance()) {
+            return;
+        }
+        ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit(eventName, params);
     }
 
     private PeerConnection.IceServer createIceServer(String url) {
