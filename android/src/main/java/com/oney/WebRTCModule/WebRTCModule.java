@@ -146,8 +146,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         if (!ctx.hasActiveReactInstance()) {
             return;
         }
-        ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
-                .emit(eventName, params);
+        ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class).emit(eventName, params);
     }
 
     private PeerConnection.IceServer createIceServer(String url) {
