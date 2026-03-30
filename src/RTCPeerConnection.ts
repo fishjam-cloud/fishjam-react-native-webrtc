@@ -1,8 +1,3 @@
-import {
-    EventTarget,
-    Event,
-    defineEventAttribute,
-} from 'event-target-shim/index';
 import { NativeModules } from 'react-native';
 
 import { addListener, removeListener } from './EventEmitter';
@@ -25,6 +20,7 @@ import RTCSessionDescription, {
 import RTCTrackEvent from './RTCTrackEvent';
 import * as RTCUtil from './RTCUtil';
 import { RTCOfferOptions } from './RTCUtil';
+import { Event, EventTarget, getEventAttributeValue, setEventAttributeValue } from './vendor/event-target-shim';
 
 const log = new Logger('pc');
 const { WebRTCModule } = NativeModules;
@@ -152,6 +148,86 @@ export default class RTCPeerConnection extends EventTarget<RTCPeerConnectionEven
         this._registerEvents();
 
         log.debug(`${this._pcId} ctor`);
+    }
+
+    get onconnectionstatechange() {
+        return getEventAttributeValue(this, 'connectionstatechange');
+    }
+
+    set onconnectionstatechange(value) {
+        setEventAttributeValue(this, 'connectionstatechange', value);
+    }
+
+    get onicecandidate() {
+        return getEventAttributeValue(this, 'icecandidate');
+    }
+
+    set onicecandidate(value) {
+        setEventAttributeValue(this, 'icecandidate', value);
+    }
+
+    get onicecandidateerror() {
+        return getEventAttributeValue(this, 'icecandidateerror');
+    }
+
+    set onicecandidateerror(value) {
+        setEventAttributeValue(this, 'icecandidateerror', value);
+    }
+
+    get oniceconnectionstatechange() {
+        return getEventAttributeValue(this, 'iceconnectionstatechange');
+    }
+
+    set oniceconnectionstatechange(value) {
+        setEventAttributeValue(this, 'iceconnectionstatechange', value);
+    }
+
+    get onicegatheringstatechange() {
+        return getEventAttributeValue(this, 'icegatheringstatechange');
+    }
+
+    set onicegatheringstatechange(value) {
+        setEventAttributeValue(this, 'icegatheringstatechange', value);
+    }
+
+    get onnegotiationneeded() {
+        return getEventAttributeValue(this, 'negotiationneeded');
+    }
+
+    set onnegotiationneeded(value) {
+        setEventAttributeValue(this, 'negotiationneeded', value);
+    }
+
+    get onsignalingstatechange() {
+        return getEventAttributeValue(this, 'signalingstatechange');
+    }
+
+    set onsignalingstatechange(value) {
+        setEventAttributeValue(this, 'signalingstatechange', value);
+    }
+
+    get ondatachannel() {
+        return getEventAttributeValue(this, 'datachannel');
+    }
+
+    set ondatachannel(value) {
+        setEventAttributeValue(this, 'datachannel', value);
+    }
+
+    get ontrack() {
+        return getEventAttributeValue(this, 'track');
+    }
+
+    set ontrack(value) {
+        setEventAttributeValue(this, 'track', value);
+    }
+
+    get onerror() {
+        return getEventAttributeValue(this, 'error');
+    }
+
+    set onerror(value) {
+        setEventAttributeValue(this, 'error', value);
     }
 
     async createOffer(options?: RTCOfferOptions) {
@@ -926,19 +1002,3 @@ export default class RTCPeerConnection extends EventTarget<RTCPeerConnectionEven
         this._transceivers.sort((a, b) => a.order - b.order);
     }
 }
-
-/**
- * Define the `onxxx` event handlers.
- */
-const proto = RTCPeerConnection.prototype;
-
-defineEventAttribute(proto, 'connectionstatechange');
-defineEventAttribute(proto, 'icecandidate');
-defineEventAttribute(proto, 'icecandidateerror');
-defineEventAttribute(proto, 'iceconnectionstatechange');
-defineEventAttribute(proto, 'icegatheringstatechange');
-defineEventAttribute(proto, 'negotiationneeded');
-defineEventAttribute(proto, 'signalingstatechange');
-defineEventAttribute(proto, 'datachannel');
-defineEventAttribute(proto, 'track');
-defineEventAttribute(proto, 'error');
