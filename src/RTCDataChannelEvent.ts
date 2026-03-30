@@ -1,7 +1,6 @@
 import type RTCDataChannel from './RTCDataChannel';
 import { Event } from './vendor/event-target-shim';
 
-
 type DATA_CHANNEL_EVENTS =
     | 'open'
     | 'message'

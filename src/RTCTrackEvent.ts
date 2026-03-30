@@ -1,4 +1,3 @@
-
 import MediaStream from './MediaStream';
 import type MediaStreamTrack from './MediaStreamTrack';
 import RTCRtpReceiver from './RTCRtpReceiver';

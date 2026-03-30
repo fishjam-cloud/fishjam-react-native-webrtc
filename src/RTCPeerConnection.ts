@@ -20,7 +20,12 @@ import RTCSessionDescription, {
 import RTCTrackEvent from './RTCTrackEvent';
 import * as RTCUtil from './RTCUtil';
 import { RTCOfferOptions } from './RTCUtil';
-import { Event, EventTarget, getEventAttributeValue, setEventAttributeValue } from './vendor/event-target-shim';
+import {
+    Event,
+    EventTarget,
+    getEventAttributeValue,
+    setEventAttributeValue,
+} from './vendor/event-target-shim';
 
 const log = new Logger('pc');
 const { WebRTCModule } = NativeModules;

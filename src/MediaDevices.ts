@@ -2,7 +2,12 @@ import { NativeModules } from 'react-native';
 
 import getDisplayMedia from './getDisplayMedia';
 import getUserMedia, { Constraints } from './getUserMedia';
-import { Event, EventTarget, getEventAttributeValue, setEventAttributeValue } from './vendor/event-target-shim';
+import {
+    Event,
+    EventTarget,
+    getEventAttributeValue,
+    setEventAttributeValue,
+} from './vendor/event-target-shim';
 
 const { WebRTCModule } = NativeModules;
 
