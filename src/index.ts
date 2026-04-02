@@ -52,6 +52,7 @@ import {
     type ForegroundServiceConfig,
     useForegroundService,
 } from './useForegroundService';
+import { Event, EventTarget } from './vendor/event-target-shim';
 
 Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 
@@ -59,6 +60,8 @@ Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 setupNativeEvents();
 
 export {
+    Event,
+    EventTarget,
     AudioOutputManager,
     AudioDeviceType,
     type AudioDevice,
