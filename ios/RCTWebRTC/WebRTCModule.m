@@ -10,6 +10,7 @@
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModule.h"
 #import "WebRTCModuleOptions.h"
+#import "FishjamRTCAudioDevice.h"
 
 @interface WebRTCModule ()
 @end
@@ -70,6 +71,10 @@
 
         RCTLogInfo(@"Using video encoder factory: %@", NSStringFromClass([encoderFactory class]));
         RCTLogInfo(@"Using video decoder factory: %@", NSStringFromClass([decoderFactory class]));
+
+        if (audioDevice == nil) {
+            audioDevice = [[FishjamRTCAudioDevice alloc] init];
+        }
 
         _peerConnectionFactory = [[RTCPeerConnectionFactory alloc] initWithEncoderFactory:encoderFactory
                                                                            decoderFactory:decoderFactory
