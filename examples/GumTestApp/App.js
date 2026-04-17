@@ -16,6 +16,13 @@ import {
 } from 'react-native';
 import { Colors } from 'react-native/Libraries/NewAppScreen';
 import { mediaDevices, startIOSPIP, stopIOSPIP, RTCPIPView } from 'react-native-webrtc';
+// Temporary instrumentation for RCA of "H264 encoder stuck after background".
+// See also: ios/RCTWebRTC/videoEffects/H264DebugFrameCounter.{h,m}
+// If you have a peer connection in your real app, import
+// startH264DebugStatsPoller from './h264DebugStatsPoller' and call it with
+// your RTCPeerConnection to correlate with the native [H264-DEBUG] logs.
+// eslint-disable-next-line no-unused-vars
+import { startH264DebugStatsPoller } from './h264DebugStatsPoller';
 
 
 const App = () => {
@@ -26,6 +33,18 @@ const App = () => {
     if (!stream) {
       try {
         const s = await mediaDevices.getUserMedia({ video: true });
+        // Activate the native frame counter for the capture track so the
+        // per-second [H264-DEBUG] frames log fires even without a peer
+        // connection. Comment this out to disable.
+        const videoTrack = s.getVideoTracks()[0];
+        if (videoTrack && typeof videoTrack._setVideoEffects === 'function') {
+          try {
+            videoTrack._setVideoEffects(['h264DebugFrameCounter']);
+            console.log('[H264-DEBUG-JS] frame counter activated on', videoTrack.id);
+          } catch (e) {
+            console.warn('[H264-DEBUG-JS] failed to activate frame counter:', e);
+          }
+        }
         setStream(s);
       } catch(e) {
         console.error(e);

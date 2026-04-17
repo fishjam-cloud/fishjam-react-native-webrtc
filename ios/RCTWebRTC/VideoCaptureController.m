@@ -4,6 +4,16 @@
 
 #import <React/RCTLog.h>
 
+// Temporary instrumentation for RCA of "H264 encoder stuck after background".
+// Enabled in DEBUG builds; override by defining DEBUG_H264_LIFECYCLE=0 in build settings.
+#ifndef DEBUG_H264_LIFECYCLE
+#if DEBUG
+#define DEBUG_H264_LIFECYCLE 1
+#else
+#define DEBUG_H264_LIFECYCLE 0
+#endif
+#endif
+
 @interface VideoCaptureController ()
 
 @property(nonatomic, strong) RTCCameraVideoCapturer *capturer;
@@ -15,6 +25,10 @@
 @property(nonatomic, assign) int height;
 @property(nonatomic, assign) int frameRate;
 
+#if DEBUG_H264_LIFECYCLE
+@property(nonatomic, weak) AVCaptureSession *h264DebugObservedSession;
+#endif
+
 @end
 
 @implementation VideoCaptureController
@@ -25,12 +39,32 @@
         self.capturer = capturer;
         self.running = NO;
         [self applyConstraints:constraints error:nil];
+
+#if DEBUG_H264_LIFECYCLE
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(h264Debug_appDidBecomeActive:)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(h264Debug_appWillEnterForeground:)
+                                                     name:UIApplicationWillEnterForegroundNotification
+                                                   object:nil];
+#endif
     }
 
     return self;
 }
 
 - (void)dealloc {
+#if DEBUG_H264_LIFECYCLE
+    [self h264Debug_unregisterSessionObservers];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIApplicationDidBecomeActiveNotification
+                                                  object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                    name:UIApplicationWillEnterForegroundNotification
+                                                  object:nil];
+#endif
     self.device = NULL;
 }
 
@@ -90,6 +124,9 @@
                             } else {
                                 RCTLog(@"[VideoCaptureController] Capture started");
                                 weakSelf.running = YES;
+#if DEBUG_H264_LIFECYCLE
+                                [weakSelf h264Debug_registerSessionObservers];
+#endif
                             }
                             dispatch_semaphore_signal(semaphore);
                         }];
@@ -102,6 +139,9 @@
         return;
 
     RCTLog(@"[VideoCaptureController] Capture will stop");
+#if DEBUG_H264_LIFECYCLE
+    [self h264Debug_unregisterSessionObservers];
+#endif
     // Stopping the capture happens on another thread. Wait for it.
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
 
@@ -346,6 +386,123 @@
     }
     return NO;
 }
+
+#if DEBUG_H264_LIFECYCLE
+
+#pragma mark - H264 background RCA probes
+
+- (void)h264Debug_registerSessionObservers {
+    AVCaptureSession *session = self.capturer.captureSession;
+    if (session == nil || session == self.h264DebugObservedSession) {
+        return;
+    }
+    [self h264Debug_unregisterSessionObservers];
+    self.h264DebugObservedSession = session;
+
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc addObserver:self
+           selector:@selector(h264Debug_sessionWasInterrupted:)
+               name:AVCaptureSessionWasInterruptedNotification
+             object:session];
+    [nc addObserver:self
+           selector:@selector(h264Debug_sessionInterruptionEnded:)
+               name:AVCaptureSessionInterruptionEndedNotification
+             object:session];
+    [nc addObserver:self
+           selector:@selector(h264Debug_sessionRuntimeError:)
+               name:AVCaptureSessionRuntimeErrorNotification
+             object:session];
+    [nc addObserver:self
+           selector:@selector(h264Debug_sessionDidStartRunning:)
+               name:AVCaptureSessionDidStartRunningNotification
+             object:session];
+    [nc addObserver:self
+           selector:@selector(h264Debug_sessionDidStopRunning:)
+               name:AVCaptureSessionDidStopRunningNotification
+             object:session];
+    RCTLogInfo(@"[H264-DEBUG] Registered AVCaptureSession observers (session=%p)", session);
+}
+
+- (void)h264Debug_unregisterSessionObservers {
+    AVCaptureSession *session = self.h264DebugObservedSession;
+    if (session == nil) {
+        return;
+    }
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc removeObserver:self name:AVCaptureSessionWasInterruptedNotification object:session];
+    [nc removeObserver:self name:AVCaptureSessionInterruptionEndedNotification object:session];
+    [nc removeObserver:self name:AVCaptureSessionRuntimeErrorNotification object:session];
+    [nc removeObserver:self name:AVCaptureSessionDidStartRunningNotification object:session];
+    [nc removeObserver:self name:AVCaptureSessionDidStopRunningNotification object:session];
+    self.h264DebugObservedSession = nil;
+}
+
+- (NSString *)h264Debug_interruptionReasonString:(AVCaptureSessionInterruptionReason)reason {
+    switch (reason) {
+        case AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableInBackground:
+            return @"VideoDeviceNotAvailableInBackground";
+        case AVCaptureSessionInterruptionReasonAudioDeviceInUseByAnotherClient:
+            return @"AudioDeviceInUseByAnotherClient";
+        case AVCaptureSessionInterruptionReasonVideoDeviceInUseByAnotherClient:
+            return @"VideoDeviceInUseByAnotherClient";
+        case AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableWithMultipleForegroundApps:
+            return @"VideoDeviceNotAvailableWithMultipleForegroundApps";
+        case AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableDueToSystemPressure:
+            return @"VideoDeviceNotAvailableDueToSystemPressure";
+        default:
+            return [NSString stringWithFormat:@"Unknown(%ld)", (long)reason];
+    }
+}
+
+- (void)h264Debug_sessionWasInterrupted:(NSNotification *)notification {
+    NSNumber *reasonValue = notification.userInfo[AVCaptureSessionInterruptionReasonKey];
+    AVCaptureSessionInterruptionReason reason =
+        reasonValue ? (AVCaptureSessionInterruptionReason)reasonValue.integerValue : 0;
+    RCTLogInfo(@"[H264-DEBUG] AVCaptureSessionWasInterrupted t=%.3f reason=%@",
+               CACurrentMediaTime(),
+               [self h264Debug_interruptionReasonString:reason]);
+}
+
+- (void)h264Debug_sessionInterruptionEnded:(NSNotification *)notification {
+    RCTLogInfo(@"[H264-DEBUG] AVCaptureSessionInterruptionEnded t=%.3f isRunning=%d",
+               CACurrentMediaTime(),
+               self.capturer.captureSession.isRunning);
+}
+
+- (void)h264Debug_sessionRuntimeError:(NSNotification *)notification {
+    NSError *error = notification.userInfo[AVCaptureSessionErrorKey];
+    RCTLogWarn(@"[H264-DEBUG] AVCaptureSessionRuntimeError t=%.3f error=%@",
+               CACurrentMediaTime(),
+               error);
+}
+
+- (void)h264Debug_sessionDidStartRunning:(NSNotification *)notification {
+    RCTLogInfo(@"[H264-DEBUG] AVCaptureSessionDidStartRunning t=%.3f", CACurrentMediaTime());
+}
+
+- (void)h264Debug_sessionDidStopRunning:(NSNotification *)notification {
+    RCTLogInfo(@"[H264-DEBUG] AVCaptureSessionDidStopRunning t=%.3f", CACurrentMediaTime());
+}
+
+- (void)h264Debug_appWillEnterForeground:(NSNotification *)notification {
+    AVCaptureSession *session = self.capturer.captureSession;
+    RCTLogInfo(@"[H264-DEBUG] WillEnterForeground capture state t=%.3f isRunning=%d isInterrupted=%d running=%d",
+               CACurrentMediaTime(),
+               session.isRunning,
+               session.isInterrupted,
+               self.running);
+}
+
+- (void)h264Debug_appDidBecomeActive:(NSNotification *)notification {
+    AVCaptureSession *session = self.capturer.captureSession;
+    RCTLogInfo(@"[H264-DEBUG] DidBecomeActive capture state t=%.3f isRunning=%d isInterrupted=%d running=%d",
+               CACurrentMediaTime(),
+               session.isRunning,
+               session.isInterrupted,
+               self.running);
+}
+
+#endif  // DEBUG_H264_LIFECYCLE
 
 @end
 
