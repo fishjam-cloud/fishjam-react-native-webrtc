@@ -133,21 +133,28 @@
     NSString *trackUUID = [[NSUUID UUID] UUIDString];
     RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:trackUUID];
 
-#if !TARGET_IPHONE_SIMULATOR
-    RTCCameraVideoCapturer *videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoSource];
-    VideoCaptureController *videoCaptureController =
-        [[VideoCaptureController alloc] initWithCapturer:videoCapturer andConstraints:constraints[@"video"]];
-    videoCaptureController.enableMultitaskingCameraAccess =
-        [WebRTCModuleOptions sharedInstance].enableMultitaskingCameraAccess;
-    videoTrack.captureController = videoCaptureController;
-    [videoCaptureController startCapture];
+    BOOL hasRuntimeVideoDevice = YES;
+#if TARGET_IPHONE_SIMULATOR
+    // On simulator, a runtime-provided video source may exist (e.g. virtual camera),
+    // so only skip camera capture setup when no runtime video device is available.
+    hasRuntimeVideoDevice = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo] != nil;
 #endif
+
+    if (hasRuntimeVideoDevice) {
+        RTCCameraVideoCapturer *videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoSource];
+        VideoCaptureController *videoCaptureController =
+            [[VideoCaptureController alloc] initWithCapturer:videoCapturer andConstraints:constraints[@"video"]];
+        videoCaptureController.enableMultitaskingCameraAccess =
+            [WebRTCModuleOptions sharedInstance].enableMultitaskingCameraAccess;
+        videoTrack.captureController = videoCaptureController;
+        [videoCaptureController startCapture];
+    }
 
     return videoTrack;
 #endif
 }
 
-RCT_EXPORT_METHOD(getDisplayMedia : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getDisplayMedia : (NSDictionary *)constraints resolver : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
 #if TARGET_OS_TV
     reject(@"unsupported_platform", @"tvOS is not supported", nil);
     return;
