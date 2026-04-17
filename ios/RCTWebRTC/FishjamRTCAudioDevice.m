@@ -64,13 +64,11 @@
         return NO;
     }
 
-    AudioComponentDescription desc = {
-        .componentType = kAudioUnitType_Output,
-        .componentSubType = kAudioUnitSubType_VoiceProcessingIO,
-        .componentManufacturer = kAudioUnitManufacturer_Apple,
-        .componentFlags = 0,
-        .componentFlagsMask = 0
-    };
+    AudioComponentDescription desc = {.componentType = kAudioUnitType_Output,
+                                      .componentSubType = kAudioUnitSubType_VoiceProcessingIO,
+                                      .componentManufacturer = kAudioUnitManufacturer_Apple,
+                                      .componentFlags = 0,
+                                      .componentFlagsMask = 0};
 
     NSError *error = nil;
     AUAudioUnit *audioUnit = [[AUAudioUnit alloc] initWithComponentDescription:desc error:&error];
@@ -208,10 +206,11 @@
     double sampleRate = self.audioSession.sampleRate;
 
     if (self.shouldRecord) {
-        AVAudioFormat *recordFormat = [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
-                                                                      sampleRate:sampleRate
-                                                                        channels:(AVAudioChannelCount)MIN(2, self.audioSession.inputNumberOfChannels)
-                                                                     interleaved:YES];
+        AVAudioFormat *recordFormat = [[AVAudioFormat alloc]
+            initWithCommonFormat:AVAudioPCMFormatInt16
+                      sampleRate:sampleRate
+                        channels:(AVAudioChannelCount)MIN(2, self.audioSession.inputNumberOfChannels)
+                     interleaved:YES];
         NSError *error = nil;
         [au.outputBusses[1] setFormat:recordFormat error:&error];
         if (error) {
@@ -222,21 +221,22 @@
         RTCAudioDeviceDeliverRecordedDataBlock deliverRecordedData = delegate.deliverRecordedData;
         AURenderBlock renderBlock = au.renderBlock;
 
-        RTCAudioDeviceRenderRecordedDataBlock customRenderBlock = ^OSStatus(
-            AudioUnitRenderActionFlags *_Nonnull actionFlags,
-            const AudioTimeStamp *_Nonnull timestamp,
-            NSInteger inputBusNumber,
-            UInt32 frameCount,
-            AudioBufferList *_Nonnull abl,
-            void *_Nullable renderContext) {
-            return renderBlock(actionFlags, timestamp, frameCount, (AUAudioFrameCount)inputBusNumber, abl, nil);
-        };
+        RTCAudioDeviceRenderRecordedDataBlock customRenderBlock =
+            ^OSStatus(AudioUnitRenderActionFlags *_Nonnull actionFlags,
+                      const AudioTimeStamp *_Nonnull timestamp,
+                      NSInteger inputBusNumber,
+                      UInt32 frameCount,
+                      AudioBufferList *_Nonnull abl,
+                      void *_Nullable renderContext) {
+                return renderBlock(actionFlags, timestamp, frameCount, (AUAudioFrameCount)inputBusNumber, abl, nil);
+            };
 
         au.inputHandler = ^(AudioUnitRenderActionFlags *_Nonnull actionFlags,
                             const AudioTimeStamp *_Nonnull timestamp,
                             AUAudioFrameCount frameCount,
                             NSInteger inputBusNumber) {
-            OSStatus status = deliverRecordedData(actionFlags, timestamp, inputBusNumber, frameCount, nil, nil, customRenderBlock);
+            OSStatus status =
+                deliverRecordedData(actionFlags, timestamp, inputBusNumber, frameCount, nil, nil, customRenderBlock);
             if (status != noErr) {
                 NSLog(@"[FishjamRTCAudioDevice] Failed to deliver recorded data: %d", (int)status);
             }
@@ -244,10 +244,11 @@
     }
 
     if (self.shouldPlay) {
-        AVAudioFormat *playFormat = [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
-                                                                    sampleRate:sampleRate
-                                                                      channels:(AVAudioChannelCount)MIN(2, self.audioSession.outputNumberOfChannels)
-                                                                   interleaved:YES];
+        AVAudioFormat *playFormat = [[AVAudioFormat alloc]
+            initWithCommonFormat:AVAudioPCMFormatInt16
+                      sampleRate:sampleRate
+                        channels:(AVAudioChannelCount)MIN(2, self.audioSession.outputNumberOfChannels)
+                     interleaved:YES];
         NSError *error = nil;
         [au.inputBusses[0] setFormat:playFormat error:&error];
         if (error) {
@@ -257,12 +258,11 @@
 
         if (au.outputProvider == nil) {
             RTCAudioDeviceGetPlayoutDataBlock getPlayoutData = delegate.getPlayoutData;
-            au.outputProvider = ^AUAudioUnitStatus(
-                AudioUnitRenderActionFlags *_Nonnull actionFlags,
-                const AudioTimeStamp *_Nonnull timestamp,
-                AUAudioFrameCount frameCount,
-                NSInteger inputBusNumber,
-                AudioBufferList *_Nonnull inputData) {
+            au.outputProvider = ^AUAudioUnitStatus(AudioUnitRenderActionFlags *_Nonnull actionFlags,
+                                                   const AudioTimeStamp *_Nonnull timestamp,
+                                                   AUAudioFrameCount frameCount,
+                                                   NSInteger inputBusNumber,
+                                                   AudioBufferList *_Nonnull inputData) {
                 return getPlayoutData(actionFlags, timestamp, inputBusNumber, frameCount, inputData);
             };
         }
@@ -356,31 +356,73 @@
 
 @end
 
-#else // !TARGET_OS_IOS
+#else  // !TARGET_OS_IOS
 
 @implementation FishjamRTCAudioDevice
 
-- (double)deviceInputSampleRate { return 0; }
-- (double)deviceOutputSampleRate { return 0; }
-- (NSTimeInterval)inputIOBufferDuration { return 0; }
-- (NSTimeInterval)outputIOBufferDuration { return 0; }
-- (NSInteger)inputNumberOfChannels { return 0; }
-- (NSInteger)outputNumberOfChannels { return 0; }
-- (NSTimeInterval)inputLatency { return 0; }
-- (NSTimeInterval)outputLatency { return 0; }
-- (BOOL)isInitialized { return NO; }
-- (BOOL)initializeWithDelegate:(id<RTCAudioDeviceDelegate>)delegate { return NO; }
-- (BOOL)terminateDevice { return NO; }
-- (BOOL)isPlayoutInitialized { return NO; }
-- (BOOL)initializePlayout { return NO; }
-- (BOOL)isPlaying { return NO; }
-- (BOOL)startPlayout { return NO; }
-- (BOOL)stopPlayout { return NO; }
-- (BOOL)isRecordingInitialized { return NO; }
-- (BOOL)initializeRecording { return NO; }
-- (BOOL)isRecording { return NO; }
-- (BOOL)startRecording { return NO; }
-- (BOOL)stopRecording { return NO; }
+- (double)deviceInputSampleRate {
+    return 0;
+}
+- (double)deviceOutputSampleRate {
+    return 0;
+}
+- (NSTimeInterval)inputIOBufferDuration {
+    return 0;
+}
+- (NSTimeInterval)outputIOBufferDuration {
+    return 0;
+}
+- (NSInteger)inputNumberOfChannels {
+    return 0;
+}
+- (NSInteger)outputNumberOfChannels {
+    return 0;
+}
+- (NSTimeInterval)inputLatency {
+    return 0;
+}
+- (NSTimeInterval)outputLatency {
+    return 0;
+}
+- (BOOL)isInitialized {
+    return NO;
+}
+- (BOOL)initializeWithDelegate:(id<RTCAudioDeviceDelegate>)delegate {
+    return NO;
+}
+- (BOOL)terminateDevice {
+    return NO;
+}
+- (BOOL)isPlayoutInitialized {
+    return NO;
+}
+- (BOOL)initializePlayout {
+    return NO;
+}
+- (BOOL)isPlaying {
+    return NO;
+}
+- (BOOL)startPlayout {
+    return NO;
+}
+- (BOOL)stopPlayout {
+    return NO;
+}
+- (BOOL)isRecordingInitialized {
+    return NO;
+}
+- (BOOL)initializeRecording {
+    return NO;
+}
+- (BOOL)isRecording {
+    return NO;
+}
+- (BOOL)startRecording {
+    return NO;
+}
+- (BOOL)stopRecording {
+    return NO;
+}
 
 @end
 

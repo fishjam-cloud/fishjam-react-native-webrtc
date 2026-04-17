@@ -7,10 +7,10 @@
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
 
+#import "FishjamRTCAudioDevice.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModule.h"
 #import "WebRTCModuleOptions.h"
-#import "FishjamRTCAudioDevice.h"
 
 @interface WebRTCModule ()
 @end

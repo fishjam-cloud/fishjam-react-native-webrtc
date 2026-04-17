@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface FishjamRTCAudioDevice : NSObject <RTCAudioDevice>
+@interface FishjamRTCAudioDevice : NSObject<RTCAudioDevice>
 
 @end
 
