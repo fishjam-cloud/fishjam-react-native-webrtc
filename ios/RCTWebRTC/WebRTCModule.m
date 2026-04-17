@@ -7,12 +7,11 @@
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
 
+#import "FishjamRTCAudioDevice.h"
+#import "H264BackgroundSafeEncoderFactory.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModule.h"
 #import "WebRTCModuleOptions.h"
-
-@interface WebRTCModule ()
-@end
 
 @implementation WebRTCModule
 
@@ -65,11 +64,24 @@
         if (decoderFactory == nil) {
             decoderFactory = [[RTCDefaultVideoDecoderFactory alloc] init];
         }
+
+#if !TARGET_OS_OSX
+        // Wrap the encoder factory so H264 encoders survive app background→foreground
+        // transitions. See `H264BackgroundSafeEncoder.h` for the full rationale.
+        encoderFactory = [[H264BackgroundSafeEncoderFactory alloc] initWithInnerFactory:encoderFactory];
+#endif
+
         _encoderFactory = encoderFactory;
         _decoderFactory = decoderFactory;
 
         RCTLogInfo(@"Using video encoder factory: %@", NSStringFromClass([encoderFactory class]));
         RCTLogInfo(@"Using video decoder factory: %@", NSStringFromClass([decoderFactory class]));
+
+        if (audioDevice == nil) {
+#if TARGET_OS_IOS
+            audioDevice = [[FishjamRTCAudioDevice alloc] init];
+#endif
+        }
 
         _peerConnectionFactory = [[RTCPeerConnectionFactory alloc] initWithEncoderFactory:encoderFactory
                                                                            decoderFactory:decoderFactory
