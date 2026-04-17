@@ -206,11 +206,22 @@
     double sampleRate = self.audioSession.sampleRate;
 
     if (self.shouldRecord) {
-        AVAudioFormat *recordFormat = [[AVAudioFormat alloc]
-            initWithCommonFormat:AVAudioPCMFormatInt16
-                      sampleRate:sampleRate
-                        channels:(AVAudioChannelCount)MIN(2, self.audioSession.inputNumberOfChannels)
-                     interleaved:YES];
+        AVAudioChannelCount inputChannels = (AVAudioChannelCount)self.audioSession.inputNumberOfChannels;
+        if (inputChannels < 1) {
+            NSLog(@"[FishjamRTCAudioDevice] No input channels available; skipping record format setup");
+            return;
+        }
+
+        AVAudioFormat *recordFormat =
+            [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
+                                             sampleRate:sampleRate
+                                               channels:MIN((AVAudioChannelCount)2, inputChannels)
+                                            interleaved:YES];
+        if (recordFormat == nil) {
+            NSLog(@"[FishjamRTCAudioDevice] Failed to create record format");
+            return;
+        }
+
         NSError *error = nil;
         [au.outputBusses[1] setFormat:recordFormat error:&error];
         if (error) {
@@ -244,11 +255,22 @@
     }
 
     if (self.shouldPlay) {
-        AVAudioFormat *playFormat = [[AVAudioFormat alloc]
-            initWithCommonFormat:AVAudioPCMFormatInt16
-                      sampleRate:sampleRate
-                        channels:(AVAudioChannelCount)MIN(2, self.audioSession.outputNumberOfChannels)
-                     interleaved:YES];
+        AVAudioChannelCount outputChannels = (AVAudioChannelCount)self.audioSession.outputNumberOfChannels;
+        if (outputChannels < 1) {
+            NSLog(@"[FishjamRTCAudioDevice] No output channels available; skipping play format setup");
+            return;
+        }
+
+        AVAudioFormat *playFormat =
+            [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
+                                             sampleRate:sampleRate
+                                               channels:MIN((AVAudioChannelCount)2, outputChannels)
+                                            interleaved:YES];
+        if (playFormat == nil) {
+            NSLog(@"[FishjamRTCAudioDevice] Failed to create play format");
+            return;
+        }
+
         NSError *error = nil;
         [au.inputBusses[0] setFormat:playFormat error:&error];
         if (error) {
