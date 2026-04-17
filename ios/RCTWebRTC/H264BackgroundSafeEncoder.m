@@ -33,11 +33,16 @@
 @implementation H264BackgroundSafeEncoder
 
 - (instancetype)initWithInnerFactory:(id<RTCVideoEncoderFactory>)innerFactory codecInfo:(RTCVideoCodecInfo *)codecInfo {
+    id<RTCVideoEncoder> inner = [innerFactory createEncoder:codecInfo];
+    if (inner == nil) {
+        return nil;
+    }
+
     self = [super init];
     if (self) {
         _innerFactory = innerFactory;
         _codecInfo = codecInfo;
-        _inner = [innerFactory createEncoder:codecInfo];
+        _inner = inner;
         atomic_init(&_needsReset, false);
         atomic_init(&_startEncodeCalled, false);
         [self registerForegroundObserver];
