@@ -36,4 +36,4 @@ jobs:
             - name: Build
               run: npm run prepare
             - name: Publish to npm
-              run: npm publish --provenance --access public
+              run: npm publish --provenance --access public ${{ github.event.release.prerelease && '--tag rc' || '' }}
