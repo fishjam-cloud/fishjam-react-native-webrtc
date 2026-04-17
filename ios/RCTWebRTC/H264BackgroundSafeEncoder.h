@@ -29,7 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
  * Non-H264 encoders are never wrapped; the factory delegates to the inner
  * factory directly for them.
  */
-@interface H264BackgroundSafeEncoder : NSObject <RTCVideoEncoder>
+@interface H264BackgroundSafeEncoder : NSObject<RTCVideoEncoder>
 
 - (instancetype)initWithInnerFactory:(id<RTCVideoEncoderFactory>)innerFactory
                            codecInfo:(RTCVideoCodecInfo *)codecInfo NS_DESIGNATED_INITIALIZER;

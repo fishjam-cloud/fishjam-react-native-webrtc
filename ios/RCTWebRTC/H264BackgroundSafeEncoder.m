@@ -32,8 +32,7 @@
 
 @implementation H264BackgroundSafeEncoder
 
-- (instancetype)initWithInnerFactory:(id<RTCVideoEncoderFactory>)innerFactory
-                           codecInfo:(RTCVideoCodecInfo *)codecInfo {
+- (instancetype)initWithInnerFactory:(id<RTCVideoEncoderFactory>)innerFactory codecInfo:(RTCVideoCodecInfo *)codecInfo {
     self = [super init];
     if (self) {
         _innerFactory = innerFactory;
@@ -75,8 +74,7 @@
     [_inner setCallback:callback];
 }
 
-- (NSInteger)startEncodeWithSettings:(RTCVideoEncoderSettings *)settings
-                       numberOfCores:(int)numberOfCores {
+- (NSInteger)startEncodeWithSettings:(RTCVideoEncoderSettings *)settings numberOfCores:(int)numberOfCores {
     _cachedSettings = settings;
     _cachedNumberOfCores = numberOfCores;
     atomic_store(&_startEncodeCalled, true);
@@ -185,8 +183,7 @@
     [newInner setCallback:_cachedCallback];
     NSInteger rc = [newInner startEncodeWithSettings:_cachedSettings numberOfCores:_cachedNumberOfCores];
     if (rc != 0) {
-        RCTLogWarn(@"[H264BackgroundSafeEncoder] startEncodeWithSettings on fresh encoder failed: %ld",
-                   (long)rc);
+        RCTLogWarn(@"[H264BackgroundSafeEncoder] startEncodeWithSettings on fresh encoder failed: %ld", (long)rc);
         // Keep the fresh encoder anyway; next frame may recover.
     }
     if (_cachedBitrateKbit > 0 || _cachedFramerate > 0) {

@@ -13,7 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
  * effectively a no-op because the DidBecomeActive reset is only scheduled
  * when the host app actually cycles through background/foreground.
  */
-@interface H264BackgroundSafeEncoderFactory : NSObject <RTCVideoEncoderFactory>
+@interface H264BackgroundSafeEncoderFactory : NSObject<RTCVideoEncoderFactory>
 
 - (instancetype)initWithInnerFactory:(id<RTCVideoEncoderFactory>)innerFactory NS_DESIGNATED_INITIALIZER;
 
