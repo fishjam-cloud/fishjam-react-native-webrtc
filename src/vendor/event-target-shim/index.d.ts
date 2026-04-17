@@ -181,9 +181,10 @@ export declare namespace EventTarget {
      * The abort signal.
      * @see https://dom.spec.whatwg.org/#abortsignal
      */
-    interface AbortSignal extends EventTarget<{
-        abort: Event;
-    }> {
+    interface AbortSignal
+        extends EventTarget<{
+            abort: Event;
+        }> {
         readonly aborted: boolean;
         onabort: CallbackFunction<this, Event> | null;
     }
