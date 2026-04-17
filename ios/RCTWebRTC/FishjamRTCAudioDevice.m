@@ -5,9 +5,26 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 
-@interface FishjamRTCAudioDevice ()
+static const int kMaxNumberOfAudioUnitInitializeAttempts = 5;
+static const AudioUnitElement kInputBus = 1;
+static const AudioUnitElement kOutputBus = 0;
+static const UInt32 kBytesPerSample = 2;
+static const int kPreferredNumberOfChannels = 1;
+static const double kHighPerformanceSampleRate = 48000.0;
+static const double kHighPerformanceIOBufferDuration = 0.02;
 
-@property(nonatomic, strong) AUAudioUnit *audioUnit;
+typedef NS_ENUM(NSInteger, FishjamAudioUnitState) {
+    FishjamAudioUnitStateInitRequired,
+    FishjamAudioUnitStateUninitialized,
+    FishjamAudioUnitStateInitialized,
+    FishjamAudioUnitStateStarted,
+};
+
+@interface FishjamRTCAudioDevice () {
+    AudioUnit _vpioUnit;
+    FishjamAudioUnitState _state;
+}
+
 @property(nonatomic, weak) id<RTCAudioDeviceDelegate> delegate;
 @property(nonatomic, assign) BOOL shouldPlay;
 @property(nonatomic, assign) BOOL shouldRecord;
@@ -17,11 +34,24 @@
 
 @implementation FishjamRTCAudioDevice
 
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _vpioUnit = NULL;
+        _state = FishjamAudioUnitStateInitRequired;
+    }
+    return self;
+}
+
+- (void)dealloc {
+    [self disposeAudioUnit];
+}
+
 - (AVAudioSession *)audioSession {
     return [AVAudioSession sharedInstance];
 }
 
-#pragma mark - RTCAudioDevice
+#pragma mark - RTCAudioDevice properties
 
 - (double)deviceInputSampleRate {
     return self.audioSession.sampleRate;
@@ -40,11 +70,11 @@
 }
 
 - (NSInteger)inputNumberOfChannels {
-    return MIN(2, self.audioSession.inputNumberOfChannels);
+    return kPreferredNumberOfChannels;
 }
 
 - (NSInteger)outputNumberOfChannels {
-    return MIN(2, self.audioSession.outputNumberOfChannels);
+    return kPreferredNumberOfChannels;
 }
 
 - (NSTimeInterval)inputLatency {
@@ -55,50 +85,30 @@
     return self.audioSession.outputLatency;
 }
 
+#pragma mark - RTCAudioDevice lifecycle
+
 - (BOOL)isInitialized {
-    return self.delegate != nil && self.audioUnit != nil;
+    return self.delegate != nil && _vpioUnit != NULL;
 }
 
 - (BOOL)initializeWithDelegate:(id<RTCAudioDeviceDelegate>)delegate {
     if (self.delegate != nil) {
         return NO;
     }
-
-    AudioComponentDescription desc = {.componentType = kAudioUnitType_Output,
-                                      .componentSubType = kAudioUnitSubType_VoiceProcessingIO,
-                                      .componentManufacturer = kAudioUnitManufacturer_Apple,
-                                      .componentFlags = 0,
-                                      .componentFlagsMask = 0};
-
-    NSError *error = nil;
-    AUAudioUnit *audioUnit = [[AUAudioUnit alloc] initWithComponentDescription:desc error:&error];
-    if (error || !audioUnit) {
-        NSLog(@"[FishjamRTCAudioDevice] Failed to create audio unit: %@", error);
+    if (![self createAudioUnit]) {
         return NO;
     }
-
-    audioUnit.inputEnabled = NO;
-    audioUnit.outputEnabled = NO;
-    audioUnit.maximumFramesToRender = 1024;
-
-    self.audioUnit = audioUnit;
     self.delegate = delegate;
-
     [self subscribeToNotifications];
-
     return YES;
 }
 
 - (BOOL)terminateDevice {
     [self unsubscribeFromNotifications];
-
     self.shouldPlay = NO;
     self.shouldRecord = NO;
-    [self updateAudioUnit];
-
-    self.audioUnit = nil;
+    [self disposeAudioUnit];
     self.delegate = nil;
-
     return YES;
 }
 
@@ -150,174 +160,426 @@
     return YES;
 }
 
-#pragma mark - Audio Unit Management
+#pragma mark - Audio Session configuration
 
 - (void)configureAudioSession {
     NSError *error = nil;
     AVAudioSession *session = self.audioSession;
 
+    NSString *targetCategory;
+    NSString *targetMode;
+    AVAudioSessionCategoryOptions targetOptions;
+
     if (self.shouldRecord) {
-        [session setCategory:AVAudioSessionCategoryPlayAndRecord
-                 withOptions:AVAudioSessionCategoryOptionAllowBluetooth | AVAudioSessionCategoryOptionDefaultToSpeaker
-                       error:&error];
-        if (error) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to set PlayAndRecord category: %@", error);
-        }
-        [session setMode:AVAudioSessionModeVoiceChat error:&error];
+        targetCategory = AVAudioSessionCategoryPlayAndRecord;
+        targetMode = AVAudioSessionModeVoiceChat;
+        targetOptions = AVAudioSessionCategoryOptionAllowBluetooth | AVAudioSessionCategoryOptionDefaultToSpeaker;
     } else {
-        [session setCategory:AVAudioSessionCategoryPlayback error:&error];
-        if (error) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to set Playback category: %@", error);
-        }
-        [session setMode:AVAudioSessionModeDefault error:&error];
+        targetCategory = AVAudioSessionCategoryPlayback;
+        targetMode = AVAudioSessionModeDefault;
+        targetOptions = 0;
     }
 
-    [session setActive:YES error:&error];
-    if (error) {
+    if (![session.category isEqualToString:targetCategory] || session.categoryOptions != targetOptions) {
+        if (![session setCategory:targetCategory withOptions:targetOptions error:&error]) {
+            NSLog(@"[FishjamRTCAudioDevice] Failed to set category %@: %@", targetCategory, error);
+            error = nil;
+        }
+    }
+
+    if (![session.mode isEqualToString:targetMode]) {
+        if (![session setMode:targetMode error:&error]) {
+            NSLog(@"[FishjamRTCAudioDevice] Failed to set mode %@: %@", targetMode, error);
+            error = nil;
+        }
+    }
+
+    if (session.preferredSampleRate != kHighPerformanceSampleRate) {
+        if (![session setPreferredSampleRate:kHighPerformanceSampleRate error:&error]) {
+            NSLog(@"[FishjamRTCAudioDevice] Failed to set preferred sample rate: %@", error);
+            error = nil;
+        }
+    }
+
+    if (session.preferredIOBufferDuration != kHighPerformanceIOBufferDuration) {
+        if (![session setPreferredIOBufferDuration:kHighPerformanceIOBufferDuration error:&error]) {
+            NSLog(@"[FishjamRTCAudioDevice] Failed to set preferred IO buffer duration: %@", error);
+            error = nil;
+        }
+    }
+
+    if (![session setActive:YES error:&error]) {
         NSLog(@"[FishjamRTCAudioDevice] Failed to activate audio session: %@", error);
     }
 }
 
-- (void)updateAudioUnit {
-    AUAudioUnit *au = self.audioUnit;
-    if (!au) {
+#pragma mark - AudioUnit format
+
+- (AudioStreamBasicDescription)streamFormatForSampleRate:(Float64)sampleRate {
+    AudioStreamBasicDescription format;
+    memset(&format, 0, sizeof(format));
+    format.mSampleRate = sampleRate;
+    format.mFormatID = kAudioFormatLinearPCM;
+    format.mFormatFlags = kLinearPCMFormatFlagIsSignedInteger | kLinearPCMFormatFlagIsPacked;
+    format.mBytesPerPacket = kBytesPerSample;
+    format.mFramesPerPacket = 1;
+    format.mBytesPerFrame = kBytesPerSample;
+    format.mChannelsPerFrame = kPreferredNumberOfChannels;
+    format.mBitsPerChannel = 8 * kBytesPerSample;
+    return format;
+}
+
+#pragma mark - C AudioUnit callbacks
+
+static OSStatus FishjamOnGetPlayoutData(void *inRefCon,
+                                        AudioUnitRenderActionFlags *ioActionFlags,
+                                        const AudioTimeStamp *inTimeStamp,
+                                        UInt32 inBusNumber,
+                                        UInt32 inNumberFrames,
+                                        AudioBufferList *ioData) {
+    FishjamRTCAudioDevice *device = (__bridge FishjamRTCAudioDevice *)inRefCon;
+    return [device notifyGetPlayoutData:ioActionFlags
+                              timestamp:inTimeStamp
+                              busNumber:inBusNumber
+                             frameCount:inNumberFrames
+                                 ioData:ioData];
+}
+
+static OSStatus FishjamOnDeliverRecordedData(void *inRefCon,
+                                             AudioUnitRenderActionFlags *ioActionFlags,
+                                             const AudioTimeStamp *inTimeStamp,
+                                             UInt32 inBusNumber,
+                                             UInt32 inNumberFrames,
+                                             AudioBufferList *ioData) {
+    FishjamRTCAudioDevice *device = (__bridge FishjamRTCAudioDevice *)inRefCon;
+    return [device notifyDeliverRecordedData:ioActionFlags
+                                   timestamp:inTimeStamp
+                                   busNumber:inBusNumber
+                                  frameCount:inNumberFrames
+                                      ioData:ioData];
+}
+
+- (OSStatus)notifyGetPlayoutData:(AudioUnitRenderActionFlags *)ioActionFlags
+                       timestamp:(const AudioTimeStamp *)inTimeStamp
+                       busNumber:(UInt32)inBusNumber
+                      frameCount:(UInt32)inNumberFrames
+                          ioData:(AudioBufferList *)ioData {
+    id<RTCAudioDeviceDelegate> delegate = self.delegate;
+    if (delegate == nil || !self.shouldPlay) {
+        *ioActionFlags |= kAudioUnitRenderAction_OutputIsSilence;
+        if (ioData != NULL) {
+            for (UInt32 i = 0; i < ioData->mNumberBuffers; i++) {
+                if (ioData->mBuffers[i].mData != NULL) {
+                    memset(ioData->mBuffers[i].mData, 0, ioData->mBuffers[i].mDataByteSize);
+                }
+            }
+        }
+        return noErr;
+    }
+    return delegate.getPlayoutData(ioActionFlags, inTimeStamp, (NSInteger)inBusNumber, inNumberFrames, ioData);
+}
+
+- (OSStatus)notifyDeliverRecordedData:(AudioUnitRenderActionFlags *)ioActionFlags
+                            timestamp:(const AudioTimeStamp *)inTimeStamp
+                            busNumber:(UInt32)inBusNumber
+                           frameCount:(UInt32)inNumberFrames
+                               ioData:(AudioBufferList *)ioData {
+    id<RTCAudioDeviceDelegate> delegate = self.delegate;
+    if (delegate == nil || !self.shouldRecord || _vpioUnit == NULL) {
+        return noErr;
+    }
+
+    AudioUnit vpioUnit = _vpioUnit;
+    RTCAudioDeviceRenderRecordedDataBlock renderBlock = ^OSStatus(AudioUnitRenderActionFlags *_Nonnull actionFlags,
+                                                                  const AudioTimeStamp *_Nonnull timestamp,
+                                                                  NSInteger inputBusNumber,
+                                                                  UInt32 frameCount,
+                                                                  AudioBufferList *_Nonnull abl,
+                                                                  void *_Nullable renderContext) {
+        return AudioUnitRender(vpioUnit, actionFlags, timestamp, (UInt32)inputBusNumber, frameCount, abl);
+    };
+
+    OSStatus status = delegate.deliverRecordedData(
+        ioActionFlags, inTimeStamp, (NSInteger)inBusNumber, inNumberFrames, NULL, NULL, renderBlock);
+    if (status != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] Failed to deliver recorded data: %d", (int)status);
+    }
+    return status;
+}
+
+#pragma mark - AudioUnit lifecycle (C API, mirrors voice_processing_audio_unit.mm)
+
+- (BOOL)createAudioUnit {
+    if (_vpioUnit != NULL) {
+        return YES;
+    }
+
+    BOOL inputEnabled = self.shouldRecord;
+
+    AudioComponentDescription vpioDescription;
+    vpioDescription.componentType = kAudioUnitType_Output;
+    vpioDescription.componentSubType = kAudioUnitSubType_VoiceProcessingIO;
+    vpioDescription.componentManufacturer = kAudioUnitManufacturer_Apple;
+    vpioDescription.componentFlags = 0;
+    vpioDescription.componentFlagsMask = 0;
+
+    AudioComponent foundVpioRef = AudioComponentFindNext(NULL, &vpioDescription);
+    if (foundVpioRef == NULL) {
+        NSLog(@"[FishjamRTCAudioDevice] AudioComponentFindNext failed.");
+        return NO;
+    }
+
+    OSStatus result = AudioComponentInstanceNew(foundVpioRef, &_vpioUnit);
+    if (result != noErr) {
+        _vpioUnit = NULL;
+        NSLog(@"[FishjamRTCAudioDevice] AudioComponentInstanceNew failed. Error=%d.", (int)result);
+        return NO;
+    }
+
+    UInt32 enableInput = inputEnabled ? 1 : 0;
+    result = AudioUnitSetProperty(_vpioUnit,
+                                  kAudioOutputUnitProperty_EnableIO,
+                                  kAudioUnitScope_Input,
+                                  kInputBus,
+                                  &enableInput,
+                                  sizeof(enableInput));
+    if (result != noErr) {
+        [self disposeAudioUnit];
+        NSLog(@"[FishjamRTCAudioDevice] Failed to configure input enable=%u. Error=%d.",
+              (unsigned)enableInput,
+              (int)result);
+        return NO;
+    }
+
+    UInt32 enableOutput = 1;
+    result = AudioUnitSetProperty(_vpioUnit,
+                                  kAudioOutputUnitProperty_EnableIO,
+                                  kAudioUnitScope_Output,
+                                  kOutputBus,
+                                  &enableOutput,
+                                  sizeof(enableOutput));
+    if (result != noErr) {
+        [self disposeAudioUnit];
+        NSLog(@"[FishjamRTCAudioDevice] Failed to enable output. Error=%d.", (int)result);
+        return NO;
+    }
+
+    AURenderCallbackStruct renderCallback;
+    renderCallback.inputProc = FishjamOnGetPlayoutData;
+    renderCallback.inputProcRefCon = (__bridge void *)self;
+    result = AudioUnitSetProperty(_vpioUnit,
+                                  kAudioUnitProperty_SetRenderCallback,
+                                  kAudioUnitScope_Input,
+                                  kOutputBus,
+                                  &renderCallback,
+                                  sizeof(renderCallback));
+    if (result != noErr) {
+        [self disposeAudioUnit];
+        NSLog(@"[FishjamRTCAudioDevice] Failed to set render callback. Error=%d.", (int)result);
+        return NO;
+    }
+
+    if (inputEnabled) {
+        UInt32 flag = 0;
+        result = AudioUnitSetProperty(
+            _vpioUnit, kAudioUnitProperty_ShouldAllocateBuffer, kAudioUnitScope_Output, kInputBus, &flag, sizeof(flag));
+        if (result != noErr) {
+            [self disposeAudioUnit];
+            NSLog(@"[FishjamRTCAudioDevice] Failed to disable buffer allocation. Error=%d.", (int)result);
+            return NO;
+        }
+
+        AURenderCallbackStruct inputCallback;
+        inputCallback.inputProc = FishjamOnDeliverRecordedData;
+        inputCallback.inputProcRefCon = (__bridge void *)self;
+        result = AudioUnitSetProperty(_vpioUnit,
+                                      kAudioOutputUnitProperty_SetInputCallback,
+                                      kAudioUnitScope_Global,
+                                      kInputBus,
+                                      &inputCallback,
+                                      sizeof(inputCallback));
+        if (result != noErr) {
+            [self disposeAudioUnit];
+            NSLog(@"[FishjamRTCAudioDevice] Failed to set input callback. Error=%d.", (int)result);
+            return NO;
+        }
+    }
+
+    _state = FishjamAudioUnitStateUninitialized;
+    return YES;
+}
+
+- (BOOL)initializeAudioUnitWithSampleRate:(Float64)sampleRate {
+    if (_vpioUnit == NULL || _state < FishjamAudioUnitStateUninitialized) {
+        return NO;
+    }
+
+    AudioStreamBasicDescription format = [self streamFormatForSampleRate:sampleRate];
+    UInt32 size = sizeof(format);
+
+    OSStatus result = AudioUnitSetProperty(
+        _vpioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, kInputBus, &format, size);
+    if (result != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] Failed to set format on output scope of input bus. Error=%d.", (int)result);
+        return NO;
+    }
+
+    result = AudioUnitSetProperty(
+        _vpioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, kOutputBus, &format, size);
+    if (result != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] Failed to set format on input scope of output bus. Error=%d.", (int)result);
+        return NO;
+    }
+
+    int failedInitializeAttempts = 0;
+    result = AudioUnitInitialize(_vpioUnit);
+    while (result != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] Failed to initialize audio unit. Error=%d.", (int)result);
+        ++failedInitializeAttempts;
+        if (failedInitializeAttempts == kMaxNumberOfAudioUnitInitializeAttempts) {
+            NSLog(@"[FishjamRTCAudioDevice] Too many initialization attempts.");
+            return NO;
+        }
+        [NSThread sleepForTimeInterval:0.1];
+        result = AudioUnitInitialize(_vpioUnit);
+    }
+
+    if (self.shouldRecord) {
+        UInt32 agcEnabled = 0;
+        UInt32 agcSize = sizeof(agcEnabled);
+        OSStatus agcResult = AudioUnitGetProperty(_vpioUnit,
+                                                  kAUVoiceIOProperty_VoiceProcessingEnableAGC,
+                                                  kAudioUnitScope_Global,
+                                                  kInputBus,
+                                                  &agcEnabled,
+                                                  &agcSize);
+        if (agcResult == noErr && !agcEnabled) {
+            UInt32 enableAgc = 1;
+            AudioUnitSetProperty(_vpioUnit,
+                                 kAUVoiceIOProperty_VoiceProcessingEnableAGC,
+                                 kAudioUnitScope_Global,
+                                 kInputBus,
+                                 &enableAgc,
+                                 sizeof(enableAgc));
+        }
+    }
+
+    _state = FishjamAudioUnitStateInitialized;
+    return YES;
+}
+
+- (BOOL)startAudioUnit {
+    if (_vpioUnit == NULL || _state != FishjamAudioUnitStateInitialized) {
+        return NO;
+    }
+    OSStatus result = AudioOutputUnitStart(_vpioUnit);
+    if (result != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] Failed to start audio unit. Error=%d.", (int)result);
+        return NO;
+    }
+    _state = FishjamAudioUnitStateStarted;
+    return YES;
+}
+
+- (BOOL)stopAudioUnit {
+    if (_vpioUnit == NULL || _state != FishjamAudioUnitStateStarted) {
+        return YES;
+    }
+    OSStatus result = AudioOutputUnitStop(_vpioUnit);
+    if (result != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] Failed to stop audio unit. Error=%d.", (int)result);
+        return NO;
+    }
+    _state = FishjamAudioUnitStateInitialized;
+    return YES;
+}
+
+- (BOOL)uninitializeAudioUnit {
+    if (_vpioUnit == NULL || _state < FishjamAudioUnitStateInitialized) {
+        return YES;
+    }
+    if (_state == FishjamAudioUnitStateStarted) {
+        [self stopAudioUnit];
+    }
+    OSStatus result = AudioUnitUninitialize(_vpioUnit);
+    if (result != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] Failed to uninitialize audio unit. Error=%d.", (int)result);
+        return NO;
+    }
+    _state = FishjamAudioUnitStateUninitialized;
+    return YES;
+}
+
+- (void)disposeAudioUnit {
+    if (_vpioUnit == NULL) {
+        _state = FishjamAudioUnitStateInitRequired;
         return;
     }
 
-    id<RTCAudioDeviceDelegate> delegate = self.delegate;
+    if (_state == FishjamAudioUnitStateStarted) {
+        [self stopAudioUnit];
+    }
+    if (_state == FishjamAudioUnitStateInitialized) {
+        [self uninitializeAudioUnit];
+    }
 
-    if (!delegate || (!self.shouldPlay && !self.shouldRecord) || self.interrupted) {
-        [self stopAndDeallocateAudioUnit:au delegate:delegate];
+    OSStatus result = AudioComponentInstanceDispose(_vpioUnit);
+    if (result != noErr) {
+        NSLog(@"[FishjamRTCAudioDevice] AudioComponentInstanceDispose failed. Error=%d.", (int)result);
+    }
+    _vpioUnit = NULL;
+    _state = FishjamAudioUnitStateInitRequired;
+}
+
+#pragma mark - Top-level update (mirrors audio_device_ios.mm UpdateAudioUnit)
+
+- (BOOL)audioUnitNeedsRecreate {
+    if (_vpioUnit == NULL) {
+        return YES;
+    }
+    UInt32 currentInputEnabled = 0;
+    UInt32 size = sizeof(currentInputEnabled);
+    OSStatus result = AudioUnitGetProperty(
+        _vpioUnit, kAudioOutputUnitProperty_EnableIO, kAudioUnitScope_Input, kInputBus, &currentInputEnabled, &size);
+    if (result != noErr) {
+        return YES;
+    }
+    return (currentInputEnabled != 0) != self.shouldRecord;
+}
+
+- (void)updateAudioUnit {
+    id<RTCAudioDeviceDelegate> delegate = self.delegate;
+    BOOL shouldBeActive = (delegate != nil) && (self.shouldPlay || self.shouldRecord) && !self.interrupted;
+
+    if (!shouldBeActive) {
+        if (_vpioUnit != NULL) {
+            [self stopAudioUnit];
+            [self uninitializeAudioUnit];
+            if (delegate) {
+                [delegate notifyAudioInputInterrupted];
+                [delegate notifyAudioOutputInterrupted];
+            }
+        }
         return;
     }
 
     [self configureAudioSession];
 
-    if (au.inputEnabled != self.shouldRecord) {
-        [self stopAndDeallocateAudioUnit:au delegate:delegate];
-        au.inputEnabled = self.shouldRecord;
-    }
-
-    if (au.outputEnabled != self.shouldPlay) {
-        [self stopAndDeallocateAudioUnit:au delegate:delegate];
-        au.outputEnabled = self.shouldPlay;
-    }
-
-    double sampleRate = self.audioSession.sampleRate;
-
-    if (self.shouldRecord) {
-        AVAudioChannelCount inputChannels = (AVAudioChannelCount)self.audioSession.inputNumberOfChannels;
-        if (inputChannels < 1) {
-            NSLog(@"[FishjamRTCAudioDevice] No input channels available; skipping record format setup");
-            return;
-        }
-
-        AVAudioFormat *recordFormat =
-            [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
-                                             sampleRate:sampleRate
-                                               channels:MIN((AVAudioChannelCount)2, inputChannels)
-                                            interleaved:YES];
-        if (recordFormat == nil) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to create record format");
-            return;
-        }
-
-        NSError *error = nil;
-        [au.outputBusses[1] setFormat:recordFormat error:&error];
-        if (error) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to set record format: %@", error);
-            return;
-        }
-
-        RTCAudioDeviceDeliverRecordedDataBlock deliverRecordedData = delegate.deliverRecordedData;
-        AURenderBlock renderBlock = au.renderBlock;
-
-        RTCAudioDeviceRenderRecordedDataBlock customRenderBlock =
-            ^OSStatus(AudioUnitRenderActionFlags *_Nonnull actionFlags,
-                      const AudioTimeStamp *_Nonnull timestamp,
-                      NSInteger inputBusNumber,
-                      UInt32 frameCount,
-                      AudioBufferList *_Nonnull abl,
-                      void *_Nullable renderContext) {
-                return renderBlock(actionFlags, timestamp, frameCount, (AUAudioFrameCount)inputBusNumber, abl, nil);
-            };
-
-        au.inputHandler = ^(AudioUnitRenderActionFlags *_Nonnull actionFlags,
-                            const AudioTimeStamp *_Nonnull timestamp,
-                            AUAudioFrameCount frameCount,
-                            NSInteger inputBusNumber) {
-            OSStatus status =
-                deliverRecordedData(actionFlags, timestamp, inputBusNumber, frameCount, nil, nil, customRenderBlock);
-            if (status != noErr) {
-                NSLog(@"[FishjamRTCAudioDevice] Failed to deliver recorded data: %d", (int)status);
-            }
-        };
-    }
-
-    if (self.shouldPlay) {
-        AVAudioChannelCount outputChannels = (AVAudioChannelCount)self.audioSession.outputNumberOfChannels;
-        if (outputChannels < 1) {
-            NSLog(@"[FishjamRTCAudioDevice] No output channels available; skipping play format setup");
-            return;
-        }
-
-        AVAudioFormat *playFormat =
-            [[AVAudioFormat alloc] initWithCommonFormat:AVAudioPCMFormatInt16
-                                             sampleRate:sampleRate
-                                               channels:MIN((AVAudioChannelCount)2, outputChannels)
-                                            interleaved:YES];
-        if (playFormat == nil) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to create play format");
-            return;
-        }
-
-        NSError *error = nil;
-        [au.inputBusses[0] setFormat:playFormat error:&error];
-        if (error) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to set play format: %@", error);
-            return;
-        }
-
-        if (au.outputProvider == nil) {
-            RTCAudioDeviceGetPlayoutDataBlock getPlayoutData = delegate.getPlayoutData;
-            au.outputProvider = ^AUAudioUnitStatus(AudioUnitRenderActionFlags *_Nonnull actionFlags,
-                                                   const AudioTimeStamp *_Nonnull timestamp,
-                                                   AUAudioFrameCount frameCount,
-                                                   NSInteger inputBusNumber,
-                                                   AudioBufferList *_Nonnull inputData) {
-                return getPlayoutData(actionFlags, timestamp, inputBusNumber, frameCount, inputData);
-            };
-        }
-    }
-
-    NSError *error = nil;
-    if (!au.renderResourcesAllocated) {
-        [au allocateRenderResourcesAndReturnError:&error];
-        if (error) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to allocate render resources: %@", error);
+    if ([self audioUnitNeedsRecreate]) {
+        [self disposeAudioUnit];
+        if (![self createAudioUnit]) {
             return;
         }
     }
 
-    if (!au.isRunning) {
-        [au startHardwareAndReturnError:&error];
-        if (error) {
-            NSLog(@"[FishjamRTCAudioDevice] Failed to start hardware: %@", error);
+    if (_state == FishjamAudioUnitStateUninitialized) {
+        if (![self initializeAudioUnitWithSampleRate:self.audioSession.sampleRate]) {
             return;
         }
     }
-}
 
-- (void)stopAndDeallocateAudioUnit:(AUAudioUnit *)au delegate:(id<RTCAudioDeviceDelegate>)delegate {
-    if (au.isRunning) {
-        [au stopHardware];
-        if (delegate) {
-            [delegate notifyAudioInputInterrupted];
-            [delegate notifyAudioOutputInterrupted];
-        }
-    }
-    if (au.renderResourcesAllocated) {
-        [au deallocateRenderResources];
+    if (_state == FishjamAudioUnitStateInitialized) {
+        [self startAudioUnit];
     }
 }
 
@@ -345,15 +607,13 @@
 
 - (void)handleInterruption:(NSNotification *)notification {
     NSUInteger type = [notification.userInfo[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue];
-    if (type == AVAudioSessionInterruptionTypeBegan) {
-        self.interrupted = YES;
-    } else {
-        self.interrupted = NO;
-    }
+    self.interrupted = (type == AVAudioSessionInterruptionTypeBegan);
+
     id<RTCAudioDeviceDelegate> delegate = self.delegate;
     if (delegate) {
+        __weak typeof(self) weakSelf = self;
         [delegate dispatchAsync:^{
-            [self updateAudioUnit];
+            [weakSelf updateAudioUnit];
         }];
     }
 }
@@ -361,8 +621,9 @@
 - (void)handleRouteChange:(NSNotification *)notification {
     id<RTCAudioDeviceDelegate> delegate = self.delegate;
     if (delegate) {
+        __weak typeof(self) weakSelf = self;
         [delegate dispatchAsync:^{
-            [self updateAudioUnit];
+            [weakSelf updateAudioUnit];
         }];
     }
 }
@@ -370,8 +631,11 @@
 - (void)handleMediaServerReset:(NSNotification *)notification {
     id<RTCAudioDeviceDelegate> delegate = self.delegate;
     if (delegate) {
+        __weak typeof(self) weakSelf = self;
         [delegate dispatchAsync:^{
-            [self updateAudioUnit];
+            [weakSelf disposeAudioUnit];
+            [weakSelf createAudioUnit];
+            [weakSelf updateAudioUnit];
         }];
     }
 }
