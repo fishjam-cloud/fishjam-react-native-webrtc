@@ -36,8 +36,18 @@ public class AudioOutputManager {
     // Guarded by `this`. Single in-flight selection — a new request supersedes any prior one.
     private PendingSelect pending;
 
-    private record PendingSelect(Promise promise, int targetDeviceId, int targetType,
-                                 Runnable timeoutTask) {
+    private static final class PendingSelect {
+        final Promise promise;
+        final int targetDeviceId;
+        final int targetType;
+        final Runnable timeoutTask;
+
+        PendingSelect(Promise promise, int targetDeviceId, int targetType, Runnable timeoutTask) {
+            this.promise = promise;
+            this.targetDeviceId = targetDeviceId;
+            this.targetType = targetType;
+            this.timeoutTask = timeoutTask;
+        }
     }
 
     public AudioOutputManager(WebRTCModule module, ReactApplicationContext context) {
