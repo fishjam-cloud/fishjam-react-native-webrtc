@@ -227,13 +227,13 @@ public class AudioOutputManager {
 
         synchronized (this) {
             if (pending != null) {
-                // Supersede prior in-flight request best-effort so JS doesn't dangle.
                 mainHandler.removeCallbacks(pending.timeoutTask);
                 Promise old = pending.promise;
                 pending = null;
-                old.resolve(null);
+                old.reject("E_AUDIO_OUTPUT_SUPERSEDED",
+                    "Superseded by newer selectAudioOutput call");
             }
-            Runnable timeoutTask = this::resolvePendingBestEffort;
+            Runnable timeoutTask = this::timeoutPending;
             pending = new PendingSelect(promise, deviceId, targetType, timeoutTask);
             mainHandler.postDelayed(timeoutTask, ROUTE_CHANGE_TIMEOUT_MS);
         }
@@ -344,13 +344,24 @@ public class AudioOutputManager {
         }
     }
 
-    private void resolvePendingBestEffort() {
+    private void timeoutPending() {
         synchronized (this) {
             if (pending == null) return;
             mainHandler.removeCallbacks(pending.timeoutTask);
             Promise p = pending.promise;
             pending = null;
-            p.resolve(null);
+            p.reject("E_AUDIO_OUTPUT_TIMEOUT",
+                "Timed out waiting for audio route change");
+        }
+    }
+
+    private void cancelPending(String reason) {
+        synchronized (this) {
+            if (pending == null) return;
+            mainHandler.removeCallbacks(pending.timeoutTask);
+            Promise p = pending.promise;
+            pending = null;
+            p.reject("E_AUDIO_OUTPUT_CANCELLED", reason);
         }
     }
 
@@ -430,7 +441,7 @@ public class AudioOutputManager {
             scoReceiver = null;
         }
 
-        resolvePendingBestEffort();
+        cancelPending("Audio output observer stopped");
     }
 
     private void emitOutputChangedEvent() {
