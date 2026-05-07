@@ -146,11 +146,11 @@ public class AudioOutputManager {
             for (AudioDeviceInfo device : devices) {
                 int type = device.getType();
                 if (type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                    || type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                    || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                    || type == AudioDeviceInfo.TYPE_HDMI || type == AudioDeviceInfo.TYPE_USB_DEVICE
-                    || type == AudioDeviceInfo.TYPE_USB_HEADSET || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
-                    || type == AudioDeviceInfo.TYPE_HEARING_AID) {
+                        || type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                        || type == AudioDeviceInfo.TYPE_HDMI || type == AudioDeviceInfo.TYPE_USB_DEVICE
+                        || type == AudioDeviceInfo.TYPE_USB_HEADSET || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
+                        || type == AudioDeviceInfo.TYPE_HEARING_AID) {
                     result.pushMap(serializeAudioDevice(device));
                 }
             }
@@ -230,8 +230,7 @@ public class AudioOutputManager {
                 mainHandler.removeCallbacks(pending.timeoutTask);
                 Promise old = pending.promise;
                 pending = null;
-                old.reject("E_AUDIO_OUTPUT_SUPERSEDED",
-                    "Superseded by newer selectAudioOutput call");
+                old.reject("E_AUDIO_OUTPUT_SUPERSEDED", "Superseded by newer selectAudioOutput call");
             }
             Runnable timeoutTask = this::timeoutPending;
             pending = new PendingSelect(promise, deviceId, targetType, timeoutTask);
@@ -315,7 +314,7 @@ public class AudioOutputManager {
                 break;
             default:
                 throw new RuntimeException("Cannot select audio output type on this API level: "
-                    + audioDeviceNativeType(target.getType()));
+                        + audioDeviceNativeType(target.getType()));
         }
     }
 
@@ -351,7 +350,7 @@ public class AudioOutputManager {
             Promise p = pending.promise;
             pending = null;
             p.reject("E_AUDIO_OUTPUT_TIMEOUT",
-                "Timed out waiting for audio route change");
+                    String.format("Route change not confirmed within %dms", ROUTE_CHANGE_TIMEOUT_MS));
         }
     }
 
@@ -399,7 +398,7 @@ public class AudioOutputManager {
                 maybeResolvePending();
             };
             audioManager.addOnCommunicationDeviceChangedListener(
-                reactContext.getMainExecutor(), communicationDeviceChangedListener);
+                    reactContext.getMainExecutor(), communicationDeviceChangedListener);
         }
 
         scoReceiver = new BroadcastReceiver() {
@@ -407,7 +406,7 @@ public class AudioOutputManager {
             public void onReceive(Context c, Intent intent) {
                 int state = intent.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, -1);
                 if (state == AudioManager.SCO_AUDIO_STATE_CONNECTED
-                    || state == AudioManager.SCO_AUDIO_STATE_DISCONNECTED) {
+                        || state == AudioManager.SCO_AUDIO_STATE_DISCONNECTED) {
                     emitOutputChangedEvent();
                     maybeResolvePending();
                 }
@@ -473,11 +472,11 @@ public class AudioOutputManager {
             for (AudioDeviceInfo d : devices) {
                 int type = d.getType();
                 if (type == AudioDeviceInfo.TYPE_BUILTIN_EARPIECE || type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
-                    || type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
-                    || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                    || type == AudioDeviceInfo.TYPE_HDMI || type == AudioDeviceInfo.TYPE_USB_DEVICE
-                    || type == AudioDeviceInfo.TYPE_USB_HEADSET || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
-                    || type == AudioDeviceInfo.TYPE_HEARING_AID) {
+                        || type == AudioDeviceInfo.TYPE_WIRED_HEADSET || type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES
+                        || type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                        || type == AudioDeviceInfo.TYPE_HDMI || type == AudioDeviceInfo.TYPE_USB_DEVICE
+                        || type == AudioDeviceInfo.TYPE_USB_HEADSET || type == AudioDeviceInfo.TYPE_USB_ACCESSORY
+                        || type == AudioDeviceInfo.TYPE_HEARING_AID) {
                     available.pushMap(serializeAudioDevice(d));
                 }
             }
