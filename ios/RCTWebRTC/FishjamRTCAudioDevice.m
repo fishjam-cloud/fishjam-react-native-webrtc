@@ -580,8 +580,7 @@ static OSStatus FishjamOnDeliverRecordedData(void *inRefCon,
         targetSampleRate = kHighPerformanceSampleRate;
     }
 
-    if (_vpioUnit != NULL && _state >= FishjamAudioUnitStateInitialized &&
-        _configuredSampleRate != targetSampleRate) {
+    if (_vpioUnit != NULL && _state >= FishjamAudioUnitStateInitialized && _configuredSampleRate != targetSampleRate) {
         [self uninitializeAudioUnit];
     }
 
