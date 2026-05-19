@@ -38,7 +38,7 @@
     "devDependencies": {
         "@types/debug": "4.1.7",
         "@types/react": "19.1.0",
-        "react-native": "0.81.5",
+        "react-native": "0.85.1",
         "@typescript-eslint/eslint-plugin": "^8.18.0",
         "@typescript-eslint/parser": "^8.18.0",
         "eslint": "^8.57.0",
