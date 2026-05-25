@@ -21,6 +21,7 @@
 
 #import <React/RCTLog.h>
 #import <ReplayKit/ReplayKit.h>
+#import "BroadcastPickerHelper.h"
 
 #endif
 
@@ -185,16 +186,9 @@ RCT_EXPORT_METHOD(getDisplayMedia
     if (@available(iOS 12, *)) {
         [self.bridge.uiManager
             addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-                NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-                NSString *preferredExtension = infoDictionary[@"RTCScreenSharingExtension"];
-
-                RPSystemBroadcastPickerView *view = [[RPSystemBroadcastPickerView alloc] init];
-                view.preferredExtension = preferredExtension;
-                view.showsMicrophoneButton = false;
-
-                SEL selector = NSSelectorFromString(@"buttonPressed:");
-                if ([view respondsToSelector:selector]) {
-                    [view performSelector:selector withObject:nil];
+                NSError *pickerError = nil;
+                if (![BroadcastPickerHelper presentSystemPickerWithError:&pickerError]) {
+                    RCTLogError(@"Failed to present broadcast picker: %@", pickerError.localizedDescription);
                 }
             }];
     } else {
@@ -250,25 +244,11 @@ RCT_EXPORT_METHOD(presentBroadcastPicker : (RCTPromiseResolveBlock)resolve rejec
     if (@available(iOS 12, *)) {
         [self.bridge.uiManager
             addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
-                NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-                NSString *preferredExtension = infoDictionary[@"RTCScreenSharingExtension"];
-
-                RPSystemBroadcastPickerView *view = [[RPSystemBroadcastPickerView alloc] init];
-                view.preferredExtension = preferredExtension;
-                view.showsMicrophoneButton = false;
-
-                UIButton *btn = nil;
-                for (UIView *subview in view.subviews) {
-                    if ([subview isKindOfClass:[UIButton class]]) {
-                        btn = (UIButton *)subview;
-                        break;
-                    }
-                }
-                if (btn != nil) {
-                    [btn sendActionsForControlEvents:UIControlEventTouchUpInside];
+                NSError *pickerError = nil;
+                if ([BroadcastPickerHelper presentSystemPickerWithError:&pickerError]) {
                     resolve(nil);
                 } else {
-                    reject(@"picker_button_not_found", @"RPSystemBroadcastPickerView button not found", nil);
+                    reject(@"picker_button_not_found", pickerError.localizedDescription, pickerError);
                 }
             }];
     } else {
