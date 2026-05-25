@@ -31,12 +31,10 @@ static NSString *const kBroadcastPickerErrorDomain = @"BroadcastPickerHelper";
 
     if (btn == nil) {
         if (error) {
-            *error = [NSError errorWithDomain:kBroadcastPickerErrorDomain
-                                         code:1
-                                     userInfo:@{
-                                         NSLocalizedDescriptionKey :
-                                             @"RPSystemBroadcastPickerView button not found"
-                                     }];
+            *error = [NSError
+                errorWithDomain:kBroadcastPickerErrorDomain
+                           code:1
+                       userInfo:@{NSLocalizedDescriptionKey : @"RPSystemBroadcastPickerView button not found"}];
         }
         return NO;
     }
