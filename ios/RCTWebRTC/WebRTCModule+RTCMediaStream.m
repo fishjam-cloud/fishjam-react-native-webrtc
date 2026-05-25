@@ -229,6 +229,55 @@ RCT_EXPORT_METHOD(getDisplayMedia
 }
 
 /**
+ * Presents the iOS system `RPSystemBroadcastPickerView` programmatically.
+ * When no broadcast is active, this opens the extension picker. When a
+ * broadcast is active, it opens the system "Stop Broadcast" sheet — letting
+ * the user end the broadcast via `broadcastFinished()` instead of the
+ * host-initiated socket close that forces the extension to call
+ * `finishBroadcastWithError(_:)` and surface an error dialog.
+ */
+RCT_EXPORT_METHOD(presentBroadcastPicker : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
+#if TARGET_OS_TV || TARGET_OS_OSX
+    reject(@"unsupported_platform", @"presentBroadcastPicker is not supported on this platform", nil);
+    return;
+#else
+
+#if TARGET_IPHONE_SIMULATOR
+    reject(@"unsupported_platform", @"presentBroadcastPicker is not supported on the simulator", nil);
+    return;
+#endif
+
+    if (@available(iOS 12, *)) {
+        [self.bridge.uiManager
+            addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+                NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
+                NSString *preferredExtension = infoDictionary[@"RTCScreenSharingExtension"];
+
+                RPSystemBroadcastPickerView *view = [[RPSystemBroadcastPickerView alloc] init];
+                view.preferredExtension = preferredExtension;
+                view.showsMicrophoneButton = false;
+
+                UIButton *btn = nil;
+                for (UIView *subview in view.subviews) {
+                    if ([subview isKindOfClass:[UIButton class]]) {
+                        btn = (UIButton *)subview;
+                        break;
+                    }
+                }
+                if (btn != nil) {
+                    [btn sendActionsForControlEvents:UIControlEventTouchUpInside];
+                    resolve(nil);
+                } else {
+                    reject(@"picker_button_not_found", @"RPSystemBroadcastPickerView button not found", nil);
+                }
+            }];
+    } else {
+        reject(@"unsupported_version", @"presentBroadcastPicker requires iOS 12 or later", nil);
+    }
+#endif
+}
+
+/**
  * Implements {@code getUserMedia}. Note that at this point constraints have
  * been normalized and permissions have been granted. The constraints only
  * contain keys for which permissions have already been granted, that is,
