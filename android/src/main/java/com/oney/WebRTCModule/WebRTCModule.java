@@ -136,6 +136,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     public void invalidate() {
         super.invalidate();
         audioOutputManager.stopObserving();
+        getUserMediaImpl.dispose();
     }
 
     @NonNull

@@ -475,7 +475,8 @@ class GetUserMediaImpl {
         VideoTrack track = pcFactory.createVideoTrack(id, videoSource);
 
         track.setEnabled(true);
-        tracks.put(id, new TrackPrivate(track, videoSource, videoCaptureController, surfaceTextureHelper, isCameraCapture));
+        tracks.put(id,
+                new TrackPrivate(track, videoSource, videoCaptureController, surfaceTextureHelper, isCameraCapture));
 
         videoCaptureController.startCapture();
 
@@ -555,14 +556,12 @@ class GetUserMediaImpl {
         private boolean disposed;
 
         public TrackPrivate(MediaStreamTrack track, MediaSource mediaSource,
-                AbstractVideoCaptureController videoCaptureController,
-                SurfaceTextureHelper surfaceTextureHelper) {
+                AbstractVideoCaptureController videoCaptureController, SurfaceTextureHelper surfaceTextureHelper) {
             this(track, mediaSource, videoCaptureController, surfaceTextureHelper, false);
         }
 
         public TrackPrivate(MediaStreamTrack track, MediaSource mediaSource,
-                AbstractVideoCaptureController videoCaptureController,
-                SurfaceTextureHelper surfaceTextureHelper,
+                AbstractVideoCaptureController videoCaptureController, SurfaceTextureHelper surfaceTextureHelper,
                 boolean reusableSTH) {
             this.track = track;
             this.mediaSource = mediaSource;
@@ -601,6 +600,20 @@ class GetUserMediaImpl {
                 track.dispose();
                 disposed = true;
             }
+        }
+    }
+
+    /**
+     * Releases resources held by this instance.  Must be called when the owning
+     * {@link WebRTCModule} is invalidated (e.g. React Native JS reload) so that
+     * the reusable camera EGL context and its GL thread are not kept alive for
+     * the rest of the process lifetime.
+     */
+    void dispose() {
+        if (reusableCameraSTH != null) {
+            reusableCameraSTH.stopListening();
+            reusableCameraSTH.dispose();
+            reusableCameraSTH = null;
         }
     }
 

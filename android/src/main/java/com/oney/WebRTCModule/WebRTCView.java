@@ -623,7 +623,8 @@ public class WebRTCView extends ViewGroup {
      * view is attached to a window, even when the track becomes {@code null} (camera off).  This
      * avoids the pattern of calling {@code SurfaceViewRenderer.release()} on camera-off and
      * {@code SurfaceViewRenderer.init()} on camera-on, which each time allocates a new EGL context
-     * from Android's finite per-process pool 
+     * from Android's finite per-process pool and can produce:
+     *   {@code android.opengl.GLException: Failed to create EGL context: 0x3000}
      * {@code release()} is only called from {@link #onDetachedFromWindow()}.
      *
      * @param videoTrack The {@code VideoTrack} to be rendered by this
