@@ -43,6 +43,10 @@ public class WebRTCForegroundService extends Service {
         String channelName = intent.getStringExtra("channelName");
         String notificationTitle = intent.getStringExtra("notificationTitle");
         String notificationContent = intent.getStringExtra("notificationContent");
+        String importance = intent.getStringExtra("importance");
+        if (importance == null) {
+            importance = "high";
+        }
         int[] foregroundServiceTypesArray = intent.getIntArrayExtra("foregroundServiceTypes");
 
         if (channelId == null || channelName == null || notificationTitle == null || notificationContent == null) {
@@ -56,18 +60,33 @@ public class WebRTCForegroundService extends Service {
             }
         }
 
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
+        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        }
+        PendingIntent pendingIntent = launchIntent == null
+                ? null
+                : PendingIntent.getActivity(
+                        this, 0, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, channelId)
                                             .setContentTitle(notificationTitle)
                                             .setContentText(notificationContent)
                                             .setContentIntent(pendingIntent)
                                             .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                            .setPriority(builderPriorityFor(importance))
                                             .build();
 
-        createNotificationChannel(channelId, channelName);
+        createNotificationChannel(channelId, channelName, importance);
         startForegroundWithNotification(notification, foregroundServiceType);
+    }
+
+    private static int channelImportanceFor(String importance) {
+        return "low".equals(importance) ? NotificationManager.IMPORTANCE_LOW : NotificationManager.IMPORTANCE_HIGH;
+    }
+
+    private static int builderPriorityFor(String importance) {
+        return "low".equals(importance) ? NotificationCompat.PRIORITY_LOW : NotificationCompat.PRIORITY_HIGH;
     }
 
     private void startForegroundWithNotification(Notification notification, int foregroundServiceType) {
@@ -78,13 +97,13 @@ public class WebRTCForegroundService extends Service {
         }
     }
 
-    private void createNotificationChannel(String channelId, String channelName) {
+    private void createNotificationChannel(String channelId, String channelName, String importance) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return;
         }
 
         NotificationChannel serviceChannel =
-                new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_HIGH);
+                new NotificationChannel(channelId, channelName, channelImportanceFor(importance));
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         if (notificationManager != null) {
             notificationManager.createNotificationChannel(serviceChannel);

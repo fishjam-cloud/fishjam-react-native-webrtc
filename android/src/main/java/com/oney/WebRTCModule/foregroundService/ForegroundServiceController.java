@@ -34,6 +34,7 @@ public class ForegroundServiceController {
                                                                       : "[PLACEHOLDER] Tap to return to the call.";
         String notificationContent = config.hasKey("notificationContent") ? config.getString("notificationContent")
                                                                           : "[PLACEHOLDER] Your video call is ongoing";
+        String importance = config.hasKey("importance") ? config.getString("importance") : "high";
 
         int[] foregroundServiceTypes = buildForegroundServiceTypes(enableCamera, enableMicrophone);
         if (foregroundServiceTypes.length == 0) {
@@ -49,6 +50,7 @@ public class ForegroundServiceController {
         serviceIntent.putExtra("channelName", channelName);
         serviceIntent.putExtra("notificationTitle", notificationTitle);
         serviceIntent.putExtra("notificationContent", notificationContent);
+        serviceIntent.putExtra("importance", importance);
         serviceIntent.putExtra("foregroundServiceTypes", foregroundServiceTypes);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

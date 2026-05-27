@@ -11,6 +11,16 @@ export type ForegroundServiceConfig = {
     channelName?: string;
     notificationTitle?: string;
     notificationContent?: string;
+    /**
+     * Notification channel importance. Defaults to `'high'` (heads-up popup with sound).
+     * Use `'low'` for a silent, persistent ongoing-call indicator.
+     *
+     * Note: Android binds the importance to the channel on first creation and ignores
+     * later changes for the same `channelId`. If you need to switch importance at
+     * runtime, use a distinct `channelId` per level (e.g. `"...channel.low"` vs
+     * `"...channel.high"`).
+     */
+    importance?: 'low' | 'high';
 };
 
 const requestNotificationsPermission = async () => {
@@ -36,6 +46,7 @@ const useForegroundServiceAndroid = ({
     channelName,
     notificationContent,
     notificationTitle,
+    importance,
 }: ForegroundServiceConfig) => {
     const [isConfigured, setIsConfigured] = useState(false);
 
@@ -51,6 +62,7 @@ const useForegroundServiceAndroid = ({
             channelName,
             notificationContent,
             notificationTitle,
+            importance,
         }).catch(console.error);
     }, [
         channelId,
@@ -61,6 +73,7 @@ const useForegroundServiceAndroid = ({
         isConfigured,
         notificationContent,
         notificationTitle,
+        importance,
     ]);
 
     useEffect(() => {
