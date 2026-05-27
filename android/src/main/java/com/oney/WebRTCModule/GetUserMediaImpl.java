@@ -608,8 +608,16 @@ class GetUserMediaImpl {
      * {@link WebRTCModule} is invalidated (e.g. React Native JS reload) so that
      * the reusable camera EGL context and its GL thread are not kept alive for
      * the rest of the process lifetime.
+     *
+     * <p>All active {@link TrackPrivate} entries are disposed first so no capturer
+     * is left running against an already-disposed STH.
      */
     void dispose() {
+        for (TrackPrivate track : tracks.values()) {
+            track.dispose();
+        }
+        tracks.clear();
+
         if (reusableCameraSTH != null) {
             reusableCameraSTH.stopListening();
             reusableCameraSTH.dispose();
