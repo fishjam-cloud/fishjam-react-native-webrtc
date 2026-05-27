@@ -11,6 +11,7 @@ export type ForegroundServiceConfig = {
     channelName?: string;
     notificationTitle?: string;
     notificationContent?: string;
+    importance?: 'low' | 'high';
 };
 
 const requestNotificationsPermission = async () => {
@@ -36,6 +37,7 @@ const useForegroundServiceAndroid = ({
     channelName,
     notificationContent,
     notificationTitle,
+    importance,
 }: ForegroundServiceConfig) => {
     const [isConfigured, setIsConfigured] = useState(false);
 
@@ -51,6 +53,7 @@ const useForegroundServiceAndroid = ({
             channelName,
             notificationContent,
             notificationTitle,
+            importance,
         }).catch(console.error);
     }, [
         channelId,
@@ -61,6 +64,7 @@ const useForegroundServiceAndroid = ({
         isConfigured,
         notificationContent,
         notificationTitle,
+        importance,
     ]);
 
     useEffect(() => {
