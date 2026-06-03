@@ -258,6 +258,144 @@ RCT_EXPORT_METHOD(presentBroadcastPicker : (RCTPromiseResolveBlock)resolve rejec
 }
 
 /**
+ * Presents the system broadcast picker for the standalone livestream extension
+ * (reads the Info.plist key `RTCLivestreamExtension`). The livestream extension owns the
+ * whole WebRTC pipeline in-process so the stream survives the app being backgrounded.
+ */
+RCT_EXPORT_METHOD(presentLivestreamBroadcastPicker
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+#if TARGET_OS_TV || TARGET_OS_OSX
+    reject(@"unsupported_platform", @"presentLivestreamBroadcastPicker is not supported on this platform", nil);
+    return;
+#else
+
+#if TARGET_IPHONE_SIMULATOR
+    reject(@"unsupported_platform", @"presentLivestreamBroadcastPicker is not supported on the simulator", nil);
+    return;
+#endif
+
+    if (@available(iOS 12, *)) {
+        [self.bridge.uiManager
+            addUIBlock:^(__unused RCTUIManager *uiManager, NSDictionary<NSNumber *, UIView *> *viewRegistry) {
+                NSError *pickerError = nil;
+                if ([BroadcastPickerHelper presentLivestreamSystemPickerWithError:&pickerError]) {
+                    resolve(nil);
+                } else {
+                    reject(@"picker_button_not_found", pickerError.localizedDescription, pickerError);
+                }
+            }];
+    } else {
+        reject(@"unsupported_version", @"presentLivestreamBroadcastPicker requires iOS 12 or later", nil);
+    }
+#endif
+}
+
+/**
+ * Writes the WHIP credentials ({@code whipUrl}, {@code token}) into the shared App Group
+ * UserDefaults so the livestream broadcast extension can read them on broadcastStarted.
+ * The App Group id is resolved from the host app's Info.plist key `RTCAppGroupIdentifier`,
+ * the same key the in-call extension uses to locate the shared container.
+ */
+RCT_EXPORT_METHOD(writeLivestreamCredentials
+                  : (NSDictionary *)credentials resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    NSString *whipUrl = credentials[@"whipUrl"];
+    NSString *token = credentials[@"token"];
+
+    if (![whipUrl isKindOfClass:[NSString class]] || whipUrl.length == 0 ||
+        ![token isKindOfClass:[NSString class]] || token.length == 0) {
+        reject(@"invalid_credentials", @"writeLivestreamCredentials requires non-empty whipUrl and token", nil);
+        return;
+    }
+
+    NSString *appGroupIdentifier = [[NSBundle mainBundle] infoDictionary][@"RTCAppGroupIdentifier"];
+    if (![appGroupIdentifier isKindOfClass:[NSString class]] || appGroupIdentifier.length == 0) {
+        reject(@"missing_app_group",
+               @"RTCAppGroupIdentifier is not set in Info.plist. Enable livestream screensharing in the config plugin.",
+               nil);
+        return;
+    }
+
+    NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:appGroupIdentifier];
+    if (defaults == nil) {
+        reject(@"invalid_app_group", @"Could not open UserDefaults for the configured App Group", nil);
+        return;
+    }
+
+    [defaults setObject:whipUrl forKey:@"livestreamWhipUrl"];
+    [defaults setObject:token forKey:@"livestreamToken"];
+    // Force a flush so the extension (a separate process) sees the values immediately
+    // when it launches right after the broadcast picker is presented.
+    [defaults synchronize];
+    NSLog(@"[FishjamLivestream] wrote credentials to App Group '%@' (whipUrl=%@, tokenLength=%lu)",
+          appGroupIdentifier, whipUrl, (unsigned long)token.length);
+    resolve(nil);
+}
+
+#pragma mark - Livestream status channel
+
+// Mirrors the keys/notification the livestream broadcast extension writes/posts.
+static NSString *const kLivestreamStatusDarwinNotification = @"iOS_LivestreamStatusChanged";
+static NSString *const kLivestreamStatusKey = @"livestreamStatus";
+static NSString *const kLivestreamErrorKey = @"livestreamErrorMessage";
+static BOOL livestreamStatusObserverRegistered = NO;
+
+// Darwin notifications carry no payload — on the signal we read the latest status from the
+// shared App Group UserDefaults and emit it to JS. `observer` is the WebRTCModule instance.
+static void LivestreamStatusDarwinCallback(CFNotificationCenterRef center,
+                                           void *observer,
+                                           CFStringRef name,
+                                           const void *object,
+                                           CFDictionaryRef userInfo) {
+    WebRTCModule *module = (__bridge WebRTCModule *)observer;
+    [module emitLivestreamStatus];
+}
+
+- (NSDictionary *)currentLivestreamStatus {
+    NSString *appGroupIdentifier = [[NSBundle mainBundle] infoDictionary][@"RTCAppGroupIdentifier"];
+    NSString *status = @"idle";
+    NSString *errorMessage = nil;
+    if ([appGroupIdentifier isKindOfClass:[NSString class]] && appGroupIdentifier.length > 0) {
+        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:appGroupIdentifier];
+        NSString *stored = [defaults stringForKey:kLivestreamStatusKey];
+        if (stored.length > 0) {
+            status = stored;
+        }
+        errorMessage = [defaults stringForKey:kLivestreamErrorKey];
+    }
+    return @{@"status" : status, @"error" : errorMessage ?: (id)[NSNull null]};
+}
+
+- (void)emitLivestreamStatus {
+    [self sendEventWithName:kEventLivestreamStatusChanged body:[self currentLivestreamStatus]];
+}
+
+// Registers (idempotently) the Darwin observer for livestream status changes and returns the
+// current status so the caller can initialise its state.
+RCT_EXPORT_METHOD(startLivestreamStatusObserver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    if (!livestreamStatusObserverRegistered) {
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        (__bridge const void *)self,
+                                        LivestreamStatusDarwinCallback,
+                                        (__bridge CFStringRef)kLivestreamStatusDarwinNotification,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
+        livestreamStatusObserverRegistered = YES;
+    }
+    resolve([self currentLivestreamStatus]);
+}
+
+RCT_EXPORT_METHOD(getLivestreamStatus
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    resolve([self currentLivestreamStatus]);
+}
+
+/**
  * Implements {@code getUserMedia}. Note that at this point constraints have
  * been normalized and permissions have been granted. The constraints only
  * contain keys for which permissions have already been granted, that is,

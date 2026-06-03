@@ -89,10 +89,12 @@ class GetUserMediaImpl {
 
                     mediaProjectionPermissionResultData = data;
 
-                    ThreadUtils.runOnExecutor(() -> {
-                        MediaProjectionService.launch(activity);
-                        createScreenStream();
-                    });
+                    // Start capture only AFTER the mediaProjection foreground service is actually
+                    // running. Starting it earlier (the service start is async) makes MediaProjection
+                    // capture a black surface when no other foreground service is already up — e.g. a
+                    // screen-sharing-only session with no camera/microphone service.
+                    MediaProjectionService.launch(
+                            activity, () -> ThreadUtils.runOnExecutor(() -> createScreenStream()));
                 }
             }
         });
@@ -321,6 +323,12 @@ class GetUserMediaImpl {
             promise.reject(new RuntimeException("No current Activity."));
             return;
         }
+
+        // Screen capture needs a foreground service of type mediaProjection running before/while
+        // capturing — otherwise MediaProjection delivers black frames. Enable the dedicated
+        // MediaProjectionService here so the capture path is self-contained and does not depend on
+        // the app having started a separate foreground service (e.g. for microphone) first.
+        WebRTCModuleOptions.getInstance().enableMediaProjectionService = true;
 
         this.initializeConstraints(constraints);
 

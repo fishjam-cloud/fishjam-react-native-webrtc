@@ -24,11 +24,24 @@ public class MediaProjectionService extends Service {
 
     static final int NOTIFICATION_ID = new Random().nextInt(99999) + 10000;
 
+    // Runs once the service has actually entered the foreground (after startForeground in
+    // onStartCommand). MediaProjection capture must only begin after this, otherwise — with no
+    // pre-existing foreground service — the projection captures a black surface.
+    private static Runnable onForegroundedCallback;
+
     public static void launch(Context context) {
+        launch(context, null);
+    }
+
+    public static void launch(Context context, Runnable onForegrounded) {
         if (!WebRTCModuleOptions.getInstance().enableMediaProjectionService) {
             Log.w(TAG, "Media projection service launch aborted. enableMediaProjectionService is false");
+            // Legacy path (no dedicated media projection service): proceed immediately.
+            runCallback(onForegrounded);
             return;
         }
+
+        onForegroundedCallback = onForegrounded;
 
         MediaProjectionNotification.createNotificationChannel(context);
         Intent intent = new Intent(context, MediaProjectionService.class);
@@ -44,13 +57,24 @@ public class MediaProjectionService extends Service {
             // Avoid crashing due to ForegroundServiceStartNotAllowedException (API level 31).
             // See: https://developer.android.com/guide/components/foreground-services#background-start-restrictions
             Log.w(TAG, "Media projection service not started", e);
+            // Best effort: still attempt capture so the request doesn't hang.
+            onForegroundedCallback = null;
+            runCallback(onForegrounded);
             return;
         }
 
         if (componentName == null) {
             Log.w(TAG, "Media projection service not started");
+            onForegroundedCallback = null;
+            runCallback(onForegrounded);
         } else {
             Log.i(TAG, "Media projection service started");
+        }
+    }
+
+    private static void runCallback(Runnable callback) {
+        if (callback != null) {
+            callback.run();
         }
     }
 
@@ -76,6 +100,13 @@ public class MediaProjectionService extends Service {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         } else {
             startForeground(NOTIFICATION_ID, notification);
+        }
+
+        // Now that the mediaProjection foreground service is running, it's safe to start capture.
+        Runnable callback = onForegroundedCallback;
+        onForegroundedCallback = null;
+        if (callback != null) {
+            callback.run();
         }
 
         return START_NOT_STICKY;
