@@ -61,9 +61,13 @@ export function useLivestreamStatus(): LivestreamStatusInfo {
             .then(apply)
             .catch(() => {});
 
-        addListener(listener.current, 'livestreamStatusChanged', (event: unknown) => {
-            apply(event as LivestreamStatusInfo);
-        });
+        addListener(
+            listener.current,
+            'livestreamStatusChanged',
+            (event: unknown) => {
+                apply(event as LivestreamStatusInfo);
+            },
+        );
 
         const appStateSub = AppState.addEventListener('change', (state) => {
             if (state === 'active') {

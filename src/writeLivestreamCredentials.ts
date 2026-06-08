@@ -19,7 +19,9 @@ export interface LivestreamCredentials {
  *
  * iOS only. No-op on non-iOS platforms.
  */
-export default function writeLivestreamCredentials(credentials: LivestreamCredentials): Promise<void> {
+export default function writeLivestreamCredentials(
+    credentials: LivestreamCredentials,
+): Promise<void> {
     if (Platform.OS !== 'ios') {
         return Promise.resolve();
     }

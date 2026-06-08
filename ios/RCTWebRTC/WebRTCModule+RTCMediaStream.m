@@ -304,8 +304,8 @@ RCT_EXPORT_METHOD(writeLivestreamCredentials
     NSString *whipUrl = credentials[@"whipUrl"];
     NSString *token = credentials[@"token"];
 
-    if (![whipUrl isKindOfClass:[NSString class]] || whipUrl.length == 0 ||
-        ![token isKindOfClass:[NSString class]] || token.length == 0) {
+    if (![whipUrl isKindOfClass:[NSString class]] || whipUrl.length == 0 || ![token isKindOfClass:[NSString class]] ||
+        token.length == 0) {
         reject(@"invalid_credentials", @"writeLivestreamCredentials requires non-empty whipUrl and token", nil);
         return;
     }
@@ -409,9 +409,7 @@ RCT_EXPORT_METHOD(startLivestreamStatusObserver
     resolve([self currentLivestreamStatus]);
 }
 
-RCT_EXPORT_METHOD(getLivestreamStatus
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getLivestreamStatus : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
     resolve([self currentLivestreamStatus]);
 }
 

@@ -61,7 +61,9 @@ import {
     useLivestreamStatus,
 } from './useLivestreamStatus';
 import { Event, EventTarget } from './vendor/event-target-shim';
-import writeLivestreamCredentials, { type LivestreamCredentials } from './writeLivestreamCredentials';
+import writeLivestreamCredentials, {
+    type LivestreamCredentials,
+} from './writeLivestreamCredentials';
 
 Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 
