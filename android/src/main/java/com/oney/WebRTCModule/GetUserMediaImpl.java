@@ -470,7 +470,15 @@ class GetUserMediaImpl {
         videoCaptureController.setCapturerEventsListener(eventsEmitter);
 
         VideoSource videoSource = pcFactory.createVideoSource(videoCapturer.isScreencast());
-        videoCapturer.initialize(surfaceTextureHelper, reactContext, videoSource.getCapturerObserver());
+        CapturerObserver capturerObserver = videoSource.getCapturerObserver();
+        if (videoCapturer.isScreencast()) {
+            // Screen capture only emits a frame when the screen content changes, so on a static
+            // screen the encoder can't satisfy a keyframe request (PLI) from a newly-joined viewer.
+            // Repeat the last frame at a minimum cadence so keyframes stay available. Runs on the
+            // SurfaceTextureHelper handler thread (where frames are delivered).
+            capturerObserver = new FrameRepeatingCapturerObserver(capturerObserver, surfaceTextureHelper.getHandler());
+        }
+        videoCapturer.initialize(surfaceTextureHelper, reactContext, capturerObserver);
 
         VideoTrack track = pcFactory.createVideoTrack(id, videoSource);
 
