@@ -40,5 +40,6 @@ static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaSt
 
 - (RTCMediaStream *)streamForReactTag:(NSString *)reactTag;
 - (void)removeAudioRouteObserver;
+- (void)removeLivestreamStatusObserver;
 
 @end

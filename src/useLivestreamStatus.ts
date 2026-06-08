@@ -13,6 +13,7 @@ const { WebRTCModule } = NativeModules;
  * - `streaming`  the peer connection is connected and media is flowing
  * - `failed`     the broadcast ended because of an error (see `error`)
  * - `stopped`    the broadcast finished normally
+ * - `unsupported` livestream screen-share is not available on this platform (non-iOS)
  */
 export type LivestreamStatus =
     | 'idle'
@@ -20,7 +21,8 @@ export type LivestreamStatus =
     | 'connecting'
     | 'streaming'
     | 'failed'
-    | 'stopped';
+    | 'stopped'
+    | 'unsupported';
 
 export interface LivestreamStatusInfo {
     status: LivestreamStatus;
@@ -36,10 +38,12 @@ export interface LivestreamStatusInfo {
  * backgrounded app cannot receive Darwin notifications live, the status is also
  * re-read whenever the app returns to the foreground.
  *
- * On non-iOS platforms this always returns `{ status: 'idle', error: null }`.
+ * On non-iOS platforms this always returns `{ status: 'unsupported', error: null }`.
  */
 export function useLivestreamStatus(): LivestreamStatusInfo {
-    const [status, setStatus] = useState<LivestreamStatus>('idle');
+    const [status, setStatus] = useState<LivestreamStatus>(
+        Platform.OS === 'ios' ? 'idle' : 'unsupported',
+    );
     const [error, setError] = useState<string | null>(null);
     const listener = useRef({});
 

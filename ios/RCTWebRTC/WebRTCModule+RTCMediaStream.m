@@ -329,8 +329,6 @@ RCT_EXPORT_METHOD(writeLivestreamCredentials
     // Force a flush so the extension (a separate process) sees the values immediately
     // when it launches right after the broadcast picker is presented.
     [defaults synchronize];
-    NSLog(@"[FishjamLivestream] wrote credentials to App Group '%@' (whipUrl=%@, tokenLength=%lu)",
-          appGroupIdentifier, whipUrl, (unsigned long)token.length);
     resolve(nil);
 }
 
@@ -340,7 +338,10 @@ RCT_EXPORT_METHOD(writeLivestreamCredentials
 static NSString *const kLivestreamStatusDarwinNotification = @"iOS_LivestreamStatusChanged";
 static NSString *const kLivestreamStatusKey = @"livestreamStatus";
 static NSString *const kLivestreamErrorKey = @"livestreamErrorMessage";
-static BOOL livestreamStatusObserverRegistered = NO;
+// Per-instance flag (via associated object) tracking whether this module registered the Darwin
+// observer. Tied to the instance — not process-static — so it is correctly torn down and re-created
+// across bridge reloads. See removeLivestreamStatusObserver / -dealloc in WebRTCModule.m.
+static void *LivestreamStatusObserverKey = &LivestreamStatusObserverKey;
 
 // Darwin notifications carry no payload — on the signal we read the latest status from the
 // shared App Group UserDefaults and emit it to JS. `observer` is the WebRTCModule instance.
@@ -363,28 +364,47 @@ static void LivestreamStatusDarwinCallback(CFNotificationCenterRef center,
         if (stored.length > 0) {
             status = stored;
         }
-        errorMessage = [defaults stringForKey:kLivestreamErrorKey];
+        if ([status isEqualToString:@"failed"]) {
+            errorMessage = [defaults stringForKey:kLivestreamErrorKey];
+        }
     }
     return @{@"status" : status, @"error" : errorMessage ?: (id)[NSNull null]};
 }
 
 - (void)emitLivestreamStatus {
-    [self sendEventWithName:kEventLivestreamStatusChanged body:[self currentLivestreamStatus]];
+    // The Darwin callback fires on an arbitrary run loop; marshal onto the module worker queue so
+    // event emission follows the same threading as the rest of the module's event delegates.
+    dispatch_async(self.workerQueue, ^{
+        [self sendEventWithName:kEventLivestreamStatusChanged body:[self currentLivestreamStatus]];
+    });
 }
 
-// Registers (idempotently) the Darwin observer for livestream status changes and returns the
-// current status so the caller can initialise its state.
+// Removes the Darwin observer registered by startLivestreamStatusObserver, if any. Must run before
+// the module deallocs, otherwise the notify center keeps a dangling pointer to a freed instance and
+// fires into it on the next status change (use-after-free). Wired into -dealloc in WebRTCModule.m.
+- (void)removeLivestreamStatusObserver {
+    if (objc_getAssociatedObject(self, LivestreamStatusObserverKey)) {
+        CFNotificationCenterRemoveObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                           (__bridge const void *)self,
+                                           (__bridge CFStringRef)kLivestreamStatusDarwinNotification,
+                                           NULL);
+        objc_setAssociatedObject(self, LivestreamStatusObserverKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+// Registers (idempotently, per instance) the Darwin observer for livestream status changes and
+// returns the current status so the caller can initialise its state.
 RCT_EXPORT_METHOD(startLivestreamStatusObserver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
-    if (!livestreamStatusObserverRegistered) {
+    if (!objc_getAssociatedObject(self, LivestreamStatusObserverKey)) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         (__bridge const void *)self,
                                         LivestreamStatusDarwinCallback,
                                         (__bridge CFStringRef)kLivestreamStatusDarwinNotification,
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
-        livestreamStatusObserverRegistered = YES;
+        objc_setAssociatedObject(self, LivestreamStatusObserverKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     resolve([self currentLivestreamStatus]);
 }

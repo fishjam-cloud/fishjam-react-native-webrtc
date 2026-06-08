@@ -27,7 +27,13 @@ public class MediaProjectionService extends Service {
     // Runs once the service has actually entered the foreground (after startForeground in
     // onStartCommand). MediaProjection capture must only begin after this, otherwise — with no
     // pre-existing foreground service — the projection captures a black surface.
-    private static Runnable onForegroundedCallback;
+    //
+    // A Runnable cannot be passed through the start Intent, so this is handed off via a static
+    // field: written on the caller thread in launch(), read on the main thread in onStartCommand().
+    // `volatile` provides the happens-before visibility for that cross-thread handoff. This relies
+    // on a single active screen-share session at a time — an invariant GetUserMediaImpl already
+    // enforces by rejecting concurrent getDisplayMedia calls with "Another operation is pending."
+    private static volatile Runnable onForegroundedCallback;
 
     public static void launch(Context context) {
         launch(context, null);
