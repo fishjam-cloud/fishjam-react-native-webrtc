@@ -7,6 +7,8 @@
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
 
+#import <WebRTC/RTCAudioSession.h>
+
 #import "H264BackgroundSafeEncoderFactory.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModule.h"
@@ -19,6 +21,10 @@
 }
 
 - (void)dealloc {
+#if DEBUG && !TARGET_OS_OSX
+    // TEMP: audio-session contention diagnostics. Remove after FCE audio-recovery investigation.
+    [[RTCAudioSession sharedInstance] removeDelegate:(id<RTCAudioSessionDelegate>)self];
+#endif
     [self removeAudioRouteObserver];
 
     [_localTracks removeAllObjects];
@@ -87,6 +93,13 @@
         dispatch_queue_attr_t attributes =
             dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, -1);
         _workerQueue = dispatch_queue_create("WebRTCModule.queue", attributes);
+
+#if DEBUG && !TARGET_OS_OSX
+        // TEMP: audio-session contention diagnostics. Logs every RTCAudioSession event (interruptions,
+        // route changes, failed setActive) under the [AudioDbg] tag. Remove after the FCE audio-recovery
+        // investigation. Implemented in WebRTCModule+RTCAudioSession.m.
+        [[RTCAudioSession sharedInstance] addDelegate:(id<RTCAudioSessionDelegate>)self];
+#endif
     }
 
     return self;
