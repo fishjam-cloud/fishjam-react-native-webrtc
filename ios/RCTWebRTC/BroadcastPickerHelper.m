@@ -5,13 +5,22 @@
 #import <UIKit/UIKit.h>
 
 static NSString *const kRTCScreenSharingExtensionKey = @"RTCScreenSharingExtension";
+static NSString *const kRTCLivestreamExtensionKey = @"RTCLivestreamExtension";
 static NSString *const kBroadcastPickerErrorDomain = @"BroadcastPickerHelper";
 
 @implementation BroadcastPickerHelper
 
 + (BOOL)presentSystemPickerWithError:(NSError **)error {
+    return [self presentSystemPickerForExtensionKey:kRTCScreenSharingExtensionKey error:error];
+}
+
++ (BOOL)presentLivestreamSystemPickerWithError:(NSError **)error {
+    return [self presentSystemPickerForExtensionKey:kRTCLivestreamExtensionKey error:error];
+}
+
++ (BOOL)presentSystemPickerForExtensionKey:(NSString *)extensionKey error:(NSError **)error {
     NSDictionary *infoDictionary = [[NSBundle mainBundle] infoDictionary];
-    NSString *preferredExtension = infoDictionary[kRTCScreenSharingExtensionKey];
+    NSString *preferredExtension = infoDictionary[extensionKey];
 
     RPSystemBroadcastPickerView *view = [[RPSystemBroadcastPickerView alloc] init];
     view.preferredExtension = preferredExtension;

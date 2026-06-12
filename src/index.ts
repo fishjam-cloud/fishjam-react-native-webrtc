@@ -48,13 +48,22 @@ import {
     type AudioOutputChangedInfo,
 } from './audioOutputManager';
 import presentBroadcastPicker from './presentBroadcastPicker';
+import presentLivestreamBroadcastPicker from './presentLivestreamBroadcastPicker';
 import { useAudioOutput, type UseAudioOutputResult } from './useAudioOutput';
 import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
 import {
     type ForegroundServiceConfig,
     useForegroundService,
 } from './useForegroundService';
+import {
+    type LivestreamStatus,
+    type LivestreamStatusInfo,
+    useLivestreamStatus,
+} from './useLivestreamStatus';
 import { Event, EventTarget } from './vendor/event-target-shim';
+import writeLivestreamCredentials, {
+    type LivestreamCredentials,
+} from './writeLivestreamCredentials';
 
 Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 
@@ -93,6 +102,7 @@ export {
     mediaDevices,
     permissions,
     presentBroadcastPicker,
+    presentLivestreamBroadcastPicker,
     registerGlobals,
     startPIP,
     stopPIP,
@@ -101,9 +111,14 @@ export {
     useCallKitService,
     useForegroundService,
     useAudioOutput,
+    useLivestreamStatus,
+    writeLivestreamCredentials,
     type CallKitAction,
     type CallKitConfig,
     type ForegroundServiceConfig,
+    type LivestreamCredentials,
+    type LivestreamStatus,
+    type LivestreamStatusInfo,
     type UseAudioOutputResult,
 };
 

@@ -29,6 +29,7 @@ const NATIVE_EVENTS = [
     'mediaStreamTrackEnded',
     'callKitActionPerformed',
     'audioOutputChanged',
+    'livestreamStatusChanged',
 ];
 
 const eventEmitter = new EventEmitter();

@@ -20,6 +20,7 @@
 
 - (void)dealloc {
     [self removeAudioRouteObserver];
+    [self removeLivestreamStatusObserver];
 
     [_localTracks removeAllObjects];
     _localTracks = nil;
@@ -129,7 +130,8 @@ RCT_EXPORT_MODULE();
         kEventPeerConnectionOnRemoveTrack,
         kEventPeerConnectionOnTrack,
         kEventCallKitActionPerformed,
-        kEventAudioOutputChanged
+        kEventAudioOutputChanged,
+        kEventLivestreamStatusChanged
     ];
 }
 
