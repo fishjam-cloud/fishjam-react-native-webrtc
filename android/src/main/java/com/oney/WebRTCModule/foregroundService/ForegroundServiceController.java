@@ -53,7 +53,7 @@ public class ForegroundServiceController {
 
     // Called by WebRTCForegroundService after startForeground() completes.
     public void onServiceForegrounded() {
-        if (this != null && this.foregroundedFuture != null) {
+        if (this.foregroundedFuture != null) {
             this.foregroundedFuture.complete(null);
         }
     }
