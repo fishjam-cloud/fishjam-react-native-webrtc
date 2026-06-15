@@ -90,10 +90,10 @@ class GetUserMediaImpl {
 
                     mediaProjectionPermissionResultData = data;
 
-                    ThreadUtils.runOnExecutor(() -> {
+                    new Thread(() -> {
                         ForegroundServiceController.getInstance().onScreenShareStarted(activity);
-                        createScreenStream();
-                    });
+                        ThreadUtils.runOnExecutor(GetUserMediaImpl.this::createScreenStream);
+                    }).start();
                 }
             }
         });

@@ -90,7 +90,7 @@ public class ForegroundServiceController {
             foregroundedFuture = future;
             applyState();
         }
-        
+
         // Block until WebRTCForegroundService.startForeground() completes (or timeout).
         // This prevents createScreenStream() from calling getMediaProjection() before the
         // mediaProjection FGS type is active.
@@ -108,10 +108,11 @@ public class ForegroundServiceController {
     }
 
     private void applyState() {
+        boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
         int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested,
-                screenSharingAllowed && screenShareActive);
+                screenShareNeedsService);
 
-        if (types.length == 0) {
+        if (types.length == 0 && !screenShareNeedsService) {
             Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
             reactContext.stopService(serviceIntent);
             return;
@@ -132,7 +133,11 @@ public class ForegroundServiceController {
                 reactContext.startService(serviceIntent);
             }
         } catch (RuntimeException e) {
-            Log.e(TAG, "Failed to start foreground service: " + e.getMessage());
+            Log.e(TAG, "Failed to start foreground service", e);
+            CompletableFuture<Void> f = foregroundedFuture;
+            if (f != null && !f.isDone()) {
+                f.complete(null);
+            }
         }
     }
 
