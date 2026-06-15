@@ -75,6 +75,7 @@ public class WebRTCForegroundService extends Service {
                                             .setContentIntent(pendingIntent)
                                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                                             .setPriority(builderPriorityFor(importance))
+                                            .setOnlyAlertOnce(true)
                                             .build();
 
         createNotificationChannel(channelId, channelName, importance);
@@ -95,6 +96,7 @@ public class WebRTCForegroundService extends Service {
         } else {
             startForeground(FOREGROUND_SERVICE_ID, notification);
         }
+        ForegroundServiceController.onServiceForegrounded();
     }
 
     private void createNotificationChannel(String channelId, String channelName, String importance) {

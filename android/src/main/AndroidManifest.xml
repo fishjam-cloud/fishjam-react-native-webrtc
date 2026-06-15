@@ -2,10 +2,4 @@
           package="com.oney.WebRTCModule"
           xmlns:tools="http://schemas.android.com/tools"
     >
-    <application>
-        <service
-                android:name=".MediaProjectionService"
-                android:foregroundServiceType="mediaProjection">
-        </service>
-    </application>
 </manifest>
