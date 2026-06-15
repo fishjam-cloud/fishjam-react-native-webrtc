@@ -96,7 +96,7 @@ public class WebRTCForegroundService extends Service {
         } else {
             startForeground(FOREGROUND_SERVICE_ID, notification);
         }
-        ForegroundServiceController.onServiceForegrounded();
+        ForegroundServiceController.getInstance().onServiceForegrounded();
     }
 
     private void createNotificationChannel(String channelId, String channelName, String importance) {
