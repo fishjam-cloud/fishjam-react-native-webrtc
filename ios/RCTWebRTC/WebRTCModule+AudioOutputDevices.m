@@ -164,10 +164,8 @@ RCT_EXPORT_METHOD(getCurrentAudioOutput : (RCTPromiseResolveBlock)resolve reject
     resolve([device isEqual:[NSNull null]] ? nil : device);
 }
 
-RCT_EXPORT_METHOD(overrideAudioOutput
-                  : (NSString *)output resolver
-                  : (RCTPromiseResolveBlock)resolve rejecter
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(overrideAudioOutput : (NSString *)output resolver : (RCTPromiseResolveBlock)
+                      resolve rejecter : (RCTPromiseRejectBlock)reject) {
     [self ensureAudioRouteObserver];
     NSError *error = nil;
     AVAudioSession *session = [AVAudioSession sharedInstance];

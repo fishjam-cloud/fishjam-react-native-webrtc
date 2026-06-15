@@ -67,7 +67,7 @@ public class WebRTCForegroundService extends Service {
         PendingIntent pendingIntent = launchIntent == null
                 ? null
                 : PendingIntent.getActivity(
-                        this, 0, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                          this, 0, launchIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Notification notification = new NotificationCompat.Builder(this, channelId)
                                             .setContentTitle(notificationTitle)

@@ -109,8 +109,7 @@ public class ForegroundServiceController {
 
     private void applyState() {
         boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
-        int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested,
-                screenShareNeedsService);
+        int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested, screenShareNeedsService);
 
         if (types.length == 0 && !screenShareNeedsService) {
             Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
@@ -141,8 +140,8 @@ public class ForegroundServiceController {
         }
     }
 
-    private int[] buildForegroundServiceTypes(boolean enableCamera, boolean enableMicrophone,
-            boolean enableScreenSharing) {
+    private int[] buildForegroundServiceTypes(
+            boolean enableCamera, boolean enableMicrophone, boolean enableScreenSharing) {
         List<Integer> serviceTypes = new ArrayList<>();
 
         if (enableCamera && hasPermission(Manifest.permission.CAMERA)) {
