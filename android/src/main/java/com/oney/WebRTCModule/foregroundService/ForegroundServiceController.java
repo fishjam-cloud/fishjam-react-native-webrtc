@@ -35,6 +35,7 @@ public class ForegroundServiceController {
     private String notificationTitle = "[PLACEHOLDER] Tap to return to the call.";
     private String notificationContent = "[PLACEHOLDER] Your video call is ongoing";
     private String importance = "high";
+    private boolean onlyAlertOnce = true;
 
     private volatile CompletableFuture<Void> foregroundedFuture;
 
@@ -68,6 +69,7 @@ public class ForegroundServiceController {
         if (config.hasKey("notificationTitle")) notificationTitle = config.getString("notificationTitle");
         if (config.hasKey("notificationContent")) notificationContent = config.getString("notificationContent");
         if (config.hasKey("importance")) importance = config.getString("importance");
+        if (config.hasKey("onlyAlertOnce")) onlyAlertOnce = config.getBoolean("onlyAlertOnce");
 
         applyState();
         promise.resolve(null);
@@ -77,6 +79,7 @@ public class ForegroundServiceController {
         cameraRequested = false;
         microphoneRequested = false;
         screenSharingAllowed = false;
+        screenShareActive = false;
         applyState();
         promise.resolve(null);
     }
@@ -122,6 +125,7 @@ public class ForegroundServiceController {
         serviceIntent.putExtra("notificationTitle", notificationTitle);
         serviceIntent.putExtra("notificationContent", notificationContent);
         serviceIntent.putExtra("importance", importance);
+        serviceIntent.putExtra("onlyAlertOnce", onlyAlertOnce);
         serviceIntent.putExtra("foregroundServiceTypes", types);
 
         try {

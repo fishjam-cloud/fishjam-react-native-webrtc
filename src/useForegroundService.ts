@@ -21,6 +21,7 @@ export type ForegroundServiceConfig = {
      * `"...channel.high"`).
      */
     importance?: 'low' | 'high';
+    onlyAlertOnce?: boolean;
 };
 
 const requestNotificationsPermission = async () => {
@@ -47,6 +48,7 @@ const useForegroundServiceAndroid = ({
     notificationContent,
     notificationTitle,
     importance,
+    onlyAlertOnce,
 }: ForegroundServiceConfig) => {
     const [isConfigured, setIsConfigured] = useState(false);
 
@@ -63,6 +65,7 @@ const useForegroundServiceAndroid = ({
             notificationContent,
             notificationTitle,
             importance,
+            onlyAlertOnce,
         }).catch(console.error);
     }, [
         channelId,
@@ -74,6 +77,7 @@ const useForegroundServiceAndroid = ({
         notificationContent,
         notificationTitle,
         importance,
+        onlyAlertOnce,
     ]);
 
     useEffect(() => {
