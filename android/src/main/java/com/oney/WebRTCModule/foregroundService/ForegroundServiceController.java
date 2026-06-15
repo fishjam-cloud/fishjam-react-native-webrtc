@@ -110,6 +110,8 @@ public class ForegroundServiceController {
     }
 
     private void applyState() {
+        if (reactContext == null) return;
+
         boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
         int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested, screenShareNeedsService);
 
