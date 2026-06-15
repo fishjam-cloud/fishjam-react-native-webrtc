@@ -155,8 +155,10 @@
 #endif
 }
 
-RCT_EXPORT_METHOD(getDisplayMedia : (NSDictionary *)constraints resolver : (RCTPromiseResolveBlock)
-                      resolve rejecter : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(getDisplayMedia
+                  : (NSDictionary *)constraints resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
 #if TARGET_OS_TV
     reject(@"unsupported_platform", @"tvOS is not supported", nil);
     return;
@@ -260,8 +262,9 @@ RCT_EXPORT_METHOD(presentBroadcastPicker : (RCTPromiseResolveBlock)resolve rejec
  * (reads the Info.plist key `RTCLivestreamExtension`). The livestream extension owns the
  * whole WebRTC pipeline in-process so the stream survives the app being backgrounded.
  */
-RCT_EXPORT_METHOD(presentLivestreamBroadcastPicker : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)
-                      reject) {
+RCT_EXPORT_METHOD(presentLivestreamBroadcastPicker
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
 #if TARGET_OS_TV || TARGET_OS_OSX
     reject(@"unsupported_platform", @"presentLivestreamBroadcastPicker is not supported on this platform", nil);
     return;
@@ -294,8 +297,10 @@ RCT_EXPORT_METHOD(presentLivestreamBroadcastPicker : (RCTPromiseResolveBlock)res
  * The App Group id is resolved from the host app's Info.plist key `RTCAppGroupIdentifier`,
  * the same key the in-call extension uses to locate the shared container.
  */
-RCT_EXPORT_METHOD(writeLivestreamCredentials : (NSDictionary *)credentials resolver : (RCTPromiseResolveBlock)
-                      resolve rejecter : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(writeLivestreamCredentials
+                  : (NSDictionary *)credentials resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
     NSString *whipUrl = credentials[@"whipUrl"];
     NSString *token = credentials[@"token"];
 
@@ -389,8 +394,9 @@ static void LivestreamStatusDarwinCallback(CFNotificationCenterRef center,
 
 // Registers (idempotently, per instance) the Darwin observer for livestream status changes and
 // returns the current status so the caller can initialise its state.
-RCT_EXPORT_METHOD(startLivestreamStatusObserver : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)
-                      reject) {
+RCT_EXPORT_METHOD(startLivestreamStatusObserver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
     if (!objc_getAssociatedObject(self, LivestreamStatusObserverKey)) {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         (__bridge const void *)self,
@@ -414,8 +420,10 @@ RCT_EXPORT_METHOD(getLivestreamStatus : (RCTPromiseResolveBlock)resolve rejecter
  * if audio permission was not granted, there will be no "audio" key in
  * the constraints dictionary.
  */
-RCT_EXPORT_METHOD(getUserMedia : (NSDictionary *)constraints successCallback : (RCTResponseSenderBlock)
-                      successCallback errorCallback : (RCTResponseSenderBlock)errorCallback) {
+RCT_EXPORT_METHOD(getUserMedia
+                  : (NSDictionary *)constraints successCallback
+                  : (RCTResponseSenderBlock)successCallback errorCallback
+                  : (RCTResponseSenderBlock)errorCallback) {
 #if TARGET_OS_TV
     errorCallback(@[ @"PlatformNotSupported", @"getUserMedia is not supported on tvOS." ]);
     return;
@@ -560,8 +568,10 @@ RCT_EXPORT_METHOD(mediaStreamCreate : (nonnull NSString *)streamID) {
     self.localStreams[streamID] = mediaStream;
 }
 
-RCT_EXPORT_METHOD(mediaStreamAddTrack : (nonnull NSString *)streamID : (nonnull NSNumber *)pcId : (nonnull NSString *)
-                      trackID) {
+RCT_EXPORT_METHOD(mediaStreamAddTrack
+                  : (nonnull NSString *)streamID
+                  : (nonnull NSNumber *)pcId
+                  : (nonnull NSString *)trackID) {
     RTCMediaStream *mediaStream = self.localStreams[streamID];
     if (mediaStream == nil) {
         return;
@@ -582,8 +592,10 @@ RCT_EXPORT_METHOD(mediaStreamAddTrack : (nonnull NSString *)streamID : (nonnull 
     }
 }
 
-RCT_EXPORT_METHOD(mediaStreamRemoveTrack : (nonnull NSString *)streamID : (nonnull NSNumber *)
-                      pcId : (nonnull NSString *)trackID) {
+RCT_EXPORT_METHOD(mediaStreamRemoveTrack
+                  : (nonnull NSString *)streamID
+                  : (nonnull NSNumber *)pcId
+                  : (nonnull NSString *)trackID) {
     RTCMediaStream *mediaStream = self.localStreams[streamID];
     if (mediaStream == nil) {
         return;
@@ -643,8 +655,11 @@ RCT_EXPORT_METHOD(mediaStreamTrackSetEnabled : (nonnull NSNumber *)pcId : (nonnu
 #endif
 }
 
-RCT_EXPORT_METHOD(mediaStreamTrackApplyConstraints : (nonnull NSString *)trackID : (NSDictionary *)
-                      constraints : (RCTPromiseResolveBlock)resolve : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(mediaStreamTrackApplyConstraints
+                  : (nonnull NSString *)trackID
+                  : (NSDictionary *)constraints
+                  : (RCTPromiseResolveBlock)resolve
+                  : (RCTPromiseRejectBlock)reject) {
 #if TARGET_OS_TV
     reject(@"unsupported_platform", @"tvOS is not supported", nil);
     return;
@@ -682,8 +697,9 @@ RCT_EXPORT_METHOD(mediaStreamTrackSetVolume : (nonnull NSNumber *)pcId : (nonnul
     }
 }
 
-RCT_EXPORT_METHOD(mediaStreamTrackSetVideoEffects : (nonnull NSString *)trackID names : (nonnull NSArray<NSString *> *)
-                      names) {
+RCT_EXPORT_METHOD(mediaStreamTrackSetVideoEffects
+                  : (nonnull NSString *)trackID names
+                  : (nonnull NSArray<NSString *> *)names) {
     RTCMediaStreamTrack *track = self.localTracks[trackID];
     if (track == nil) {
         return;
