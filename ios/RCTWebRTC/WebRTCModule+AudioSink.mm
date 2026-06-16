@@ -9,36 +9,67 @@
 // This is the ONLY shim header the feature code touches.
 #import "AudioSinkShim/NativeAudioTrackBridge.h"
 
-#include <map>
-#include <string>
+#include <cstdint>
+#include <vector>
 
 #pragma mark - Native audio sink
 
 namespace {
 
 // Receives raw PCM from a remote WebRTC audio track on a WebRTC worker thread.
-// Phase 1: log only. Phase 2 will batch + forward frames to JS.
+// Batches ~100 ms of int16 PCM, then forwards it to JS as a base64 event.
 class AudioFrameSink : public webrtc::AudioTrackSinkInterface {
  public:
-  explicit AudioFrameSink(NSString *trackId) : trackId_(trackId) {}
+  AudioFrameSink(__weak WebRTCModule *module, NSNumber *pcId, NSString *trackId)
+      : module_(module), pcId_(pcId), trackId_(trackId) {}
 
   void OnData(const void *audio_data,
               int bits_per_sample,
               int sample_rate,
               size_t number_of_channels,
               size_t number_of_frames) override {
-    // Throttle logging so we don't flood — print ~once per second.
-    if ((++callbackCount_ % 100) == 0) {
-      RCTLogInfo(@"[AudioSink] track=%@ frames=%zu channels=%zu bits=%d rate=%d "
-                 @"(callbacks=%llu)",
-                 trackId_, number_of_frames, number_of_channels,
-                 bits_per_sample, sample_rate, callbackCount_);
+    // POC assumes 16-bit PCM (verified: 48kHz mono int16). Skip anything else.
+    if (bits_per_sample != 16 || audio_data == nullptr) {
+      return;
     }
+
+    const int16_t *samples = static_cast<const int16_t *>(audio_data);
+    const size_t sampleCount = number_of_frames * number_of_channels;
+    buffer_.insert(buffer_.end(), samples, samples + sampleCount);
+
+    // Flush roughly every 100 ms of audio (sampleRate/10 frames per channel).
+    const size_t framesPerFlush = static_cast<size_t>(sample_rate) / 10;
+    const size_t samplesPerFlush = framesPerFlush * number_of_channels;
+    if (buffer_.size() < samplesPerFlush) {
+      return;
+    }
+
+    WebRTCModule *module = module_;
+    if (module == nil) {
+      buffer_.clear();
+      return;
+    }
+
+    NSData *pcm = [NSData dataWithBytes:buffer_.data()
+                                length:buffer_.size() * sizeof(int16_t)];
+    buffer_.clear();
+
+    NSString *base64 = [pcm base64EncodedStringWithOptions:0];
+    [module sendEventWithName:kEventAudioTrackData
+                         body:@{
+                           @"pcId" : pcId_,
+                           @"trackId" : trackId_,
+                           @"sampleRate" : @(sample_rate),
+                           @"channels" : @(number_of_channels),
+                           @"data" : base64,
+                         }];
   }
 
  private:
+  __weak WebRTCModule *module_;
+  NSNumber *pcId_;
   NSString *trackId_;
-  unsigned long long callbackCount_ = 0;
+  std::vector<int16_t> buffer_;
 };
 
 }  // namespace
@@ -86,7 +117,7 @@ RCT_EXPORT_METHOD(startAudioExtraction
     return;
   }
 
-  AudioFrameSink *sink = new AudioFrameSink(trackId);
+  AudioFrameSink *sink = new AudioFrameSink(self, pcId, trackId);
   nativeAudioTrack->AddSink(sink);
   sinks[trackId] = [NSValue valueWithPointer:sink];
   RCTLogInfo(@"[AudioSink] startAudioExtraction: attached sink to %@", trackId);
