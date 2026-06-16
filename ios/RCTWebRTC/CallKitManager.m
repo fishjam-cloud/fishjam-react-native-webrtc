@@ -70,6 +70,39 @@
                 }];
 }
 
+- (void)reportIncomingCallWithDisplayName:(NSString *)displayName isVideo:(BOOL)isVideo {
+    if (self.currentCallUUID != nil) {
+        NSLog(@"[CallKitManager] Call already in progress");
+        return;
+    }
+    
+    NSUUID *uuid = [NSUUID UUID];
+    self.currentCallUUID = uuid;
+    
+    CXCallUpdate *update = [[CXCallUpdate alloc] init];
+    update.remoteHandle = [[CXHandle alloc] initWithType:CXHandleTypeGeneric value:displayName];
+    update.localizedCallerName = displayName;
+    update.hasVideo = isVideo;
+    update.supportsHolding = NO;
+    update.supportsGrouping = NO;
+    update.supportsUngrouping = NO;
+    update.supportsDTMF = NO;
+    
+    __weak typeof(self) weakSelf = self;
+    [self.provider reportNewIncomingCallWithUUID:uuid
+                                          update:update
+                                      completion:^(NSError *_Nullable error) {
+                                          if (error) {
+                                              NSLog(@"[CallKitManager] Failed to report incoming call: %@",
+                                                    error.localizedDescription);
+                                              weakSelf.currentCallUUID = nil;
+                                              if (weakSelf.onCallFailed) {
+                                                  weakSelf.onCallFailed(error.localizedDescription);
+                                              }
+                                          }
+                                      }];
+}
+
 - (void)endCall {
     if (self.currentCallUUID == nil) {
         NSLog(@"[CallKitManager] No active call to end");
@@ -116,6 +149,9 @@
 }
 
 - (void)provider:(CXProvider *)provider performAnswerCallAction:(CXAnswerCallAction *)action {
+    if (self.onCallAnswered) {
+        self.onCallAnswered();
+    }
     [action fulfill];
 }
 

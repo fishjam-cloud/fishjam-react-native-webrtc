@@ -8,6 +8,7 @@ typedef void (^CallKitBoolCallback)(BOOL);
 @interface CallKitManager : NSObject<CXProviderDelegate>
 
 @property(nonatomic, copy) CallKitVoidCallback onCallStarted;
+@property(nonatomic, copy) CallKitVoidCallback onCallAnswered;
 @property(nonatomic, copy) CallKitVoidCallback onCallEnded;
 @property(nonatomic, copy) CallKitStringCallback onCallFailed;
 @property(nonatomic, copy) CallKitBoolCallback onCallMuted;
@@ -15,6 +16,7 @@ typedef void (^CallKitBoolCallback)(BOOL);
 @property(nonatomic, readonly) BOOL hasActiveCall;
 
 - (void)startCallWithDisplayName:(NSString *)displayName isVideo:(BOOL)isVideo;
+- (void)reportIncomingCallWithDisplayName:(NSString *)displayName isVideo:(BOOL)isVideo;
 - (void)endCall;
 
 @end

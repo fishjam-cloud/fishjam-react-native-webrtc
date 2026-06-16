@@ -9,6 +9,7 @@ export type CallKitConfig = {
 
 export type CallKitAction = {
     started?: undefined;
+    answer?: undefined;
     ended?: undefined;
     failed?: string;
     muted?: boolean;
@@ -22,6 +23,17 @@ export async function startCallKitSession(
         return;
     }
     await WebRTCModule.startCallKitSession(config.displayName, config.isVideo);
+}
+
+export async function reportIncomingCall(
+    displayName: string,
+    isVideo: boolean,
+): Promise<void> {
+    if (Platform.OS !== 'ios') {
+        return;
+    }
+
+    await WebRTCModule.reportIncomingCall(displayName, isVideo);
 }
 
 export async function endCallKitSession(): Promise<void> {

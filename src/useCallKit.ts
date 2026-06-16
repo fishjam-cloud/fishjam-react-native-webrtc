@@ -6,12 +6,14 @@ import {
     CallKitConfig,
     endCallKitSession,
     hasActiveCallKitSession,
-    startCallKitSession,
+    reportIncomingCall,
+    startCallKitSession
 } from './CallKit';
 import { addListener, removeListener } from './EventEmitter';
 
 export type UseCallKitResult = {
     startCallKitSession: (config: CallKitConfig) => Promise<void>;
+    reportIncomingCall: (displayName: string, isVideo: boolean) => Promise<void>;
     endCallKitSession: () => Promise<void>;
     getCallKitSessionStatus: () => Promise<boolean>;
 };
@@ -26,6 +28,15 @@ function useCallKitIos(): UseCallKitResult {
         }
     }, []);
 
+    const reportIncomingCallCb = useCallback(async (displayName: string, isVideo: boolean) => {
+        try {
+            await reportIncomingCall(displayName, isVideo);
+        } catch (error) {
+            console.error('Failed to report incoming CallKit session:', error);
+            throw error;
+        }
+    }, []);
+    
     const endCallKitSessionCb = useCallback(async () => {
         try {
             await endCallKitSession();
@@ -42,6 +53,7 @@ function useCallKitIos(): UseCallKitResult {
     return {
         startCallKitSession: startCallKitSessionCb,
         endCallKitSession: endCallKitSessionCb,
+        reportIncomingCall: reportIncomingCallCb,
         getCallKitSessionStatus,
     };
 }

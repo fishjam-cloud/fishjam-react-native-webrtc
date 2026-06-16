@@ -21,6 +21,9 @@ static void *CallKitManagerKey = &CallKitManagerKey;
     manager.onCallStarted = ^{
         [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"started" : [NSNull null]}];
     };
+    manager.onCallAnswered = ^{
+        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"answer" : [NSNull null]}];
+    };
     manager.onCallEnded = ^{
         [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"ended" : [NSNull null]}];
     };
@@ -53,6 +56,24 @@ RCT_EXPORT_METHOD(startCallKitSession
         resolve(nil);
     } @catch (NSException *exception) {
         reject(@"E_CALLKIT_START_FAILED", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_METHOD(reportIncomingCall
+                  : (NSString *)displayName isVideo
+                  : (BOOL)isVideo resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    if (displayName == nil || displayName.length == 0) {
+        reject(@"E_CALLKIT_INVALID_DISPLAY_NAME", @"displayName is required", nil);
+        return;
+    }
+    
+    @try {
+        [[self callKitManager] reportIncomingCallWithDisplayName:displayName isVideo:isVideo];
+        resolve(nil);
+    } @catch (NSException *exception) {
+        reject(@"E_CALLKIT_REPORT_INCOMING_FAILED", exception.reason, nil);
     }
 }
 
