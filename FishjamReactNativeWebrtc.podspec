@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
   s.platforms           = { :ios => '13.4', :osx => '10.13', :tvos => '16.0' }
 
   s.preserve_paths      = 'ios/**/*'
-  s.source_files        = 'ios/**/*.{h,m,swift}'
+  s.source_files        = 'ios/**/*.{h,m,mm,cpp,hpp,swift}'
   s.public_header_files = 'ios/**/*.h'
   s.swift_version       = '5.0'
   s.libraries           = 'c', 'sqlite3', 'stdc++'
