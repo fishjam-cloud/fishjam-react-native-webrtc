@@ -44,7 +44,7 @@ public class WebRTCForegroundService extends Service {
         String notificationTitle = intent.getStringExtra("notificationTitle");
         String notificationContent = intent.getStringExtra("notificationContent");
         String importance = intent.getStringExtra("importance");
-        boolean onlyAlertOnce = intent.getBooleanExtra("onlyAlertOnce", true);
+        boolean onlyAlertOnce = intent.getBooleanExtra("onlyAlertOnce", false);
         if (importance == null) {
             importance = "high";
         }

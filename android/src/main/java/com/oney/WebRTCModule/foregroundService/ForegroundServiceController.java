@@ -35,7 +35,7 @@ public class ForegroundServiceController {
     private String notificationTitle = "[PLACEHOLDER] Tap to return to the call.";
     private String notificationContent = "[PLACEHOLDER] Your video call is ongoing";
     private String importance = "high";
-    private boolean onlyAlertOnce = true;
+    private boolean onlyAlertOnce = false;
 
     private volatile CompletableFuture<Void> foregroundedFuture;
 
