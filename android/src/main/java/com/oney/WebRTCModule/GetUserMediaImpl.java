@@ -22,6 +22,7 @@ import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.oney.WebRTCModule.foregroundService.ForegroundServiceController;
 import com.oney.WebRTCModule.videoEffects.ProcessorProvider;
 import com.oney.WebRTCModule.videoEffects.VideoEffectProcessor;
 import com.oney.WebRTCModule.videoEffects.VideoFrameProcessor;
@@ -89,12 +90,10 @@ class GetUserMediaImpl {
 
                     mediaProjectionPermissionResultData = data;
 
-                    // Start capture only AFTER the mediaProjection foreground service is actually
-                    // running. Starting it earlier (the service start is async) makes MediaProjection
-                    // capture a black surface when no other foreground service is already up — e.g. a
-                    // screen-sharing-only session with no camera/microphone service.
-                    MediaProjectionService.launch(
-                            activity, () -> ThreadUtils.runOnExecutor(() -> createScreenStream()));
+                    new Thread(() -> {
+                        ForegroundServiceController.getInstance().onScreenShareStarted(activity);
+                        ThreadUtils.runOnExecutor(GetUserMediaImpl.this::createScreenStream);
+                    }).start();
                 }
             }
         });

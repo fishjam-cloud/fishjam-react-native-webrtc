@@ -1,49 +1,125 @@
 package com.oney.WebRTCModule.foregroundService;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.util.Log;
 
 import androidx.core.content.ContextCompat;
 
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
-import com.oney.WebRTCModule.WebRTCModuleOptions;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 public class ForegroundServiceController {
-    private final ReactApplicationContext reactContext;
+    private static final String TAG = ForegroundServiceController.class.getSimpleName();
 
-    public ForegroundServiceController(ReactApplicationContext reactContext) {
+    private static ForegroundServiceController instance;
+
+    private ReactApplicationContext reactContext;
+
+    private boolean cameraRequested = false;
+    private boolean microphoneRequested = false;
+    private boolean screenSharingAllowed = false;
+    private boolean screenShareActive = false;
+
+    private String channelId = "com.fishjam.foregroundservice.channel";
+    private String channelName = "Fishjam Notifications";
+    private String notificationTitle = "[PLACEHOLDER] Tap to return to the call.";
+    private String notificationContent = "[PLACEHOLDER] Your video call is ongoing";
+    private String importance = "high";
+    private boolean onlyAlertOnce = false;
+
+    private volatile CompletableFuture<Void> foregroundedFuture;
+
+    private ForegroundServiceController() {}
+
+    public static synchronized ForegroundServiceController getInstance() {
+        if (instance == null) {
+            instance = new ForegroundServiceController();
+        }
+        return instance;
+    }
+
+    public void setContext(ReactApplicationContext reactContext) {
         this.reactContext = reactContext;
     }
 
-    public void start(ReadableMap config, Promise promise) {
-        boolean enableCamera = config.hasKey("enableCamera") && config.getBoolean("enableCamera");
-        boolean enableMicrophone = config.hasKey("enableMicrophone") && config.getBoolean("enableMicrophone");
-        boolean enableScreenSharing = config.hasKey("enableScreenSharing") && config.getBoolean("enableScreenSharing");
+    // Called by WebRTCForegroundService after startForeground() completes.
+    public void onServiceForegrounded() {
+        if (this.foregroundedFuture != null) {
+            this.foregroundedFuture.complete(null);
+        }
+    }
 
-        String channelId =
-                config.hasKey("channelId") ? config.getString("channelId") : "com.fishjam.foregroundservice.channel";
-        String channelName = config.hasKey("channelName") ? config.getString("channelName") : "Fishjam Notifications";
-        String notificationTitle = config.hasKey("notificationTitle") ? config.getString("notificationTitle")
-                                                                      : "[PLACEHOLDER] Tap to return to the call.";
-        String notificationContent = config.hasKey("notificationContent") ? config.getString("notificationContent")
-                                                                          : "[PLACEHOLDER] Your video call is ongoing";
-        String importance = config.hasKey("importance") ? config.getString("importance") : "high";
+    public synchronized void start(ReadableMap config, Promise promise) {
+        cameraRequested = config.hasKey("enableCamera") && config.getBoolean("enableCamera");
+        microphoneRequested = config.hasKey("enableMicrophone") && config.getBoolean("enableMicrophone");
+        screenSharingAllowed = config.hasKey("enableScreenSharing") && config.getBoolean("enableScreenSharing");
 
-        int[] foregroundServiceTypes = buildForegroundServiceTypes(enableCamera, enableMicrophone);
-        if (foregroundServiceTypes.length == 0) {
-            stop(promise);
-            return;
+        if (config.hasKey("channelId")) channelId = config.getString("channelId");
+        if (config.hasKey("channelName")) channelName = config.getString("channelName");
+        if (config.hasKey("notificationTitle")) notificationTitle = config.getString("notificationTitle");
+        if (config.hasKey("notificationContent")) notificationContent = config.getString("notificationContent");
+        if (config.hasKey("importance")) importance = config.getString("importance");
+        if (config.hasKey("onlyAlertOnce")) onlyAlertOnce = config.getBoolean("onlyAlertOnce");
+
+        applyState();
+        promise.resolve(null);
+    }
+
+    public synchronized void stop(Promise promise) {
+        cameraRequested = false;
+        microphoneRequested = false;
+        screenSharingAllowed = false;
+        screenShareActive = false;
+        applyState();
+        promise.resolve(null);
+    }
+
+    // Called from GetUserMediaImpl after the user grants screen capture consent.
+    public void onScreenShareStarted(Context context) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        synchronized (this) {
+            screenShareActive = true;
+            foregroundedFuture = future;
+            applyState();
         }
 
-        WebRTCModuleOptions options = WebRTCModuleOptions.getInstance();
-        options.enableMediaProjectionService = enableScreenSharing;
+        // Block until WebRTCForegroundService.startForeground() completes (or timeout).
+        // This prevents createScreenStream() from calling getMediaProjection() before the
+        // mediaProjection FGS type is active.
+        try {
+            future.get(3, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            Log.w(TAG, "Timed out waiting for service to foreground with mediaProjection type");
+        }
+    }
+
+    // Called from ScreenCaptureController.dispose() when screen sharing stops.
+    public synchronized void onScreenShareStopped(Context context) {
+        screenShareActive = false;
+        applyState();
+    }
+
+    private void applyState() {
+        if (reactContext == null) return;
+
+        boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
+        int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested, screenShareNeedsService);
+
+        if (types.length == 0 && !screenShareNeedsService) {
+            Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
+            reactContext.stopService(serviceIntent);
+            return;
+        }
 
         Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
         serviceIntent.putExtra("channelId", channelId);
@@ -51,24 +127,26 @@ public class ForegroundServiceController {
         serviceIntent.putExtra("notificationTitle", notificationTitle);
         serviceIntent.putExtra("notificationContent", notificationContent);
         serviceIntent.putExtra("importance", importance);
-        serviceIntent.putExtra("foregroundServiceTypes", foregroundServiceTypes);
+        serviceIntent.putExtra("onlyAlertOnce", onlyAlertOnce);
+        serviceIntent.putExtra("foregroundServiceTypes", types);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            reactContext.startForegroundService(serviceIntent);
-        } else {
-            reactContext.startService(serviceIntent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                reactContext.startForegroundService(serviceIntent);
+            } else {
+                reactContext.startService(serviceIntent);
+            }
+        } catch (RuntimeException e) {
+            Log.e(TAG, "Failed to start foreground service", e);
+            CompletableFuture<Void> f = foregroundedFuture;
+            if (f != null && !f.isDone()) {
+                f.complete(null);
+            }
         }
-
-        promise.resolve(null);
     }
 
-    public void stop(Promise promise) {
-        Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
-        reactContext.stopService(serviceIntent);
-        promise.resolve(null);
-    }
-
-    private int[] buildForegroundServiceTypes(boolean enableCamera, boolean enableMicrophone) {
+    private int[] buildForegroundServiceTypes(
+            boolean enableCamera, boolean enableMicrophone, boolean enableScreenSharing) {
         List<Integer> serviceTypes = new ArrayList<>();
 
         if (enableCamera && hasPermission(Manifest.permission.CAMERA)) {
@@ -76,6 +154,9 @@ public class ForegroundServiceController {
         }
         if (enableMicrophone && hasPermission(Manifest.permission.RECORD_AUDIO)) {
             serviceTypes.add(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+        }
+        if (enableScreenSharing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            serviceTypes.add(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         }
 
         int[] result = new int[serviceTypes.size()];

@@ -44,6 +44,7 @@ public class WebRTCForegroundService extends Service {
         String notificationTitle = intent.getStringExtra("notificationTitle");
         String notificationContent = intent.getStringExtra("notificationContent");
         String importance = intent.getStringExtra("importance");
+        boolean onlyAlertOnce = intent.getBooleanExtra("onlyAlertOnce", false);
         if (importance == null) {
             importance = "high";
         }
@@ -75,6 +76,7 @@ public class WebRTCForegroundService extends Service {
                                             .setContentIntent(pendingIntent)
                                             .setSmallIcon(android.R.drawable.ic_dialog_info)
                                             .setPriority(builderPriorityFor(importance))
+                                            .setOnlyAlertOnce(onlyAlertOnce)
                                             .build();
 
         createNotificationChannel(channelId, channelName, importance);
@@ -95,6 +97,7 @@ public class WebRTCForegroundService extends Service {
         } else {
             startForeground(FOREGROUND_SERVICE_ID, notification);
         }
+        ForegroundServiceController.getInstance().onServiceForegrounded();
     }
 
     private void createNotificationChannel(String channelId, String channelName, String importance) {

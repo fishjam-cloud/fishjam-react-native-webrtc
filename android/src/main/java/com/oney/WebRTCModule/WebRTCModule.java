@@ -122,7 +122,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         mAudioDeviceModule = adm;
 
         getUserMediaImpl = new GetUserMediaImpl(this, reactContext);
-        foregroundServiceController = new ForegroundServiceController(reactContext);
+        foregroundServiceController = ForegroundServiceController.getInstance();
+        foregroundServiceController.setContext(reactContext);
         audioOutputManager = new AudioOutputManager(this, reactContext);
     }
 
@@ -137,6 +138,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         super.invalidate();
         audioOutputManager.stopObserving();
         getUserMediaImpl.dispose();
+        // prevent using stale context
+        foregroundServiceController.setContext(null);
     }
 
     @NonNull
