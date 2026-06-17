@@ -15,6 +15,8 @@ typedef void (^CallKitBoolCallback)(BOOL);
 @property(nonatomic, copy) CallKitBoolCallback onCallHeld;
 @property(nonatomic, readonly) BOOL hasActiveCall;
 
++ (instancetype)shared;
+
 - (void)startCallWithDisplayName:(NSString *)displayName isVideo:(BOOL)isVideo;
 - (void)reportIncomingCallWithDisplayName:(NSString *)displayName isVideo:(BOOL)isVideo;
 - (void)endCall;

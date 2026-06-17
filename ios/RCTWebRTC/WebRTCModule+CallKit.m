@@ -6,6 +6,8 @@
 
 #import "CallKitManager.h"
 
+#import "FishjamVoIPPush.h"
+
 static void *CallKitManagerKey = &CallKitManagerKey;
 
 @implementation WebRTCModule (CallKit)
@@ -16,7 +18,7 @@ static void *CallKitManagerKey = &CallKitManagerKey;
         return manager;
     }
 
-    manager = [[CallKitManager alloc] init];
+    manager = [CallKitManager shared];
     __weak typeof(self) weakSelf = self;
     manager.onCallStarted = ^{
         [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"started" : [NSNull null]}];
@@ -39,6 +41,34 @@ static void *CallKitManagerKey = &CallKitManagerKey;
 
     objc_setAssociatedObject(self, CallKitManagerKey, manager, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return manager;
+}
+
+-(void) startObserving {
+    [super startObserving];
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc addObserver:self selector:@selector(onVoIPTokenUpdated:) name:kFishjamVoIPTokenUpdatedNotification object:nil];
+    [nc addObserver:self selector:@selector(onVoIPIncomingPush:) name:kFishjamVoIPIncomingPushNotification object:nil];
+    
+    NSString *token = [FishjamVoIPPush shared].token;
+    if (token.length > 0) {
+        [self sendEventWithName:kEventCallKitActionPerformed body:@{@"registered": token}];
+    }
+}
+
+- (void)stopObserving {
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:kFishjamVoIPTokenUpdatedNotification object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self name:kFishjamVoIPIncomingPushNotification object:nil];
+    [super stopObserving];
+}
+
+- (void)onVoIPTokenUpdated:(NSNotification *)note {
+    NSString *token = note.userInfo[@"token"];
+    [self sendEventWithName:kEventCallKitActionPerformed body:@{@"registered" : token ?: @""}];
+}
+
+- (void)onVoIPIncomingPush:(NSNotification *)note {
+    NSDictionary *payload = note.userInfo[@"payload"];
+    [self sendEventWithName:kEventCallKitActionPerformed body:@{@"incoming" : payload ?: @{}}];
 }
 
 RCT_EXPORT_METHOD(startCallKitSession

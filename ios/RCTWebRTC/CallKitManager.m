@@ -11,6 +11,15 @@
 
 @implementation CallKitManager
 
++ (instancetype)shared {
+    static CallKitManager *sharedInstace = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sharedInstace = [[CallKitManager alloc] init];
+    });
+    return sharedInstace;
+}
+
 - (instancetype)init {
     self = [super init];
     if (self) {
