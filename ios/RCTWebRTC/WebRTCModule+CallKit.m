@@ -45,30 +45,29 @@ static void *CallKitManagerKey = &CallKitManagerKey;
 
 -(void) startObserving {
     [super startObserving];
-    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
-    [nc addObserver:self selector:@selector(onVoIPTokenUpdated:) name:kFishjamVoIPTokenUpdatedNotification object:nil];
-    [nc addObserver:self selector:@selector(onVoIPIncomingPush:) name:kFishjamVoIPIncomingPushNotification object:nil];
+    // we have to create callkitmanager singleton to be able to receive callbacks when call is answered/ended
+    [self callKitManager];
+    FishjamVoIPPush *push = [FishjamVoIPPush shared];
+    __weak typeof(self) weakSelf = self;
+    push.onTokenUpdated = ^(NSString *token) {a
+        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"registered": token}];
+    };
+    
+    push.onIncomingPush = ^(NSDictionary *payload) {
+        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"incoming": payload ?: @{}}];
+    };
     
     NSString *token = [FishjamVoIPPush shared].token;
     if (token.length > 0) {
-        [self sendEventWithName:kEventCallKitActionPerformed body:@{@"registered": token}];
+        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"registered": token}];
     }
 }
 
 - (void)stopObserving {
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:kFishjamVoIPTokenUpdatedNotification object:nil];
-    [[NSNotificationCenter defaultCenter] removeObserver:self name:kFishjamVoIPIncomingPushNotification object:nil];
+    FishjamVoIPPush *push = [FishjamVoIPPush shared];
+    push.onTokenUpdated = nil;
+    push.onIncomingPush = nil;
     [super stopObserving];
-}
-
-- (void)onVoIPTokenUpdated:(NSNotification *)note {
-    NSString *token = note.userInfo[@"token"];
-    [self sendEventWithName:kEventCallKitActionPerformed body:@{@"registered" : token ?: @""}];
-}
-
-- (void)onVoIPIncomingPush:(NSNotification *)note {
-    NSDictionary *payload = note.userInfo[@"payload"];
-    [self sendEventWithName:kEventCallKitActionPerformed body:@{@"incoming" : payload ?: @{}}];
 }
 
 RCT_EXPORT_METHOD(startCallKitSession

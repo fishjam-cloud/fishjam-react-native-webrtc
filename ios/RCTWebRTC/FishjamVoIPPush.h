@@ -1,10 +1,9 @@
 #import <Foundation/Foundation.h>
 
-extern NSString *const kFishjamVoIPTokenUpdatedNotification;
-extern NSString *const kFishjamVoIPIncomingPushNotification;
-
 @interface FishjamVoIPPush : NSObject
 @property (nonatomic, copy, readonly, nullable) NSString *token;
+@property(nonatomic, copy) void (^onTokenUpdated)(NSString *token);
+@property(nonatomic, copy) void (^onIncomingPush)(NSDictionary *payload);
 + (instancetype)shared;
 + (void)registerForVoIPPushes;
 @end

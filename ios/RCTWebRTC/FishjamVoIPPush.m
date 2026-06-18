@@ -2,9 +2,6 @@
 #import <PushKit/PushKit.h>
 #import "CallKitManager.h"
 
-NSString *const kFishjamVoIPTokenUpdatedNotification = @"FishjamVoIPTokenUpdated";
-NSString *const kFishjamVoIPIncomingPushNotification = @"FishjamVoIPIncomingPush";
-
 @interface FishjamVoIPPush () <PKPushRegistryDelegate>
 @property(nonatomic, strong) PKPushRegistry *registry;
 @property(nonatomic, copy, readwrite, nullable) NSString *token;
@@ -56,7 +53,9 @@ NSString *const kFishjamVoIPIncomingPushNotification = @"FishjamVoIPIncomingPush
     }
     self.token = tokenString;
     
-    [[NSNotificationCenter defaultCenter] postNotificationName:kFishjamVoIPTokenUpdatedNotification object:nil userInfo:@{@"token": tokenString}];
+    if (self.onTokenUpdated) {
+        self.onTokenUpdated(tokenString);
+    }
 }
 
 - (void)pushRegistry:(PKPushRegistry *)registry didInvalidatePushTokenForType:(PKPushType)type {
@@ -75,7 +74,9 @@ NSString *const kFishjamVoIPIncomingPushNotification = @"FishjamVoIPIncomingPush
 
     [[CallKitManager shared] reportIncomingCallWithDisplayName:displayName isVideo:isVideo];
     
-    [[NSNotificationCenter defaultCenter] postNotificationName:kFishjamVoIPIncomingPushNotification object:nil userInfo:@{@"payload": dict ?: @{}}];
+    if (self.onIncomingPush) {
+        self.onIncomingPush(dict ?: @{});
+    }
     
     completion();
 }
