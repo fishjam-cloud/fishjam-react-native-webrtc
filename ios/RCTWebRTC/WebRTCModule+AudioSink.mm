@@ -4,6 +4,12 @@
 #import <WebRTC/RTCAudioRenderer.h>
 #import <WebRTC/RTCAudioTrack.h>
 
+#if __has_include(<React/RCTCallInvoker.h>)
+#import <React/RCTCallInvoker.h>
+#define FJ_HAS_CALL_INVOKER 1
+#endif
+
+#import "FJAudioSinkJSI.h"
 #import "WebRTCModule.h"
 #import "WebRTCModule+RTCMediaStream.h"
 
@@ -71,9 +77,78 @@
 
 @end
 
+#pragma mark - FJAudioSinkBox
+
+// ObjC holder for the C++ shared_ptr<FJAudioSink>, stored on the module as an
+// associated object (category has no ivars). Keeps the C++ type out of headers.
+@interface FJAudioSinkBox : NSObject {
+   @public
+    std::shared_ptr<FJAudioSink> sink;
+}
+@end
+
+@implementation FJAudioSinkBox
+@end
+
 #pragma mark - WebRTCModule (AudioSink)
 
 @implementation WebRTCModule (AudioSink)
+
+// Lazily creates the FJAudioSinkBox + FJAudioSink from the JS CallInvoker.
+// Returns nil when no CallInvoker is available (old arch / no New Architecture).
+- (FJAudioSinkBox *)fj_audioSinkBox {
+#if FJ_HAS_CALL_INVOKER
+    static const void *kAudioSinkBoxKey = &kAudioSinkBoxKey;
+    FJAudioSinkBox *box = objc_getAssociatedObject(self, kAudioSinkBoxKey);
+    if (box != nil) {
+        return box;
+    }
+    RCTCallInvoker *invoker = self.callInvoker;
+    if (invoker == nil) {
+        return nil;
+    }
+    std::shared_ptr<facebook::react::CallInvoker> jsInvoker = [invoker callInvoker];
+    if (!jsInvoker) {
+        return nil;
+    }
+    box = [FJAudioSinkBox new];
+    box->sink = std::make_shared<FJAudioSink>(jsInvoker);
+    objc_setAssociatedObject(self, kAudioSinkBoxKey, box, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return box;
+#else
+    return nil;
+#endif
+}
+
+RCT_REMAP_METHOD(installAudioSinkJSI,
+                 installAudioSinkJSIWithResolver : (RCTPromiseResolveBlock)resolve
+                 rejecter : (RCTPromiseRejectBlock)reject) {
+    FJAudioSinkBox *box = [self fj_audioSinkBox];
+    if (box == nil) {
+        reject(@"E_NO_JSI", @"Audio extraction requires the New Architecture.", nil);
+        return;
+    }
+    if (box->sink->isInstalled()) {
+        resolve(@YES);
+        return;
+    }
+    box->sink->install([resolve]() { resolve(@YES); });
+}
+
+// ===== PHASE-2 TEMPORARY — DELETE IN PHASE 3 =====
+// Proves the JSI channel end-to-end: a dummy deliver should reach the registered
+// JS callback with an ArrayBuffer of byteLength 16. Debug-only.
+#if DEBUG
+RCT_EXPORT_METHOD(fjDebugTestDeliver) {
+    FJAudioSinkBox *box = [self fj_audioSinkBox];
+    if (!box || !box->sink->isInstalled()) {
+        return;
+    }
+    std::vector<uint8_t> bytes(16, 0xAB);  // 16 dummy bytes
+    box->sink->deliver(-1, @"debug-track", 16000, 1, "s16", std::move(bytes));
+}
+#endif
+// ===== END PHASE-2 TEMPORARY =====
 
 // trackId -> attached FJAudioSinkRenderer (associated object; category has no ivars).
 - (NSMutableDictionary<NSString *, FJAudioSinkRenderer *> *)audioRenderers {

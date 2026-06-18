@@ -24,10 +24,14 @@ Pod::Spec.new do |s|
   s.framework           = 'AudioToolbox','AVFoundation', 'CoreAudio', 'CoreGraphics', 'CoreVideo', 'GLKit', 'VideoToolbox'
   s.dependency          'React-Core'
   s.dependency          'FishjamWebRTC', '~> 124.0.2.0'
+  # JSI audio-sink channel deps (both are RN core, present on old + new arch).
+  s.dependency          'React-jsi'
+  s.dependency          'React-callinvoker'
 
   # miniaudio conversion-only build. MA_NO_* must be global across all TUs
   # (miniaudio is not ABI-compatible across differing configs).
   s.pod_target_xcconfig = {
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20',
     'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/ios/RCTWebRTC/vendor"',
     'GCC_PREPROCESSOR_DEFINITIONS' =>
       'MA_NO_DEVICE_IO=1 MA_NO_DECODING=1 MA_NO_ENCODING=1 MA_NO_GENERATION=1 ' \
