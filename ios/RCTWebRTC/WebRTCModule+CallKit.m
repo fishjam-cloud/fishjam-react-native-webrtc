@@ -6,7 +6,7 @@
 
 #import "CallKitManager.h"
 
-#import "FishjamVoIPPush.h"
+#import "WebRTCModule+PushKit.h"
 
 static void *CallKitManagerKey = &CallKitManagerKey;
 
@@ -43,30 +43,14 @@ static void *CallKitManagerKey = &CallKitManagerKey;
     return manager;
 }
 
--(void) startObserving {
+- (void)startObserving {
     [super startObserving];
-    // we have to create callkitmanager singleton to be able to receive callbacks when call is answered/ended
     [self callKitManager];
-    FishjamVoIPPush *push = [FishjamVoIPPush shared];
-    __weak typeof(self) weakSelf = self;
-    push.onTokenUpdated = ^(NSString *token) {a
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"registered": token}];
-    };
-    
-    push.onIncomingPush = ^(NSDictionary *payload) {
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"incoming": payload ?: @{}}];
-    };
-    
-    NSString *token = [FishjamVoIPPush shared].token;
-    if (token.length > 0) {
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"registered": token}];
-    }
+    [self startObservingPushKit];
 }
 
 - (void)stopObserving {
-    FishjamVoIPPush *push = [FishjamVoIPPush shared];
-    push.onTokenUpdated = nil;
-    push.onIncomingPush = nil;
+    [self stopObservingPushKit];
     [super stopObserving];
 }
 
