@@ -1,4 +1,4 @@
-#import "FJAudioSinkJSI.h"
+#include "FJAudioSinkJSI.h"
 
 namespace jsi = facebook::jsi;
 
@@ -33,12 +33,12 @@ void FJAudioSink::install(std::function<void()> onInstalled) {
 }
 
 void FJAudioSink::deliver(int pcId,
-                          NSString *trackId,
+                          const std::string &trackId,
                           int sampleRate,
                           int channels,
                           const char *format,
                           std::vector<uint8_t> bytes) {
-    std::string trackIdUtf8 = trackId.UTF8String;
+    std::string trackIdUtf8 = trackId;
     std::string formatUtf8 = format;
     std::weak_ptr<FJAudioSink> weakSelf = shared_from_this();
     jsInvoker_->invokeAsync([weakSelf, pcId, trackIdUtf8, formatUtf8, sampleRate, channels,

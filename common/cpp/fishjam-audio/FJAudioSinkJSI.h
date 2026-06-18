@@ -1,15 +1,14 @@
 // JSI channel for delivering converted PCM from native to JS. Installs a global
 // `__fishjamWebrtcSetAudioSink(handler)` that JS uses to register its callback;
-// batches are then delivered to that handler via the CallInvoker. ObjC++, C++20.
+// batches are then delivered to that handler via the CallInvoker. Pure C++20.
 #pragma once
 
 #ifdef __cplusplus
 
-#import <Foundation/Foundation.h>
-
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <ReactCommon/CallInvoker.h>
@@ -42,7 +41,7 @@ class FJAudioSink : public std::enable_shared_from_this<FJAudioSink> {
     // Delivers one already-converted PCM batch to the JS callback. `bytes` is
     // moved straight into the ArrayBuffer.
     void deliver(int pcId,
-                 NSString *trackId,
+                 const std::string &trackId,
                  int sampleRate,
                  int channels,
                  const char *format,

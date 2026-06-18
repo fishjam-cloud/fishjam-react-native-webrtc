@@ -172,7 +172,7 @@
     if (output.empty()) {
         return;
     }
-    box->sink->deliver(_pcId.intValue, _trackId, _outRate, _outChannels,
+    box->sink->deliver(_pcId.intValue, _trackId.UTF8String, _outRate, _outChannels,
                        _outFormat == ma_format_f32 ? "f32" : "s16", std::move(output));
 }
 
