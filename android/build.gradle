@@ -31,6 +31,11 @@ android {
 
 dependencies {
     implementation "com.facebook.react:react-android:+"
-    api 'org.jitsi:webrtc:124.+'
+    // TEMP (local test): patched WebRTC build with org.webrtc.AudioTrackSink (CL 471880).
+    // libs/libwebrtc.jar + src/main/jniLibs/arm64-v8a/libjingle_peerconnection_so.so are built
+    // locally from fishjam-cloud/webrtc@fishjam-m124-audio-sink. Revert to
+    //   api 'org.jitsi:webrtc:124.+'
+    // once the patched artifact is published.
+    api files('libs/libwebrtc.jar')
     implementation "androidx.core:core:1.7.0"
 }

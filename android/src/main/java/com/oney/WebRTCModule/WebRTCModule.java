@@ -62,6 +62,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     private final ForegroundServiceController foregroundServiceController;
     private final AudioOutputManager audioOutputManager;
 
+    // Audio extraction: trackId -> attached AudioTrackSink.
+    private final Map<String, AudioTrackSink> audioSinks = new HashMap<>();
+
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
 
@@ -946,6 +949,79 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
             ((AudioTrack) track).setVolume(volume);
         });
+    }
+
+    @ReactMethod
+    public void startAudioExtraction(int pcId, String id) {
+        ThreadUtils.runOnExecutor(() -> {
+            MediaStreamTrack track = getTrack(pcId, id);
+            if (!(track instanceof AudioTrack)) {
+                Log.d(TAG, "startAudioExtraction() no audio track for " + id);
+                return;
+            }
+            if (audioSinks.containsKey(id)) {
+                return;
+            }
+            AudioTrackSink sink = new PcmBatchingSink(pcId, id);
+            ((AudioTrack) track).addSink(sink);
+            audioSinks.put(id, sink);
+        });
+    }
+
+    @ReactMethod
+    public void stopAudioExtraction(int pcId, String id) {
+        ThreadUtils.runOnExecutor(() -> {
+            AudioTrackSink sink = audioSinks.remove(id);
+            if (sink == null) {
+                return;
+            }
+            MediaStreamTrack track = getTrack(pcId, id);
+            if (track instanceof AudioTrack) {
+                ((AudioTrack) track).removeSink(sink);
+            }
+        });
+    }
+
+    /**
+     * Batches ~100 ms of int16 PCM from a remote audio track (via the WebRTC
+     * AudioTrackSink) and forwards it to JS as a base64 {@code audioTrackData} event.
+     */
+    private class PcmBatchingSink implements AudioTrackSink {
+        private final int pcId;
+        private final String trackId;
+        private final java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+
+        PcmBatchingSink(int pcId, String trackId) {
+            this.pcId = pcId;
+            this.trackId = trackId;
+        }
+
+        @Override
+        public void onData(java.nio.ByteBuffer audioData, int bitsPerSample, int sampleRate,
+                int numberOfChannels, int numberOfFrames, long absoluteCaptureTimestampMs) {
+            if (bitsPerSample != 16) {
+                return;
+            }
+            byte[] chunk = new byte[audioData.remaining()];
+            audioData.get(chunk);
+            buffer.write(chunk, 0, chunk.length);
+
+            // Flush ~100 ms of audio: (sampleRate / 10) frames * channels * 2 bytes.
+            int bytesPerFlush = (sampleRate / 10) * numberOfChannels * 2;
+            if (buffer.size() < bytesPerFlush) {
+                return;
+            }
+            byte[] pcm = buffer.toByteArray();
+            buffer.reset();
+
+            WritableMap params = Arguments.createMap();
+            params.putInt("pcId", pcId);
+            params.putString("trackId", trackId);
+            params.putInt("sampleRate", sampleRate);
+            params.putInt("channels", numberOfChannels);
+            params.putString("data", android.util.Base64.encodeToString(pcm, android.util.Base64.NO_WRAP));
+            sendEvent("audioTrackData", params);
+        }
     }
 
     /**

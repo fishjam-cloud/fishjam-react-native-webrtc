@@ -1,148 +1,120 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
-#import <React/RCTLog.h>
+
+#import <WebRTC/RTCAudioRenderer.h>
+#import <WebRTC/RTCAudioTrack.h>
 
 #import "WebRTCModule.h"
 #import "WebRTCModule+RTCMediaStream.h"
 
-// Single entry point to the throwaway WebRTC ABI shim (see AudioSinkShim/).
-// This is the ONLY shim header the feature code touches.
-#import "AudioSinkShim/NativeAudioTrackBridge.h"
+#pragma mark - PCM batching renderer
 
-#include <cstdint>
-#include <vector>
+// Batches ~100 ms of int16 PCM from a remote audio track (via the WebRTC SDK
+// RTCAudioRenderer) and forwards it to JS as a base64 `audioTrackData` event.
+@interface FJAudioSinkRenderer : NSObject <RTC_OBJC_TYPE (RTCAudioRenderer)>
+- (instancetype)initWithModule:(WebRTCModule *)module
+                          pcId:(NSNumber *)pcId
+                       trackId:(NSString *)trackId;
+@end
 
-#pragma mark - Native audio sink
+@implementation FJAudioSinkRenderer {
+    __weak WebRTCModule *_module;
+    NSNumber *_pcId;
+    NSString *_trackId;
+    NSMutableData *_buffer;
+}
 
-namespace {
+- (instancetype)initWithModule:(WebRTCModule *)module
+                          pcId:(NSNumber *)pcId
+                       trackId:(NSString *)trackId {
+    if (self = [super init]) {
+        _module = module;
+        _pcId = pcId;
+        _trackId = trackId;
+        _buffer = [NSMutableData data];
+    }
+    return self;
+}
 
-// Receives raw PCM from a remote WebRTC audio track on a WebRTC worker thread.
-// Batches ~100 ms of int16 PCM, then forwards it to JS as a base64 event.
-class AudioFrameSink : public webrtc::AudioTrackSinkInterface {
- public:
-  AudioFrameSink(__weak WebRTCModule *module, NSNumber *pcId, NSString *trackId)
-      : module_(module), pcId_(pcId), trackId_(trackId) {}
+- (void)renderPCMBuffer:(const void *)audioData
+          bitsPerSample:(int)bitsPerSample
+             sampleRate:(int)sampleRate
+       numberOfChannels:(size_t)numberOfChannels
+         numberOfFrames:(size_t)numberOfFrames {
+    if (bitsPerSample != 16 || audioData == NULL || numberOfChannels == 0) {
+        return;
+    }
+    [_buffer appendBytes:audioData length:numberOfFrames * numberOfChannels * sizeof(int16_t)];
 
-  void OnData(const void *audio_data,
-              int bits_per_sample,
-              int sample_rate,
-              size_t number_of_channels,
-              size_t number_of_frames) override {
-    // POC assumes 16-bit PCM (verified: 48kHz mono int16). Skip anything else.
-    if (bits_per_sample != 16 || audio_data == nullptr) {
-      return;
+    // Flush ~100 ms of audio: (sampleRate / 10) frames * channels * 2 bytes.
+    NSUInteger bytesPerFlush = (NSUInteger)(sampleRate / 10) * numberOfChannels * sizeof(int16_t);
+    if (_buffer.length < bytesPerFlush) {
+        return;
     }
 
-    const int16_t *samples = static_cast<const int16_t *>(audio_data);
-    const size_t sampleCount = number_of_frames * number_of_channels;
-    buffer_.insert(buffer_.end(), samples, samples + sampleCount);
-
-    // Flush roughly every 100 ms of audio (sampleRate/10 frames per channel).
-    const size_t framesPerFlush = static_cast<size_t>(sample_rate) / 10;
-    const size_t samplesPerFlush = framesPerFlush * number_of_channels;
-    if (buffer_.size() < samplesPerFlush) {
-      return;
-    }
-
-    WebRTCModule *module = module_;
+    WebRTCModule *module = _module;
     if (module == nil) {
-      buffer_.clear();
-      return;
+        _buffer.length = 0;
+        return;
     }
-
-    NSData *pcm = [NSData dataWithBytes:buffer_.data()
-                                length:buffer_.size() * sizeof(int16_t)];
-    buffer_.clear();
-
-    NSString *base64 = [pcm base64EncodedStringWithOptions:0];
+    NSString *base64 = [_buffer base64EncodedStringWithOptions:0];
+    _buffer.length = 0;
     [module sendEventWithName:kEventAudioTrackData
                          body:@{
-                           @"pcId" : pcId_,
-                           @"trackId" : trackId_,
-                           @"sampleRate" : @(sample_rate),
-                           @"channels" : @(number_of_channels),
+                           @"pcId" : _pcId,
+                           @"trackId" : _trackId,
+                           @"sampleRate" : @(sampleRate),
+                           @"channels" : @(numberOfChannels),
                            @"data" : base64,
                          }];
-  }
+}
 
- private:
-  __weak WebRTCModule *module_;
-  NSNumber *pcId_;
-  NSString *trackId_;
-  std::vector<int16_t> buffer_;
-};
-
-}  // namespace
+@end
 
 #pragma mark - WebRTCModule (AudioSink)
 
 @implementation WebRTCModule (AudioSink)
 
-// trackId (NSString) -> AudioFrameSink* wrapped in NSValue.
-// Stored as an associated object so the category needs no ivar.
-- (NSMutableDictionary<NSString *, NSValue *> *)audioSinks {
-  static const void *kAudioSinksKey = &kAudioSinksKey;
-  NSMutableDictionary *sinks = objc_getAssociatedObject(self, kAudioSinksKey);
-  if (sinks == nil) {
-    sinks = [NSMutableDictionary new];
-    objc_setAssociatedObject(self, kAudioSinksKey, sinks,
-                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-  }
-  return sinks;
+// trackId -> attached FJAudioSinkRenderer (associated object; category has no ivars).
+- (NSMutableDictionary<NSString *, FJAudioSinkRenderer *> *)audioRenderers {
+    static const void *kAudioRenderersKey = &kAudioRenderersKey;
+    NSMutableDictionary *renderers = objc_getAssociatedObject(self, kAudioRenderersKey);
+    if (renderers == nil) {
+        renderers = [NSMutableDictionary new];
+        objc_setAssociatedObject(self, kAudioRenderersKey, renderers, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return renderers;
 }
 
 RCT_EXPORT_METHOD(startAudioExtraction
                   : (nonnull NSNumber *)pcId trackId
                   : (nonnull NSString *)trackId) {
-  RTCMediaStreamTrack *track = [self trackForId:trackId pcId:pcId];
-  if (track == nil) {
-    RCTLogWarn(@"[AudioSink] startAudioExtraction: no track for id %@ (pc %@)",
-               trackId, pcId);
-    return;
-  }
-  if (![track.kind isEqualToString:@"audio"]) {
-    RCTLogWarn(@"[AudioSink] startAudioExtraction: track %@ is not audio", trackId);
-    return;
-  }
-
-  NSMutableDictionary<NSString *, NSValue *> *sinks = [self audioSinks];
-  if (sinks[trackId] != nil) {
-    RCTLogInfo(@"[AudioSink] startAudioExtraction: already extracting %@", trackId);
-    return;
-  }
-
-  webrtc::AudioTrackInterface *nativeAudioTrack = FJNativeAudioTrack(track);
-  if (nativeAudioTrack == nullptr) {
-    RCTLogWarn(@"[AudioSink] startAudioExtraction: no native track for %@", trackId);
-    return;
-  }
-
-  AudioFrameSink *sink = new AudioFrameSink(self, pcId, trackId);
-  nativeAudioTrack->AddSink(sink);
-  sinks[trackId] = [NSValue valueWithPointer:sink];
-  RCTLogInfo(@"[AudioSink] startAudioExtraction: attached sink to %@", trackId);
+    RTCMediaStreamTrack *track = [self trackForId:trackId pcId:pcId];
+    if (![track isKindOfClass:[RTC_OBJC_TYPE(RTCAudioTrack) class]]) {
+        return;
+    }
+    NSMutableDictionary *renderers = [self audioRenderers];
+    if (renderers[trackId] != nil) {
+        return;
+    }
+    FJAudioSinkRenderer *renderer = [[FJAudioSinkRenderer alloc] initWithModule:self pcId:pcId trackId:trackId];
+    [(RTC_OBJC_TYPE(RTCAudioTrack) *)track addRenderer:renderer];
+    renderers[trackId] = renderer;
 }
 
 RCT_EXPORT_METHOD(stopAudioExtraction
                   : (nonnull NSNumber *)pcId trackId
                   : (nonnull NSString *)trackId) {
-  NSMutableDictionary<NSString *, NSValue *> *sinks = [self audioSinks];
-  NSValue *boxed = sinks[trackId];
-  if (boxed == nil) {
-    return;
-  }
-  [sinks removeObjectForKey:trackId];
-
-  AudioFrameSink *sink = static_cast<AudioFrameSink *>([boxed pointerValue]);
-
-  // Detach from the track before deleting to avoid a dangling sink callback.
-  RTCMediaStreamTrack *track = [self trackForId:trackId pcId:pcId];
-  webrtc::AudioTrackInterface *nativeAudioTrack = FJNativeAudioTrack(track);
-  if (nativeAudioTrack != nullptr) {
-    nativeAudioTrack->RemoveSink(sink);
-  }
-  delete sink;
-  RCTLogInfo(@"[AudioSink] stopAudioExtraction: detached sink from %@", trackId);
+    NSMutableDictionary *renderers = [self audioRenderers];
+    FJAudioSinkRenderer *renderer = renderers[trackId];
+    if (renderer == nil) {
+        return;
+    }
+    [renderers removeObjectForKey:trackId];
+    RTCMediaStreamTrack *track = [self trackForId:trackId pcId:pcId];
+    if ([track isKindOfClass:[RTC_OBJC_TYPE(RTCAudioTrack) class]]) {
+        [(RTC_OBJC_TYPE(RTCAudioTrack) *)track removeRenderer:renderer];
+    }
 }
 
 @end
