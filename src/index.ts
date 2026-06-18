@@ -12,9 +12,9 @@ if (WebRTCModule === null) {
 }
 
 import {
-    addAudioDataListener,
     startAudioExtraction,
     stopAudioExtraction,
+    type AudioExtractionOptions,
     type AudioTrackData,
 } from './AudioExtraction';
 import { type CallKitAction, type CallKitConfig } from './CallKit';
@@ -109,7 +109,7 @@ export {
     useAudioOutput,
     startAudioExtraction,
     stopAudioExtraction,
-    addAudioDataListener,
+    type AudioExtractionOptions,
     type AudioTrackData,
     type CallKitAction,
     type CallKitConfig,
