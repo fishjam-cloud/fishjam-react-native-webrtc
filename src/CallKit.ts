@@ -14,8 +14,6 @@ export type CallKitAction = {
     failed?: string;
     muted?: boolean;
     held?: boolean;
-    registered?: string;
-    incoming?: Record<string, unknown>;
 };
 
 export async function startCallKitSession(

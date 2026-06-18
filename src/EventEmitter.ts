@@ -1,7 +1,7 @@
 import {
-    NativeModules,
-    NativeEventEmitter,
     EmitterSubscription,
+    NativeEventEmitter,
+    NativeModules,
 } from 'react-native';
 // @ts-ignore
 import EventEmitter from 'react-native/Libraries/vendor/emitter/EventEmitter';
