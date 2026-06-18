@@ -48,8 +48,7 @@ static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaSt
 - (RTCMediaStream *)streamForReactTag:(NSString *)reactTag;
 - (void)removeAudioRouteObserver;
 
-// Opaque audio-sink JSI box (defined in WebRTCModule+AudioSink.mm). Nil when no
-// CallInvoker is available (old arch). C++ type kept out of the public umbrella.
+// Opaque audio-sink box; nil when extraction is unsupported (old architecture).
 - (FJAudioSinkBox *)fj_audioSinkBox;
 
 @end

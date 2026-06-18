@@ -2,26 +2,19 @@
  * Remote audio extraction.
  *
  * Extracts a remote participant's audio from a WebRTC track, converts it to the
- * sample rate, channel layout, and format you ask for, and delivers it to your
- * code in steady batches. Use it to run audio processing on a remote peer's
- * voice — speech-to-text, voice-activity detection, recording, or level metering.
+ * sample rate, channels, and format you ask for, and delivers it in batches —
+ * for speech-to-text, voice-activity detection, recording, or metering.
  *
  * ```ts
- * // Start, asking for the audio format you want and receiving the batches.
  * await startAudioExtraction(
- *   remoteTrack,
+ *   track,
  *   { sampleRate: 16000, channels: 1, format: 'f32' },
- *   ({ data }) => {
- *     const samples = new Float32Array(data); // matches the requested 'f32'
- *     // …hand `samples` to your processor…
- *   },
+ *   ({ data }) => processor.feed(new Float32Array(data)),
  * );
- *
- * // Stop when finished.
- * stopAudioExtraction(remoteTrack);
+ * stopAudioExtraction(track);
  * ```
  *
- * Currently available on iOS with the New Architecture enabled.
+ * iOS, New Architecture only.
  *
  * @module AudioExtraction
  */
@@ -31,165 +24,108 @@ import type MediaStreamTrack from './MediaStreamTrack';
 
 const { WebRTCModule } = NativeModules;
 
-// The project's tsconfig sets `types: []`, so RN/Node globals aren't declared.
-// Mirror the `declare const global` convention used in index.ts, typed for the
-// JSI binding installed natively (see installAudioSinkJSI).
+// Installed natively once the JSI binding is in place (see installAudioSinkJSI).
 declare const global: {
-    __fishjamWebrtcSetAudioSink?: (cb: (d: AudioTrackData) => void) => void;
+    __fishjamWebrtcSetAudioSink?: (handler: (batch: AudioTrackData) => void) => void;
 };
 
-/**
- * The audio format you want {@link startAudioExtraction} to deliver. The track
- * audio is converted to match these settings. Sample rate, channels, and format
- * are required.
- */
+/** Output format for {@link startAudioExtraction}; the track audio is converted to match. */
 export type AudioExtractionOptions = {
-    /**
-     * Output sample rate in Hz (for example `16000`). Pass `0` to keep the
-     * track's original rate.
-     */
+    /** Output sample rate in Hz (e.g. `16000`); `0` keeps the source rate. */
     sampleRate: number;
     /** Output channels: `1` for mono, `2` for stereo. */
     channels: number;
-    /**
-     * Sample format of each batch:
-     * - `'f32'` — 32-bit float in `[-1, 1]`; read with `new Float32Array(data)`.
-     * - `'s16'` — 16-bit signed integer; read with `new Int16Array(data)`.
-     */
+    /** Sample format: `'f32'` (Float32, `[-1, 1]`) or `'s16'` (Int16, little-endian). */
     format: 'f32' | 's16';
-    /**
-     * Resampling quality when converting between sample rates: `'linear'`
-     * (default) is faster, `'high'` gives better audio quality at higher CPU
-     * cost. Has no effect when the output rate matches the source.
-     */
+    /** Resampling quality: `'linear'` (default, faster) or `'high'` (better, more CPU). */
     resampleQuality?: 'linear' | 'high';
-    /**
-     * Length of audio in each delivered batch, in milliseconds (default `100`).
-     * Larger values give fewer, larger batches with more latency; smaller
-     * values give more frequent, smaller batches.
-     */
+    /** Audio per delivered batch, in milliseconds (default `100`). */
     batchDurationMs?: number;
 };
 
-/**
- * A single batch of audio, passed to the callback you give
- * {@link startAudioExtraction}.
- */
+/** One batch of converted audio, passed to the {@link startAudioExtraction} callback. */
 export type AudioTrackData = {
-    /** Id of the peer connection the track belongs to. */
     pcId: number;
-    /** Id of the source audio track (the one you passed to start). */
     trackId: string;
-    /** Sample rate of this batch in Hz. */
     sampleRate: number;
-    /** Channel count. Samples are interleaved when there is more than one. */
     channels: number;
-    /** Sample format of `data`, matching the `format` you requested. */
     format: 'f32' | 's16';
-    /**
-     * The audio samples for this batch. Wrap it to read them:
-     * `new Float32Array(data)` for `'f32'`, `new Int16Array(data)` for `'s16'`.
-     */
+    /** Read with `new Float32Array(data)` for `'f32'`, `new Int16Array(data)` for `'s16'`. */
     data: ArrayBuffer;
 };
 
-// On the old architecture the native install may never call back (no
-// JSI-capable CallInvoker); bound the wait so we reject clearly instead of
-// hanging. Generous to survive a busy JS thread (e.g. model loading).
-const INSTALL_TIMEOUT_MS = 10000;
+// The old architecture has no JSI-capable invoker, so the install may never
+// resolve — cap the wait and reject rather than hang.
+const INSTALL_TIMEOUT_MS = 10_000;
 
+const handlers = new Map<string, (batch: AudioTrackData) => void>();
 let installPromise: Promise<void> | null = null;
-let sinkRegistered = false;
-const listeners = new Map<string, (d: AudioTrackData) => void>();
+let dispatcherRegistered = false;
 
 function peerConnectionId(track: MediaStreamTrack): number {
-    // Remote tracks carry the pcId; local tracks use -1 (see MediaStreamTrack).
+    // Remote tracks carry the pcId; local tracks use -1.
     return track.remote ? (track as unknown as { _peerConnectionId: number })._peerConnectionId : -1;
 }
 
-function toNewArchError(e: unknown): Error {
-    if (e instanceof Error && (e as { code?: string }).code !== 'E_NO_JSI') {
-        return e;
+function unsupportedError(cause: unknown): Error {
+    if (cause instanceof Error && (cause as { code?: string }).code !== 'E_NO_JSI') {
+        return cause;
     }
     return new Error('Audio extraction requires the New Architecture.');
 }
 
-/** Memoized JSI install handshake; re-runnable after a JS reload. */
+// Install the native JSI binding once. Re-runnable after a JS reload.
 function ensureInstalled(): Promise<void> {
     if (installPromise) {
         return installPromise;
     }
-    let timer!: ReturnType<typeof setTimeout>;
+    let timeoutId!: ReturnType<typeof setTimeout>;
     const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-            () => reject(new Error('Audio extraction install timed out; the New Architecture is required.')),
-            INSTALL_TIMEOUT_MS,
-        );
+        timeoutId = setTimeout(() => reject(new Error('Audio extraction install timed out.')), INSTALL_TIMEOUT_MS);
     });
-    const install: Promise<void> = WebRTCModule.installAudioSinkJSI().then(() => {
+    const install = WebRTCModule.installAudioSinkJSI().then(() => {
         if (typeof global.__fishjamWebrtcSetAudioSink !== 'function') {
-            throw new Error('Audio extraction unavailable: JSI binding not installed.');
+            throw new Error('Audio extraction binding was not installed.');
         }
-        sinkRegistered = false;
+        dispatcherRegistered = false;
     });
-    const p: Promise<void> = Promise.race([install, timeout])
-        .finally(() => clearTimeout(timer))
-        .catch((e: unknown) => {
+    installPromise = Promise.race([install, timeout])
+        .finally(() => clearTimeout(timeoutId))
+        .catch((cause: unknown) => {
             installPromise = null;
-            throw toNewArchError(e);
+            throw unsupportedError(cause);
         });
-    installPromise = p;
-    return p;
+    return installPromise;
 }
 
-/** Register the single native callback that dispatches to the per-track handler. */
-function registerSink(): void {
-    if (sinkRegistered) {
+// Point the single native callback at our per-track handler map (once).
+function registerDispatcher(): void {
+    if (dispatcherRegistered) {
         return;
     }
-    global.__fishjamWebrtcSetAudioSink!((d: AudioTrackData) => {
-        listeners.get(d.trackId)?.(d);
-    });
-    sinkRegistered = true;
+    global.__fishjamWebrtcSetAudioSink!((batch) => handlers.get(batch.trackId)?.(batch));
+    dispatcherRegistered = true;
 }
 
 /**
- * Start extracting audio from a remote participant's track.
+ * Start extracting audio from a remote track. `onData` is called once per batch
+ * until {@link stopAudioExtraction} is called for the same track.
  *
- * Converted audio is delivered to `onData` in batches (one call per batch) until
- * you call {@link stopAudioExtraction} for the same track.
- *
- * @param track   The remote audio {@link MediaStreamTrack} to extract from.
- * @param options The audio format to receive; see {@link AudioExtractionOptions}.
- * @param onData  Receives each {@link AudioTrackData} batch.
- * @returns Resolves once extraction has started.
- * @throws Rejects if audio extraction isn't supported on this platform
- *   (currently it requires iOS with the New Architecture).
- *
- * @example
- * await startAudioExtraction(
- *   remoteTrack,
- *   { sampleRate: 16000, channels: 1, format: 'f32' },
- *   ({ data }) => processor.feed(new Float32Array(data)),
- * );
+ * @throws If extraction is unsupported on this platform (iOS New Architecture only).
  */
 export async function startAudioExtraction(
     track: MediaStreamTrack,
     options: AudioExtractionOptions,
-    onData: (data: AudioTrackData) => void,
+    onData: (batch: AudioTrackData) => void,
 ): Promise<void> {
     await ensureInstalled();
-    registerSink();
-    listeners.set(track.id, onData);
+    registerDispatcher();
+    handlers.set(track.id, onData);
     WebRTCModule.startAudioExtraction(peerConnectionId(track), track.id, options);
 }
 
-/**
- * Stop extracting audio from `track` and stop delivering its batches.
- *
- * @param track The track you passed to {@link startAudioExtraction}.
- */
+/** Stop extracting audio from `track` and stop delivering its batches. */
 export function stopAudioExtraction(track: MediaStreamTrack): void {
     WebRTCModule.stopAudioExtraction(peerConnectionId(track), track.id);
-    listeners.delete(track.id);
+    handlers.delete(track.id);
 }
