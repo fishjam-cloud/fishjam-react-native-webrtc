@@ -21,6 +21,7 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
 import com.oney.WebRTCModule.foregroundService.ForegroundServiceController;
 import com.oney.WebRTCModule.webrtcutils.H264AndSoftwareVideoDecoderFactory;
 import com.oney.WebRTCModule.webrtcutils.H264AndSoftwareVideoEncoderFactory;
@@ -64,6 +65,12 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
     // Audio extraction: trackId -> attached AudioTrackSink.
     private final Map<String, AudioTrackSink> audioSinks = new HashMap<>();
+
+    // JSI install channel for audio extraction. Lazily built from the JS
+    // CallInvoker; null on the old architecture (no JSI). Mirrors iOS
+    // fj_audioSinkBox.
+    private FJAudioSinkInstaller audioSinkInstaller;
+    private boolean audioSinkInstallerInitialized;
 
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -949,6 +956,38 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
             ((AudioTrack) track).setVolume(volume);
         });
+    }
+
+    /**
+     * Lazily builds the JSI installer from the JS CallInvoker. Returns null when
+     * there is no CallInvoker (old architecture) or it can't be acquired, which
+     * makes audio extraction unsupported. Mirrors iOS fj_audioSinkBox.
+     */
+    private FJAudioSinkInstaller getAudioSinkInstaller() {
+        if (audioSinkInstallerInitialized) {
+            return audioSinkInstaller;
+        }
+        audioSinkInstallerInitialized = true;
+        try {
+            ReactApplicationContext ctx = getReactApplicationContext();
+            // Audio extraction needs a JSI CallInvoker; absent on the old architecture.
+            if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
+                audioSinkInstaller = new FJAudioSinkInstaller(ctx);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Audio extraction unavailable: failed to build the JSI installer", t);
+        }
+        return audioSinkInstaller;
+    }
+
+    @ReactMethod
+    public void installAudioSinkJSI(Promise promise) {
+        FJAudioSinkInstaller inst = getAudioSinkInstaller();
+        if (inst == null) {
+            promise.reject("E_NO_JSI", "Audio extraction requires the New Architecture.");
+            return;
+        }
+        inst.install(promise);
     }
 
     @ReactMethod

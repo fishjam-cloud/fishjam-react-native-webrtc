@@ -8,12 +8,12 @@ get_filename_component(FJ_COMMON_CPP_DIR "${FJ_COMMON_CPP_DIR}" ABSOLUTE)
 
 add_library(fishjam-webrtc-audio
     SHARED
-    # Vendored miniaudio (conversion-only). The JSI core (FJAudioSinkJSI.cpp)
-    # is added in Phase 3.
+    # Vendored miniaudio (conversion-only).
     "${FJ_COMMON_CPP_DIR}/vendor/miniaudio.c"
-    # Phase-2 placeholder so the .so exports a symbol and links cleanly. Replaced
-    # by the fbjni HybridClass installer in Phase 3.
-    "${CMAKE_CURRENT_SOURCE_DIR}/placeholder.cpp"
+    # Shared JSI core (CallInvoker-driven global install + deliver).
+    "${FJ_COMMON_CPP_DIR}/fishjam-audio/FJAudioSinkJSI.cpp"
+    # fbjni HybridClass that installs the JS global over the CallInvoker.
+    "${CMAKE_CURRENT_SOURCE_DIR}/FJAudioSinkInstaller.cpp"
 )
 
 # miniaudio must be built conversion-only. These MA_NO_* defines must be
