@@ -29,14 +29,12 @@ android {
             cmake {
                 cppFlags "-std=c++20"
                 arguments "-DANDROID_STL=c++_shared"
-                // Matches the bundled WebRTC .so (arm64-v8a only for now). Widen
-                // this and the `ndk` block below once a multi-arch WebRTC ships.
-                abiFilters "arm64-v8a"
+                abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
             }
         }
 
         ndk {
-            abiFilters "arm64-v8a"
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
         }
     }
 
@@ -57,15 +55,7 @@ android {
 
 dependencies {
     implementation "com.facebook.react:react-android:+"
-    // TEMP (local test): patched WebRTC build with org.webrtc.AudioTrackSink (CL 471880).
-    // libs/libwebrtc.jar + src/main/jniLibs/arm64-v8a/libjingle_peerconnection_so.so are built
-    // locally from fishjam-cloud/webrtc@fishjam-m124-audio-sink. Revert to
-    //   api 'org.jitsi:webrtc:124.+'
-    // once the patched artifact is published.
-    api files('libs/libwebrtc.jar')
+    api 'com.github.fishjam-cloud:webrtc:v124.0.2.2'
     implementation "androidx.core:core:1.7.0"
-    // fbjni is consumed via the ReactAndroid prefab at native link time, but the Java
-    // runtime classes (com.facebook.jni.*) are provided by react-android transitively.
-    // Pinned explicitly to match the prefab so JSI install (Phase 3) links cleanly.
     implementation 'com.facebook.fbjni:fbjni:0.6.0'
 }
