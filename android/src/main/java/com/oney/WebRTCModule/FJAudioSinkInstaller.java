@@ -60,6 +60,30 @@ final class FJAudioSinkInstaller {
         }
     }
 
+    /**
+     * Sets (or replaces) the output config for a track's converter. The native
+     * miniaudio converter is created lazily on the first {@link #onAudioData} call,
+     * once the input rate/channels are known. Called on the native-modules thread.
+     *
+     * @param lpfOrder linear resampler low-pass filter order; pass {@code 8}
+     *     (miniaudio's {@code MA_MAX_FILTER_ORDER}) for high quality, {@code 1}
+     *     otherwise.
+     */
+    native void configureTrack(int pcId, String trackId, int outRate, int outChannels,
+            boolean formatF32, int lpfOrder, double batchMs);
+
+    /**
+     * Forwards one int16 PCM chunk to the native converter. {@code audioData} must
+     * be a direct {@link java.nio.ByteBuffer}; it is only valid for the duration of
+     * this call, so C++ copies the bytes before returning. Called on a WebRTC audio
+     * thread.
+     */
+    native void onAudioData(String trackId, java.nio.ByteBuffer audioData, int sampleRate,
+            int channels, int frames);
+
+    /** Tears down and removes a track's converter. Called on the native-modules thread. */
+    native void removeTrack(String trackId);
+
     private native HybridData initHybrid(CallInvokerHolderImpl callInvokerHolder);
 
     private native void installSink();

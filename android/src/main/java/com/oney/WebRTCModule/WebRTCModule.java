@@ -990,8 +990,12 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         inst.install(promise);
     }
 
+    // miniaudio's MA_MAX_FILTER_ORDER; passed as a plain int so Java doesn't have
+    // to reference the C macro. Used as the high-quality resampler lpfOrder.
+    private static final int MA_MAX_FILTER_ORDER = 8;
+
     @ReactMethod
-    public void startAudioExtraction(int pcId, String id) {
+    public void startAudioExtraction(int pcId, String id, ReadableMap options) {
         ThreadUtils.runOnExecutor(() -> {
             MediaStreamTrack track = getTrack(pcId, id);
             if (!(track instanceof AudioTrack)) {
@@ -1001,7 +1005,28 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             if (audioSinks.containsKey(id)) {
                 return;
             }
-            AudioTrackSink sink = new PcmBatchingSink(pcId, id);
+            // Extraction is unsupported without a JSI CallInvoker (old architecture);
+            // JS already rejected at install time, so just return here.
+            FJAudioSinkInstaller installer = getAudioSinkInstaller();
+            if (installer == null) {
+                return;
+            }
+
+            // Parse options with the same defaults as iOS.
+            int outRate = options != null && options.hasKey("sampleRate") ? options.getInt("sampleRate") : 16000;
+            int outChannels = options != null && options.hasKey("channels") ? options.getInt("channels") : 1;
+            if (outChannels < 1) {
+                outChannels = 1;
+            }
+            boolean formatF32 = !(options != null && options.hasKey("format") && "s16".equals(options.getString("format")));
+            int lpfOrder = options != null && "high".equals(options.getString("resampleQuality")) ? MA_MAX_FILTER_ORDER : 1;
+            double batchMs = options != null && options.hasKey("batchDurationMs") ? options.getDouble("batchDurationMs") : 100.0;
+            if (batchMs <= 0) {
+                batchMs = 100.0;
+            }
+
+            installer.configureTrack(pcId, id, outRate, outChannels, formatF32, lpfOrder, batchMs);
+            AudioTrackSink sink = new PcmBatchingSink(id, installer);
             ((AudioTrack) track).addSink(sink);
             audioSinks.put(id, sink);
         });
@@ -1018,21 +1043,27 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             if (track instanceof AudioTrack) {
                 ((AudioTrack) track).removeSink(sink);
             }
+            FJAudioSinkInstaller installer = getAudioSinkInstaller();
+            if (installer != null) {
+                installer.removeTrack(id);
+            }
         });
     }
 
     /**
-     * Batches ~100 ms of int16 PCM from a remote audio track (via the WebRTC
-     * AudioTrackSink) and forwards it to JS as a base64 {@code audioTrackData} event.
+     * Forwards each int16 PCM chunk from a remote audio track straight to the
+     * native converter ({@link FJAudioSinkInstaller#onAudioData}), which batches,
+     * resamples/reformats, and delivers it to JS over the JSI channel. All the
+     * batching/conversion now lives in C++ (mirroring iOS); this sink is a thin
+     * forwarder.
      */
-    private class PcmBatchingSink implements AudioTrackSink {
-        private final int pcId;
+    private static class PcmBatchingSink implements AudioTrackSink {
         private final String trackId;
-        private final java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        private final FJAudioSinkInstaller installer;
 
-        PcmBatchingSink(int pcId, String trackId) {
-            this.pcId = pcId;
+        PcmBatchingSink(String trackId, FJAudioSinkInstaller installer) {
             this.trackId = trackId;
+            this.installer = installer;
         }
 
         @Override
@@ -1041,25 +1072,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             if (bitsPerSample != 16) {
                 return;
             }
-            byte[] chunk = new byte[audioData.remaining()];
-            audioData.get(chunk);
-            buffer.write(chunk, 0, chunk.length);
-
-            // Flush ~100 ms of audio: (sampleRate / 10) frames * channels * 2 bytes.
-            int bytesPerFlush = (sampleRate / 10) * numberOfChannels * 2;
-            if (buffer.size() < bytesPerFlush) {
-                return;
-            }
-            byte[] pcm = buffer.toByteArray();
-            buffer.reset();
-
-            WritableMap params = Arguments.createMap();
-            params.putInt("pcId", pcId);
-            params.putString("trackId", trackId);
-            params.putInt("sampleRate", sampleRate);
-            params.putInt("channels", numberOfChannels);
-            params.putString("data", android.util.Base64.encodeToString(pcm, android.util.Base64.NO_WRAP));
-            sendEvent("audioTrackData", params);
+            installer.onAudioData(trackId, audioData, sampleRate, numberOfChannels, numberOfFrames);
         }
     }
 
