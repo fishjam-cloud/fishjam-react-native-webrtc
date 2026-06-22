@@ -30,8 +30,7 @@ class PcmBuffer : public facebook::jsi::MutableBuffer {
 // weak_ptr to avoid a retain cycle through the runtime global.
 class FJAudioSink : public std::enable_shared_from_this<FJAudioSink> {
    public:
-    explicit FJAudioSink(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
-        : jsInvoker_(std::move(jsInvoker)) {}
+    explicit FJAudioSink(std::shared_ptr<facebook::react::CallInvoker> jsInvoker) : jsInvoker_(std::move(jsInvoker)) {}
 
     // Installs the global; invokes onInstalled on the JS thread once ready.
     void install(std::function<void()> onInstalled);

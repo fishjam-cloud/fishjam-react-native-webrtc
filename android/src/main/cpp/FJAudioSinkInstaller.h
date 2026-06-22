@@ -106,8 +106,7 @@ class FJAudioSinkInstaller : public facebook::jni::HybridClass<FJAudioSinkInstal
     std::mutex tracksMutex_;
     std::unordered_map<std::string, TrackConverter> tracks_;
 
-    FJAudioSinkInstaller(facebook::jni::alias_ref<jhybridobject> javaThis,
-                         std::shared_ptr<FJAudioSink> sink);
+    FJAudioSinkInstaller(facebook::jni::alias_ref<jhybridobject> javaThis, std::shared_ptr<FJAudioSink> sink);
 };
 
 }  // namespace fishjam

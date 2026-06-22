@@ -26,7 +26,9 @@ const { WebRTCModule } = NativeModules;
 
 // Installed natively once the JSI binding is in place (see installAudioSinkJSI).
 declare const global: {
-    __fishjamWebrtcSetAudioSink?: (handler: (batch: AudioTrackData) => void) => void;
+    __fishjamWebrtcSetAudioSink?: (
+        handler: (batch: AudioTrackData) => void,
+    ) => void;
 };
 
 /** Output format for {@link startAudioExtraction}; the track audio is converted to match. */
@@ -64,11 +66,16 @@ let dispatcherRegistered = false;
 
 function peerConnectionId(track: MediaStreamTrack): number {
     // Remote tracks carry the pcId; local tracks use -1.
-    return track.remote ? (track as unknown as { _peerConnectionId: number })._peerConnectionId : -1;
+    return track.remote
+        ? (track as unknown as { _peerConnectionId: number })._peerConnectionId
+        : -1;
 }
 
 function unsupportedError(cause: unknown): Error {
-    if (cause instanceof Error && (cause as { code?: string }).code !== 'E_NO_JSI') {
+    if (
+        cause instanceof Error &&
+        (cause as { code?: string }).code !== 'E_NO_JSI'
+    ) {
         return cause;
     }
     return new Error('Audio extraction requires the New Architecture.');
@@ -81,7 +88,10 @@ function ensureInstalled(): Promise<void> {
     }
     let timeoutId!: ReturnType<typeof setTimeout>;
     const timeout = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Audio extraction install timed out.')), INSTALL_TIMEOUT_MS);
+        timeoutId = setTimeout(
+            () => reject(new Error('Audio extraction install timed out.')),
+            INSTALL_TIMEOUT_MS,
+        );
     });
     const install = WebRTCModule.installAudioSinkJSI().then(() => {
         if (typeof global.__fishjamWebrtcSetAudioSink !== 'function') {
@@ -103,7 +113,9 @@ function registerDispatcher(): void {
     if (dispatcherRegistered) {
         return;
     }
-    global.__fishjamWebrtcSetAudioSink!((batch) => handlers.get(batch.trackId)?.(batch));
+    global.__fishjamWebrtcSetAudioSink!((batch) =>
+        handlers.get(batch.trackId)?.(batch),
+    );
     dispatcherRegistered = true;
 }
 
@@ -121,7 +133,11 @@ export async function startAudioExtraction(
     await ensureInstalled();
     registerDispatcher();
     handlers.set(track.id, onData);
-    WebRTCModule.startAudioExtraction(peerConnectionId(track), track.id, options);
+    WebRTCModule.startAudioExtraction(
+        peerConnectionId(track),
+        track.id,
+        options,
+    );
 }
 
 /** Stop extracting audio from `track` and stop delivering its batches. */

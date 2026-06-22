@@ -1022,9 +1022,14 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             if (outChannels < 1) {
                 outChannels = 1;
             }
-            boolean formatF32 = !(options != null && options.hasKey("format") && "s16".equals(options.getString("format")));
-            int lpfOrder = options != null && options.hasKey("resampleQuality") && "high".equals(options.getString("resampleQuality")) ? MA_MAX_FILTER_ORDER : 1;
-            double batchMs = options != null && options.hasKey("batchDurationMs") ? options.getDouble("batchDurationMs") : 100.0;
+            boolean formatF32 =
+                    !(options != null && options.hasKey("format") && "s16".equals(options.getString("format")));
+            int lpfOrder = options != null && options.hasKey("resampleQuality")
+                            && "high".equals(options.getString("resampleQuality"))
+                    ? MA_MAX_FILTER_ORDER
+                    : 1;
+            double batchMs =
+                    options != null && options.hasKey("batchDurationMs") ? options.getDouble("batchDurationMs") : 100.0;
             if (batchMs <= 0) {
                 batchMs = 100.0;
             }
@@ -1071,8 +1076,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         }
 
         @Override
-        public void onData(java.nio.ByteBuffer audioData, int bitsPerSample, int sampleRate,
-                int numberOfChannels, int numberOfFrames, long absoluteCaptureTimestampMs) {
+        public void onData(java.nio.ByteBuffer audioData, int bitsPerSample, int sampleRate, int numberOfChannels,
+                int numberOfFrames, long absoluteCaptureTimestampMs) {
             if (bitsPerSample != 16) {
                 return;
             }

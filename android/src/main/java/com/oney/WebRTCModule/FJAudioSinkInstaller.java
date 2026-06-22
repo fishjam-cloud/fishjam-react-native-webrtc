@@ -70,8 +70,8 @@ final class FJAudioSinkInstaller {
      *     otherwise.
      */
     @DoNotStrip
-    native void configureTrack(int pcId, String trackId, int outRate, int outChannels,
-            boolean formatF32, int lpfOrder, double batchMs);
+    native void configureTrack(
+            int pcId, String trackId, int outRate, int outChannels, boolean formatF32, int lpfOrder, double batchMs);
 
     /**
      * Forwards one int16 PCM chunk to the native converter. {@code audioData} must
@@ -80,8 +80,7 @@ final class FJAudioSinkInstaller {
      * thread.
      */
     @DoNotStrip
-    native void onAudioData(String trackId, java.nio.ByteBuffer audioData, int sampleRate,
-            int channels, int frames);
+    native void onAudioData(String trackId, java.nio.ByteBuffer audioData, int sampleRate, int channels, int frames);
 
     /** Tears down and removes a track's converter. Called on the native-modules thread. */
     @DoNotStrip
