@@ -159,7 +159,7 @@ export function startAudioExtraction(
 
     return () => {
         stopped = true;
-        WebRTCModule.stopAudioExtraction(peerConnectionId(track), track.id);
         handlers.delete(track.id);
+        WebRTCModule.stopAudioExtraction(peerConnectionId(track), track.id);
     };
 }

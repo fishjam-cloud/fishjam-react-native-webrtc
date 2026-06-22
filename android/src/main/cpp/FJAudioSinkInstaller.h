@@ -75,7 +75,8 @@ class FJAudioSinkInstaller : public facebook::jni::HybridClass<FJAudioSinkInstal
         int pcId = 0;
 
         // Requested output config (from startAudioExtraction options).
-        int outRate = 16000;
+        int requestedOutRate = 16000;  // user-supplied; 0 = follow input rate
+        int outRate = 16000;           // resolved: equals requestedOutRate, or actual input rate when 0
         int outChannels = 1;
         int lpfOrder = 1;
         ma_format outFormat = ma_format_f32;

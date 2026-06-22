@@ -967,7 +967,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
      * there is no CallInvoker (old architecture) or it can't be acquired, which
      * makes audio extraction unsupported. Mirrors iOS fj_audioSinkBox.
      */
-    private FJAudioSinkInstaller getAudioSinkInstaller() {
+    private synchronized FJAudioSinkInstaller getAudioSinkInstaller() {
         if (audioSinkInstallerInitialized) {
             return audioSinkInstaller;
         }

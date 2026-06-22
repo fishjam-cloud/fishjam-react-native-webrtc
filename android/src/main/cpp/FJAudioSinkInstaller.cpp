@@ -47,6 +47,7 @@ void FJAudioSinkInstaller::configureTrack(jint pcId, jni::alias_ref<jstring> tra
         state.inChannels = 0;
     }
     state.pcId = pcId;
+    state.requestedOutRate = outRate;
     state.outRate = outRate;
     state.outChannels = outChannels;
     state.outFormat = formatF32 ? ma_format_f32 : ma_format_s16;
@@ -66,7 +67,7 @@ void FJAudioSinkInstaller::ensureConverter(TrackConverter &state, int sampleRate
     }
     state.inRate = sampleRate;
     state.inChannels = channels;
-    int outRate = state.outRate > 0 ? state.outRate : sampleRate;  // outRate 0 => keep input rate
+    int outRate = state.requestedOutRate > 0 ? state.requestedOutRate : sampleRate;  // outRate 0 => keep input rate
 
     ma_data_converter_config config = ma_data_converter_config_init(
         ma_format_s16, state.outFormat, static_cast<ma_uint32>(channels),

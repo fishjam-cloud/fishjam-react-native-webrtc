@@ -4,7 +4,7 @@
 #import <WebRTC/RTCAudioRenderer.h>
 #import <WebRTC/RTCAudioTrack.h>
 
-#if __has_include(<React/RCTCallInvoker.h>)
+#if __has_include(<React/RCTCallInvokerModule.h>)
 #import <React/RCTCallInvoker.h>
 #define FJ_HAS_CALL_INVOKER 1
 #endif
@@ -54,7 +54,8 @@
     NSMutableData *_inputBuffer;
 
     // Requested output config (from startAudioExtraction options).
-    int _outRate;
+    int _requestedOutRate;  // user-supplied; 0 = follow input rate
+    int _outRate;           // resolved: equals _requestedOutRate, or the actual input rate when 0
     int _outChannels;
     int _lpfOrder;
     ma_format _outFormat;
@@ -81,6 +82,7 @@
         _pcId = pcId;
         _trackId = trackId;
         _inputBuffer = [NSMutableData data];
+        _requestedOutRate = outRate;
         _outRate = outRate;
         _outChannels = outChannels;
         _outFormat = outFormat;
@@ -117,7 +119,7 @@
     }
     _inRate = sampleRate;
     _inChannels = channels;
-    int outRate = _outRate > 0 ? _outRate : sampleRate;  // outRate 0 => keep input rate
+    int outRate = _requestedOutRate > 0 ? _requestedOutRate : sampleRate;  // outRate 0 => keep input rate
 
     ma_data_converter_config config = ma_data_converter_config_init(
         ma_format_s16, _outFormat, (ma_uint32)channels, (ma_uint32)_outChannels,

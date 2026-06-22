@@ -6,6 +6,9 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Installs the JS global {@code __fishjamWebrtcSetAudioSink(handler)} that the
  * JS SDK uses to receive extracted audio. Android counterpart of the iOS
@@ -27,9 +30,8 @@ final class FJAudioSinkInstaller {
 
     private final HybridData mHybridData;
 
-    // Set on the native-modules thread (install) and cleared on the JS thread
-    // (onSinkInstalled); guarded by `this` for the cross-thread handoff.
-    private Promise pendingInstall;
+    // Callers waiting for the JSI global to be installed. Guarded by `this`.
+    private final List<Promise> pendingInstalls = new ArrayList<>();
 
     FJAudioSinkInstaller(ReactApplicationContext reactContext) {
         mHybridData = initHybrid((CallInvokerHolderImpl) reactContext.getJSCallInvokerHolder());
@@ -41,22 +43,26 @@ final class FJAudioSinkInstaller {
             promise.resolve(true);
             return;
         }
+        boolean alreadyInFlight;
         synchronized (this) {
-            pendingInstall = promise;
+            alreadyInFlight = !pendingInstalls.isEmpty();
+            pendingInstalls.add(promise);
         }
-        installSink();
+        if (!alreadyInFlight) {
+            installSink();
+        }
     }
 
     /** Invoked from C++ on the JS thread once the global has been set. */
     @DoNotStrip
     private void onSinkInstalled() {
-        Promise promise;
+        List<Promise> promises;
         synchronized (this) {
-            promise = pendingInstall;
-            pendingInstall = null;
+            promises = new ArrayList<>(pendingInstalls);
+            pendingInstalls.clear();
         }
-        if (promise != null) {
-            promise.resolve(true);
+        for (Promise p : promises) {
+            p.resolve(true);
         }
     }
 

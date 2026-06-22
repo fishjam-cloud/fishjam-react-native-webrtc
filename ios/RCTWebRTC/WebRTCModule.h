@@ -51,6 +51,6 @@ static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaSt
 - (void)removeLivestreamStatusObserver;
 
 // Opaque audio-sink box; nil when extraction is unsupported (old architecture).
-- (FJAudioSinkBox *)fj_audioSinkBox;
+- (nullable FJAudioSinkBox *)fj_audioSinkBox;
 
 @end
