@@ -144,7 +144,10 @@ export function startAudioExtraction(
                 return;
             }
             if (handlers.has(track.id)) {
-                console.warn('[AudioExtraction] already extracting for track', track.id);
+                console.warn(
+                    '[AudioExtraction] already extracting for track',
+                    track.id,
+                );
                 return;
             }
             registerDispatcher();
