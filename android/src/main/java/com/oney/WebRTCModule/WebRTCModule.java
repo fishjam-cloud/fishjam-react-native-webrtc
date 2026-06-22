@@ -21,6 +21,7 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.module.annotations.ReactModule;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
+import com.facebook.react.turbomodule.core.CallInvokerHolderImpl;
 import com.oney.WebRTCModule.foregroundService.ForegroundServiceController;
 import com.oney.WebRTCModule.webrtcutils.H264AndSoftwareVideoDecoderFactory;
 import com.oney.WebRTCModule.webrtcutils.H264AndSoftwareVideoEncoderFactory;
@@ -61,6 +62,15 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     private final GetUserMediaImpl getUserMediaImpl;
     private final ForegroundServiceController foregroundServiceController;
     private final AudioOutputManager audioOutputManager;
+
+    // Audio extraction: trackId -> attached AudioTrackSink.
+    private final Map<String, AudioTrackSink> audioSinks = new HashMap<>();
+
+    // JSI install channel for audio extraction. Lazily built from the JS
+    // CallInvoker; null on the old architecture (no JSI). Mirrors iOS
+    // fj_audioSinkBox.
+    private FJAudioSinkInstaller audioSinkInstaller;
+    private boolean audioSinkInstallerInitialized;
 
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -950,6 +960,124 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
             ((AudioTrack) track).setVolume(volume);
         });
+    }
+
+    /**
+     * Lazily builds the JSI installer from the JS CallInvoker. Returns null when
+     * there is no CallInvoker (old architecture) or it can't be acquired, which
+     * makes audio extraction unsupported. Mirrors iOS fj_audioSinkBox.
+     */
+    private FJAudioSinkInstaller getAudioSinkInstaller() {
+        if (audioSinkInstallerInitialized) {
+            return audioSinkInstaller;
+        }
+        audioSinkInstallerInitialized = true;
+        try {
+            ReactApplicationContext ctx = getReactApplicationContext();
+            // Audio extraction needs a JSI CallInvoker; absent on the old architecture.
+            if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
+                audioSinkInstaller = new FJAudioSinkInstaller(ctx);
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Audio extraction unavailable: failed to build the JSI installer", t);
+        }
+        return audioSinkInstaller;
+    }
+
+    @ReactMethod
+    public void installAudioSinkJSI(Promise promise) {
+        FJAudioSinkInstaller inst = getAudioSinkInstaller();
+        if (inst == null) {
+            promise.reject("E_NO_JSI", "Audio extraction requires the New Architecture.");
+            return;
+        }
+        inst.install(promise);
+    }
+
+    // miniaudio's MA_MAX_FILTER_ORDER; passed as a plain int so Java doesn't have
+    // to reference the C macro. Used as the high-quality resampler lpfOrder.
+    private static final int MA_MAX_FILTER_ORDER = 8;
+
+    @ReactMethod
+    public void startAudioExtraction(int pcId, String id, ReadableMap options) {
+        ThreadUtils.runOnExecutor(() -> {
+            MediaStreamTrack track = getTrack(pcId, id);
+            if (!(track instanceof AudioTrack)) {
+                Log.d(TAG, "startAudioExtraction() no audio track for " + id);
+                return;
+            }
+            if (audioSinks.containsKey(id)) {
+                return;
+            }
+            // Extraction is unsupported without a JSI CallInvoker (old architecture);
+            // JS already rejected at install time, so just return here.
+            FJAudioSinkInstaller installer = getAudioSinkInstaller();
+            if (installer == null) {
+                return;
+            }
+
+            // Parse options with the same defaults as iOS.
+            int outRate = options != null && options.hasKey("sampleRate") ? options.getInt("sampleRate") : 16000;
+            int outChannels = options != null && options.hasKey("channels") ? options.getInt("channels") : 1;
+            if (outChannels < 1) {
+                outChannels = 1;
+            }
+            boolean formatF32 = !(options != null && options.hasKey("format") && "s16".equals(options.getString("format")));
+            int lpfOrder = options != null && options.hasKey("resampleQuality") && "high".equals(options.getString("resampleQuality")) ? MA_MAX_FILTER_ORDER : 1;
+            double batchMs = options != null && options.hasKey("batchDurationMs") ? options.getDouble("batchDurationMs") : 100.0;
+            if (batchMs <= 0) {
+                batchMs = 100.0;
+            }
+
+            installer.configureTrack(pcId, id, outRate, outChannels, formatF32, lpfOrder, batchMs);
+            AudioTrackSink sink = new PcmBatchingSink(id, installer);
+            ((AudioTrack) track).addSink(sink);
+            audioSinks.put(id, sink);
+        });
+    }
+
+    @ReactMethod
+    public void stopAudioExtraction(int pcId, String id) {
+        ThreadUtils.runOnExecutor(() -> {
+            AudioTrackSink sink = audioSinks.remove(id);
+            if (sink == null) {
+                return;
+            }
+            MediaStreamTrack track = getTrack(pcId, id);
+            if (track instanceof AudioTrack) {
+                ((AudioTrack) track).removeSink(sink);
+            }
+            FJAudioSinkInstaller installer = getAudioSinkInstaller();
+            if (installer != null) {
+                installer.removeTrack(id);
+            }
+        });
+    }
+
+    /**
+     * Forwards each int16 PCM chunk from a remote audio track straight to the
+     * native converter ({@link FJAudioSinkInstaller#onAudioData}), which batches,
+     * resamples/reformats, and delivers it to JS over the JSI channel. All the
+     * batching/conversion now lives in C++ (mirroring iOS); this sink is a thin
+     * forwarder.
+     */
+    private static class PcmBatchingSink implements AudioTrackSink {
+        private final String trackId;
+        private final FJAudioSinkInstaller installer;
+
+        PcmBatchingSink(String trackId, FJAudioSinkInstaller installer) {
+            this.trackId = trackId;
+            this.installer = installer;
+        }
+
+        @Override
+        public void onData(java.nio.ByteBuffer audioData, int bitsPerSample, int sampleRate,
+                int numberOfChannels, int numberOfFrames, long absoluteCaptureTimestampMs) {
+            if (bitsPerSample != 16) {
+                return;
+            }
+            installer.onAudioData(trackId, audioData, sampleRate, numberOfChannels, numberOfFrames);
+        }
     }
 
     /**
