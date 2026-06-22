@@ -35,6 +35,14 @@ API_AVAILABLE(ios(12))
 + (BOOL)presentSystemPickerWithError:(NSError *_Nullable *_Nullable)error;
 
 /**
+ * Same as `presentSystemPickerWithError:` but reads the extension bundle id
+ * from the host app's Info.plist key `RTCLivestreamExtension`, so the
+ * standalone background-tolerant livestream extension can be selected
+ * independently of the in-call screen-sharing extension.
+ */
++ (BOOL)presentLivestreamSystemPickerWithError:(NSError *_Nullable *_Nullable)error;
+
+/**
  * Taps an existing mounted `RPSystemBroadcastPickerView` (e.g. one
  * placed in the React Native view hierarchy). Returns NO and populates
  * `error` if the button subview cannot be located.

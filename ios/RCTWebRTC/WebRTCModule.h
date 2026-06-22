@@ -23,6 +23,7 @@ static NSString *const kEventPeerConnectionOnRemoveTrack = @"peerConnectionOnRem
 static NSString *const kEventPeerConnectionOnTrack = @"peerConnectionOnTrack";
 static NSString *const kEventCallKitActionPerformed = @"callKitActionPerformed";
 static NSString *const kEventAudioOutputChanged = @"audioOutputChanged";
+static NSString *const kEventLivestreamStatusChanged = @"livestreamStatusChanged";
 static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaStreamVideoTracksChangedNotification";
 
 @class FJAudioSinkBox;
@@ -47,6 +48,7 @@ static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaSt
 
 - (RTCMediaStream *)streamForReactTag:(NSString *)reactTag;
 - (void)removeAudioRouteObserver;
+- (void)removeLivestreamStatusObserver;
 
 // Opaque audio-sink box; nil when extraction is unsupported (old architecture).
 - (FJAudioSinkBox *)fj_audioSinkBox;

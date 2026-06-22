@@ -8,6 +8,8 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.OrientationEventListener;
 
+import com.oney.WebRTCModule.foregroundService.ForegroundServiceController;
+
 import org.webrtc.ScreenCapturerAndroid;
 import org.webrtc.VideoCapturer;
 
@@ -65,7 +67,7 @@ public class ScreenCaptureController extends AbstractVideoCaptureController {
 
     @Override
     public void dispose() {
-        MediaProjectionService.abort(context);
+        ForegroundServiceController.getInstance().onScreenShareStopped(context);
         super.dispose();
     }
 

@@ -22,6 +22,7 @@ import com.facebook.react.bridge.ReadableType;
 import com.facebook.react.bridge.UiThreadUtil;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.oney.WebRTCModule.foregroundService.ForegroundServiceController;
 import com.oney.WebRTCModule.videoEffects.ProcessorProvider;
 import com.oney.WebRTCModule.videoEffects.VideoEffectProcessor;
 import com.oney.WebRTCModule.videoEffects.VideoFrameProcessor;
@@ -65,6 +66,13 @@ class GetUserMediaImpl {
     private boolean createConfigForDefaultDisplay = false;
     private float resolutionScale = 1.0f;
 
+    // Reusable SurfaceTextureHelper for camera captures.
+    // By reusing a single STH for all camera sessions we hold exactly one EGL context
+    // regardless of how many times the camera is toggled.  On dispose we only call
+    // stopListening() so
+    // the context stays alive for the next getUserMedia call.
+    private SurfaceTextureHelper reusableCameraSTH = null;
+
     GetUserMediaImpl(WebRTCModule webRTCModule, ReactApplicationContext reactContext) {
         this.webRTCModule = webRTCModule;
         this.reactContext = reactContext;
@@ -82,10 +90,10 @@ class GetUserMediaImpl {
 
                     mediaProjectionPermissionResultData = data;
 
-                    ThreadUtils.runOnExecutor(() -> {
-                        MediaProjectionService.launch(activity);
-                        createScreenStream();
-                    });
+                    new Thread(() -> {
+                        ForegroundServiceController.getInstance().onScreenShareStarted(activity);
+                        ThreadUtils.runOnExecutor(GetUserMediaImpl.this::createScreenStream);
+                    }).start();
                 }
             }
         });
@@ -315,6 +323,12 @@ class GetUserMediaImpl {
             return;
         }
 
+        // Screen capture needs a foreground service of type mediaProjection running before/while
+        // capturing — otherwise MediaProjection delivers black frames. Enable the dedicated
+        // MediaProjectionService here so the capture path is self-contained and does not depend on
+        // the app having started a separate foreground service (e.g. for microphone) first.
+        WebRTCModuleOptions.getInstance().enableMediaProjectionService = true;
+
         this.initializeConstraints(constraints);
 
         this.displayMediaPromise = promise;
@@ -439,7 +453,18 @@ class GetUserMediaImpl {
 
         PeerConnectionFactory pcFactory = webRTCModule.mFactory;
         EglBase.Context eglContext = EglUtils.getRootEglBaseContext();
-        SurfaceTextureHelper surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglContext);
+
+        boolean isCameraCapture = videoCaptureController instanceof CameraCaptureController;
+        SurfaceTextureHelper surfaceTextureHelper;
+
+        if (isCameraCapture) {
+            if (reusableCameraSTH == null) {
+                reusableCameraSTH = SurfaceTextureHelper.create("CaptureThread", eglContext);
+            }
+            surfaceTextureHelper = reusableCameraSTH;
+        } else {
+            surfaceTextureHelper = SurfaceTextureHelper.create("CaptureThread", eglContext);
+        }
 
         if (surfaceTextureHelper == null) {
             Log.d(TAG, "Error creating SurfaceTextureHelper");
@@ -452,12 +477,21 @@ class GetUserMediaImpl {
         videoCaptureController.setCapturerEventsListener(eventsEmitter);
 
         VideoSource videoSource = pcFactory.createVideoSource(videoCapturer.isScreencast());
-        videoCapturer.initialize(surfaceTextureHelper, reactContext, videoSource.getCapturerObserver());
+        CapturerObserver capturerObserver = videoSource.getCapturerObserver();
+        if (videoCapturer.isScreencast()) {
+            // Screen capture only emits a frame when the screen content changes, so on a static
+            // screen the encoder can't satisfy a keyframe request (PLI) from a newly-joined viewer.
+            // Repeat the last frame at a minimum cadence so keyframes stay available. Runs on the
+            // SurfaceTextureHelper handler thread (where frames are delivered).
+            capturerObserver = new FrameRepeatingCapturerObserver(capturerObserver, surfaceTextureHelper.getHandler());
+        }
+        videoCapturer.initialize(surfaceTextureHelper, reactContext, capturerObserver);
 
         VideoTrack track = pcFactory.createVideoTrack(id, videoSource);
 
         track.setEnabled(true);
-        tracks.put(id, new TrackPrivate(track, videoSource, videoCaptureController, surfaceTextureHelper));
+        tracks.put(id,
+                new TrackPrivate(track, videoSource, videoCaptureController, surfaceTextureHelper, isCameraCapture));
 
         videoCaptureController.startCapture();
 
@@ -523,26 +557,32 @@ class GetUserMediaImpl {
         private final SurfaceTextureHelper surfaceTextureHelper;
 
         /**
+         * When true, {@link #surfaceTextureHelper} is the shared reusable camera STH owned by
+         * {@link GetUserMediaImpl#reusableCameraSTH}.  Its EGL context must NOT be destroyed on
+         * dispose — only {@code stopListening()} is called so the context can be reclaimed by the
+         * next camera session.  Non-camera STHs (screen share, etc.) are not reused and are fully
+         * disposed.
+         */
+        private final boolean reusableSTH;
+
+        /**
          * Whether this object has been disposed or not.
          */
         private boolean disposed;
 
-        /**
-         * Initializes a new {@code TrackPrivate} instance.
-         *
-         * @param track
-         * @param mediaSource            the {@code MediaSource} from which the specified
-         *                               {@code code} was created
-         * @param videoCaptureController the {@code AbstractVideoCaptureController} from which the
-         *                               specified {@code mediaSource} was created if the specified
-         *                               {@code track} is a {@link VideoTrack}
-         */
         public TrackPrivate(MediaStreamTrack track, MediaSource mediaSource,
                 AbstractVideoCaptureController videoCaptureController, SurfaceTextureHelper surfaceTextureHelper) {
+            this(track, mediaSource, videoCaptureController, surfaceTextureHelper, false);
+        }
+
+        public TrackPrivate(MediaStreamTrack track, MediaSource mediaSource,
+                AbstractVideoCaptureController videoCaptureController, SurfaceTextureHelper surfaceTextureHelper,
+                boolean reusableSTH) {
             this.track = track;
             this.mediaSource = mediaSource;
             this.videoCaptureController = videoCaptureController;
             this.surfaceTextureHelper = surfaceTextureHelper;
+            this.reusableSTH = reusableSTH;
             this.disposed = false;
         }
 
@@ -558,17 +598,45 @@ class GetUserMediaImpl {
                  * As per webrtc library documentation - The caller still has ownership of {@code
                  * surfaceTextureHelper} and is responsible for making sure surfaceTextureHelper.dispose() is
                  * called. This also means that the caller can reuse the SurfaceTextureHelper to initialize a new
-                 * VideoCapturer once the previous VideoCapturer has been disposed. */
-
+                 * VideoCapturer once the previous VideoCapturer has been disposed.
+                 *
+                 * For camera captures we use a single reusable STH (GetUserMediaImpl.reusableCameraSTH)
+                 * so we only call stopListening() here — the EGL context is kept alive for the next
+                 * getUserMedia call.  Full dispose() is only called for non-reusable STHs (screen share).
+                 */
                 if (surfaceTextureHelper != null) {
                     surfaceTextureHelper.stopListening();
-                    surfaceTextureHelper.dispose();
+                    if (!reusableSTH) {
+                        surfaceTextureHelper.dispose();
+                    }
                 }
 
                 mediaSource.dispose();
                 track.dispose();
                 disposed = true;
             }
+        }
+    }
+
+    /**
+     * Releases resources held by this instance.  Must be called when the owning
+     * {@link WebRTCModule} is invalidated (e.g. React Native JS reload) so that
+     * the reusable camera EGL context and its GL thread are not kept alive for
+     * the rest of the process lifetime.
+     *
+     * <p>All active {@link TrackPrivate} entries are disposed first so no capturer
+     * is left running against an already-disposed STH.
+     */
+    void dispose() {
+        for (TrackPrivate track : tracks.values()) {
+            track.dispose();
+        }
+        tracks.clear();
+
+        if (reusableCameraSTH != null) {
+            reusableCameraSTH.stopListening();
+            reusableCameraSTH.dispose();
+            reusableCameraSTH = null;
         }
     }
 
