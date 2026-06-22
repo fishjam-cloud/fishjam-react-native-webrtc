@@ -140,7 +140,7 @@ export function startAudioExtraction(
 
     ensureInstalled()
         .then(() => {
-            if (stopped) { 
+            if (stopped) {
                 return;
             }
             registerDispatcher();
@@ -153,7 +153,10 @@ export function startAudioExtraction(
         })
         .catch((error: unknown) => {
             if (!stopped) {
-                console.warn('[AudioExtraction] startAudioExtraction failed:', error);
+                console.warn(
+                    '[AudioExtraction] startAudioExtraction failed:',
+                    error,
+                );
             }
         });
 
