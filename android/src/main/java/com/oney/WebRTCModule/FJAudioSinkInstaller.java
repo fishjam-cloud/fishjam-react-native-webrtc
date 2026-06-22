@@ -39,12 +39,12 @@ final class FJAudioSinkInstaller {
 
     /** Installs the JSI global, resolving {@code promise} once it is in place. */
     void install(Promise promise) {
-        if (isInstalled()) {
-            promise.resolve(true);
-            return;
-        }
         boolean alreadyInFlight;
         synchronized (this) {
+            if (isInstalled()) {
+                promise.resolve(true);
+                return;
+            }
             alreadyInFlight = !pendingInstalls.isEmpty();
             pendingInstalls.add(promise);
         }

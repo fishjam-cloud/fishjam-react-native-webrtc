@@ -13,6 +13,7 @@
 #import "WebRTCModule.h"
 #import "WebRTCModule+RTCMediaStream.h"
 
+#include <mutex>
 #include <vector>
 
 #include "miniaudio.h"
@@ -36,19 +37,20 @@
 // requested format/rate/channels with a persistent miniaudio converter, and
 // delivers the result to JS via FJAudioSink.
 @interface FJAudioSinkRenderer : NSObject <RTC_OBJC_TYPE (RTCAudioRenderer)>
-- (instancetype)initWithModule:(WebRTCModule *)module
-                          pcId:(NSNumber *)pcId
-                       trackId:(NSString *)trackId
-                       outRate:(int)outRate
-                   outChannels:(int)outChannels
-                     outFormat:(ma_format)outFormat
-                      lpfOrder:(int)lpfOrder
-                       batchMs:(double)batchMs;
+- (instancetype)initWithSink:(std::shared_ptr<FJAudioSink>)sink
+                        pcId:(NSNumber *)pcId
+                     trackId:(NSString *)trackId
+                     outRate:(int)outRate
+                 outChannels:(int)outChannels
+                   outFormat:(ma_format)outFormat
+                    lpfOrder:(int)lpfOrder
+                     batchMs:(double)batchMs;
 - (void)teardown;
 @end
 
 @implementation FJAudioSinkRenderer {
-    __weak WebRTCModule *_module;
+    std::shared_ptr<FJAudioSink> _sink;
+    std::mutex _mutex;  // guards _converter, _converterReady, _inputBuffer
     NSNumber *_pcId;
     NSString *_trackId;
     NSMutableData *_inputBuffer;
@@ -69,16 +71,16 @@
     int _inChannels;
 }
 
-- (instancetype)initWithModule:(WebRTCModule *)module
-                          pcId:(NSNumber *)pcId
-                       trackId:(NSString *)trackId
-                       outRate:(int)outRate
-                   outChannels:(int)outChannels
-                     outFormat:(ma_format)outFormat
-                      lpfOrder:(int)lpfOrder
-                       batchMs:(double)batchMs {
+- (instancetype)initWithSink:(std::shared_ptr<FJAudioSink>)sink
+                       pcId:(NSNumber *)pcId
+                    trackId:(NSString *)trackId
+                    outRate:(int)outRate
+                outChannels:(int)outChannels
+                  outFormat:(ma_format)outFormat
+                   lpfOrder:(int)lpfOrder
+                    batchMs:(double)batchMs {
     if (self = [super init]) {
-        _module = module;
+        _sink = std::move(sink);
         _pcId = pcId;
         _trackId = trackId;
         _inputBuffer = [NSMutableData data];
@@ -100,6 +102,7 @@
     if (bitsPerSample != 16 || audioData == NULL || numberOfChannels == 0) {
         return;
     }
+    std::lock_guard<std::mutex> lock(_mutex);
     [self ensureConverterForRate:sampleRate channels:(int)numberOfChannels];
     [_inputBuffer appendBytes:audioData length:numberOfFrames * numberOfChannels * sizeof(int16_t)];
 
@@ -132,9 +135,7 @@
 }
 
 - (void)flush {
-    WebRTCModule *module = _module;
-    FJAudioSinkBox *box = module ? [module fj_audioSinkBox] : nil;
-    if (!box || !box->sink->isInstalled() || !_converterReady) {
+    if (!_sink || !_sink->isInstalled() || !_converterReady) {
         _inputBuffer.length = 0;
         return;
     }
@@ -174,11 +175,12 @@
     if (output.empty()) {
         return;
     }
-    box->sink->deliver(_pcId.intValue, _trackId.UTF8String, _outRate, _outChannels,
-                       _outFormat == ma_format_f32 ? "f32" : "s16", std::move(output));
+    _sink->deliver(_pcId.intValue, _trackId.UTF8String, _outRate, _outChannels,
+                   _outFormat == ma_format_f32 ? "f32" : "s16", std::move(output));
 }
 
 - (void)teardown {
+    std::lock_guard<std::mutex> lock(_mutex);
     if (_converterReady) {
         ma_data_converter_uninit(&_converter, NULL);
         _converterReady = NO;
@@ -251,6 +253,10 @@ RCT_EXPORT_METHOD(startAudioExtraction
                   : (nonnull NSNumber *)pcId trackId
                   : (nonnull NSString *)trackId options
                   : (NSDictionary *)options) {
+    FJAudioSinkBox *box = [self fj_audioSinkBox];
+    if (box == nil) {
+        return;
+    }
     RTCMediaStreamTrack *track = [self trackForId:trackId pcId:pcId];
     if (![track isKindOfClass:[RTC_OBJC_TYPE(RTCAudioTrack) class]]) {
         return;
@@ -272,14 +278,14 @@ RCT_EXPORT_METHOD(startAudioExtraction
         batchMs = 100.0;
     }
 
-    FJAudioSinkRenderer *renderer = [[FJAudioSinkRenderer alloc] initWithModule:self
-                                                                          pcId:pcId
-                                                                       trackId:trackId
-                                                                       outRate:outRate
-                                                                   outChannels:outChannels
-                                                                     outFormat:outFormat
-                                                                      lpfOrder:lpfOrder
-                                                                       batchMs:batchMs];
+    FJAudioSinkRenderer *renderer = [[FJAudioSinkRenderer alloc] initWithSink:box->sink
+                                                                         pcId:pcId
+                                                                      trackId:trackId
+                                                                      outRate:outRate
+                                                                  outChannels:outChannels
+                                                                    outFormat:outFormat
+                                                                     lpfOrder:lpfOrder
+                                                                      batchMs:batchMs];
     [(RTC_OBJC_TYPE(RTCAudioTrack) *)track addRenderer:renderer];
     renderers[trackId] = renderer;
 }

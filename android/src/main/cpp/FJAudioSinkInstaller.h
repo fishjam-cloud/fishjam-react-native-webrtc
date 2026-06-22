@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -91,13 +92,23 @@ class FJAudioSinkInstaller : public facebook::jni::HybridClass<FJAudioSinkInstal
         std::vector<uint8_t> inputBuffer;
     };
 
+    struct DeliverPayload {
+        int pcId;
+        std::string trackId;
+        int outRate;
+        int outChannels;
+        std::string format;  // "f32" or "s16"
+        std::vector<uint8_t> output;
+    };
+
     // Lazily inits/re-inits the track's converter for the given input format.
     // Caller must hold tracksMutex_.
     void ensureConverter(TrackConverter &state, int sampleRate, int channels);
 
-    // Drains state.inputBuffer through the converter and delivers it to JS, then
-    // clears the buffer. Caller must hold tracksMutex_.
-    void flush(const std::string &trackId, TrackConverter &state);
+    // Drains state.inputBuffer through the converter. Returns a payload for
+    // delivery to JS after tracksMutex_ is released, or nullopt if there is
+    // nothing to send. Caller must hold tracksMutex_.
+    std::optional<DeliverPayload> flush(const std::string &trackId, TrackConverter &state);
 
     facebook::jni::global_ref<javaobject> javaPart_;
     std::shared_ptr<FJAudioSink> sink_;

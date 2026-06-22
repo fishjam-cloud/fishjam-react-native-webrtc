@@ -3,12 +3,11 @@
 // batches are then delivered to that handler via the CallInvoker. Pure C++20.
 #pragma once
 
-#ifdef __cplusplus
-
 #include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <ReactCommon/CallInvoker.h>
@@ -43,7 +42,7 @@ class FJAudioSink : public std::enable_shared_from_this<FJAudioSink> {
                  const std::string &trackId,
                  int sampleRate,
                  int channels,
-                 const char *format,
+                 std::string_view format,
                  std::vector<uint8_t> bytes);
 
    private:
@@ -51,5 +50,3 @@ class FJAudioSink : public std::enable_shared_from_this<FJAudioSink> {
     std::shared_ptr<facebook::jsi::Function> callback_;
     std::atomic<bool> installed_{false};
 };
-
-#endif  // __cplusplus

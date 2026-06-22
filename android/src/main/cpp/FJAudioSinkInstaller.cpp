@@ -81,10 +81,11 @@ void FJAudioSinkInstaller::ensureConverter(TrackConverter &state, int sampleRate
 }
 
 // Mirrors iOS -flush. Caller holds tracksMutex_.
-void FJAudioSinkInstaller::flush(const std::string &trackId, TrackConverter &state) {
+std::optional<FJAudioSinkInstaller::DeliverPayload> FJAudioSinkInstaller::flush(
+    const std::string &trackId, TrackConverter &state) {
     if (!sink_->isInstalled() || !state.ready) {
         state.inputBuffer.clear();
-        return;
+        return std::nullopt;
     }
 
     size_t outBytesPerSample =
@@ -125,10 +126,16 @@ void FJAudioSinkInstaller::flush(const std::string &trackId, TrackConverter &sta
 
     state.inputBuffer.clear();
     if (output.empty()) {
-        return;
+        return std::nullopt;
     }
-    sink_->deliver(state.pcId, trackId, state.outRate, state.outChannels,
-                   state.outFormat == ma_format_f32 ? "f32" : "s16", std::move(output));
+    return DeliverPayload{
+        state.pcId,
+        trackId,
+        state.outRate,
+        state.outChannels,
+        state.outFormat == ma_format_f32 ? "f32" : "s16",
+        std::move(output),
+    };
 }
 
 void FJAudioSinkInstaller::onAudioData(jni::alias_ref<jstring> trackId,
@@ -140,30 +147,37 @@ void FJAudioSinkInstaller::onAudioData(jni::alias_ref<jstring> trackId,
         if (channels <= 0 || frames <= 0 || audioData == nullptr) {
             return;
         }
-        std::lock_guard<std::mutex> lock(tracksMutex_);
-        auto it = tracks_.find(trackId->toStdString());
-        if (it == tracks_.end()) {
-            return;
-        }
-        TrackConverter &state = it->second;
+        std::optional<DeliverPayload> payload;
+        {
+            std::lock_guard<std::mutex> lock(tracksMutex_);
+            auto it = tracks_.find(trackId->toStdString());
+            if (it == tracks_.end()) {
+                return;
+            }
+            TrackConverter &state = it->second;
 
-        ensureConverter(state, sampleRate, channels);
+            ensureConverter(state, sampleRate, channels);
 
-        // The direct ByteBuffer is backed by native memory that is only valid for
-        // the duration of this call, so the int16 bytes are copied into inputBuffer.
-        const uint8_t *src = static_cast<const uint8_t *>(audioData->getDirectAddress());
-        size_t available = static_cast<size_t>(audioData->getDirectSize());
-        size_t wanted = static_cast<size_t>(frames) * channels * sizeof(int16_t);
-        size_t copyLen = wanted < available ? wanted : available;
-        if (src == nullptr || copyLen == 0) {
-            return;
-        }
-        state.inputBuffer.insert(state.inputBuffer.end(), src, src + copyLen);
+            // The direct ByteBuffer is backed by native memory that is only valid for
+            // the duration of this call, so the int16 bytes are copied into inputBuffer.
+            const uint8_t *src = static_cast<const uint8_t *>(audioData->getDirectAddress());
+            size_t available = static_cast<size_t>(audioData->getDirectSize());
+            size_t wanted = static_cast<size_t>(frames) * channels * sizeof(int16_t);
+            size_t copyLen = wanted < available ? wanted : available;
+            if (src == nullptr || copyLen == 0) {
+                return;
+            }
+            state.inputBuffer.insert(state.inputBuffer.end(), src, src + copyLen);
 
-        size_t bytesPerBatch = static_cast<size_t>(state.inRate * state.batchMs / 1000.0) *
-                               state.inChannels * sizeof(int16_t);
-        if (bytesPerBatch > 0 && state.inputBuffer.size() >= bytesPerBatch) {
-            flush(it->first, state);
+            size_t bytesPerBatch = static_cast<size_t>(state.inRate * state.batchMs / 1000.0) *
+                                   state.inChannels * sizeof(int16_t);
+            if (bytesPerBatch > 0 && state.inputBuffer.size() >= bytesPerBatch) {
+                payload = flush(it->first, state);
+            }
+        }  // tracksMutex_ released before delivery
+        if (payload) {
+            sink_->deliver(payload->pcId, payload->trackId, payload->outRate, payload->outChannels,
+                           payload->format.c_str(), std::move(payload->output));
         }
     } catch (...) {
         // Drop this batch.

@@ -3,6 +3,8 @@
 namespace jsi = facebook::jsi;
 
 void FJAudioSink::install(std::function<void()> onInstalled) {
+    // Reset for re-install on JS reload: the same FJAudioSink instance may be
+    // reused across reloads (iOS associated object), so the flag must be cleared.
     installed_.store(false);
     std::weak_ptr<FJAudioSink> weakSelf = shared_from_this();
     jsInvoker_->invokeAsync([weakSelf, onInstalled](jsi::Runtime &rt) {
@@ -36,10 +38,10 @@ void FJAudioSink::deliver(int pcId,
                           const std::string &trackId,
                           int sampleRate,
                           int channels,
-                          const char *format,
+                          std::string_view format,
                           std::vector<uint8_t> bytes) {
     std::string trackIdUtf8 = trackId;
-    std::string formatUtf8 = format;
+    std::string formatUtf8(format);
     std::weak_ptr<FJAudioSink> weakSelf = shared_from_this();
     jsInvoker_->invokeAsync([weakSelf, pcId, trackIdUtf8, formatUtf8, sampleRate, channels,
                              bytes = std::move(bytes)](jsi::Runtime &rt) mutable {

@@ -74,7 +74,7 @@ function peerConnectionId(track: MediaStreamTrack): number {
         : -1;
 }
 
-function unsupportedError(cause: unknown): Error {
+function normalizeInstallError(cause: unknown): Error {
     if (
         cause instanceof Error &&
         (cause as { code?: string }).code !== 'E_NO_JSI'
@@ -106,7 +106,7 @@ function ensureInstalled(): Promise<void> {
         .finally(() => clearTimeout(timeoutId))
         .catch((cause: unknown) => {
             installPromise = null;
-            throw unsupportedError(cause);
+            throw normalizeInstallError(cause);
         });
     return installPromise;
 }
@@ -141,6 +141,10 @@ export function startAudioExtraction(
     ensureInstalled()
         .then(() => {
             if (stopped) {
+                return;
+            }
+            if (handlers.has(track.id)) {
+                console.warn('[AudioExtraction] already extracting for track', track.id);
                 return;
             }
             registerDispatcher();
