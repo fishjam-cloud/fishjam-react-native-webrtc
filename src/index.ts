@@ -13,7 +13,6 @@ if (WebRTCModule === null) {
 
 import {
     startAudioExtraction,
-    stopAudioExtraction,
     type AudioExtractionOptions,
     type AudioTrackData,
 } from './AudioExtraction';
@@ -118,7 +117,6 @@ export {
     useForegroundService,
     useAudioOutput,
     startAudioExtraction,
-    stopAudioExtraction,
     type AudioExtractionOptions,
     type AudioTrackData,
     useLivestreamStatus,

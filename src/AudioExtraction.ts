@@ -6,12 +6,15 @@
  * for speech-to-text, voice-activity detection, recording, or metering.
  *
  * ```ts
- * await startAudioExtraction(
+ * const stop = startAudioExtraction(
  *   track,
  *   { sampleRate: 16000, channels: 1, format: 'f32' },
  *   ({ data }) => processor.feed(new Float32Array(data)),
  * );
- * stopAudioExtraction(track);
+ * // later:
+ * stop();
+ *
+ * useEffect(() => startAudioExtraction(track, options, onData), [track]);
  * ```
  *
  * New Architecture only (iOS and Android).
@@ -121,27 +124,42 @@ function registerDispatcher(): void {
 
 /**
  * Start extracting audio from a remote track. `onData` is called once per batch
- * until {@link stopAudioExtraction} is called for the same track.
+ * until the returned stop function is called.
  *
- * @throws If extraction is unsupported on this platform (New Architecture only).
+ * Calling stop before the native binding has finished installing is safe —
+ * it cancels startup and no batches will be delivered.
+ *
+ * @returns A function that stops extraction and cleans up the handler.
  */
-export async function startAudioExtraction(
+export function startAudioExtraction(
     track: MediaStreamTrack,
     options: AudioExtractionOptions,
     onData: (batch: AudioTrackData) => void,
-): Promise<void> {
-    await ensureInstalled();
-    registerDispatcher();
-    handlers.set(track.id, onData);
-    WebRTCModule.startAudioExtraction(
-        peerConnectionId(track),
-        track.id,
-        options,
-    );
-}
+): () => void {
+    let stopped = false;
 
-/** Stop extracting audio from `track` and stop delivering its batches. */
-export function stopAudioExtraction(track: MediaStreamTrack): void {
-    WebRTCModule.stopAudioExtraction(peerConnectionId(track), track.id);
-    handlers.delete(track.id);
+    ensureInstalled()
+        .then(() => {
+            if (stopped) { 
+                return;
+            }
+            registerDispatcher();
+            handlers.set(track.id, onData);
+            WebRTCModule.startAudioExtraction(
+                peerConnectionId(track),
+                track.id,
+                options,
+            );
+        })
+        .catch((error: unknown) => {
+            if (!stopped) {
+                console.warn('[AudioExtraction] startAudioExtraction failed:', error);
+            }
+        });
+
+    return () => {
+        stopped = true;
+        WebRTCModule.stopAudioExtraction(peerConnectionId(track), track.id);
+        handlers.delete(track.id);
+    };
 }
