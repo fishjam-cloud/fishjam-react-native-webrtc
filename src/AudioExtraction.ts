@@ -14,7 +14,7 @@
  * stopAudioExtraction(track);
  * ```
  *
- * iOS, New Architecture only.
+ * New Architecture only (iOS and Android).
  *
  * @module AudioExtraction
  */
@@ -111,7 +111,7 @@ function registerDispatcher(): void {
  * Start extracting audio from a remote track. `onData` is called once per batch
  * until {@link stopAudioExtraction} is called for the same track.
  *
- * @throws If extraction is unsupported on this platform (iOS New Architecture only).
+ * @throws If extraction is unsupported on this platform (New Architecture only).
  */
 export async function startAudioExtraction(
     track: MediaStreamTrack,

@@ -8,8 +8,8 @@ miniaudio - https://miniaud.io / https://github.com/mackron/miniaudio
 Author: David Reid <mackron@gmail.com>
 
 Vendored as a single-header C library at:
-  ios/RCTWebRTC/vendor/miniaudio.h
-  ios/RCTWebRTC/vendor/miniaudio.c
+  common/cpp/vendor/miniaudio.h
+  common/cpp/vendor/miniaudio.c
 
 miniaudio is dual-licensed: choose either the Public Domain (Unlicense) or the
 MIT No Attribution (MIT-0) license below.

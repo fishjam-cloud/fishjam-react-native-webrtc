@@ -69,6 +69,7 @@ final class FJAudioSinkInstaller {
      *     (miniaudio's {@code MA_MAX_FILTER_ORDER}) for high quality, {@code 1}
      *     otherwise.
      */
+    @DoNotStrip
     native void configureTrack(int pcId, String trackId, int outRate, int outChannels,
             boolean formatF32, int lpfOrder, double batchMs);
 
@@ -78,15 +79,20 @@ final class FJAudioSinkInstaller {
      * this call, so C++ copies the bytes before returning. Called on a WebRTC audio
      * thread.
      */
+    @DoNotStrip
     native void onAudioData(String trackId, java.nio.ByteBuffer audioData, int sampleRate,
             int channels, int frames);
 
     /** Tears down and removes a track's converter. Called on the native-modules thread. */
+    @DoNotStrip
     native void removeTrack(String trackId);
 
+    @DoNotStrip
     private native HybridData initHybrid(CallInvokerHolderImpl callInvokerHolder);
 
+    @DoNotStrip
     private native void installSink();
 
+    @DoNotStrip
     private native boolean isInstalled();
 }

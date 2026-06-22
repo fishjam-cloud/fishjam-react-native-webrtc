@@ -1023,7 +1023,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                 outChannels = 1;
             }
             boolean formatF32 = !(options != null && options.hasKey("format") && "s16".equals(options.getString("format")));
-            int lpfOrder = options != null && "high".equals(options.getString("resampleQuality")) ? MA_MAX_FILTER_ORDER : 1;
+            int lpfOrder = options != null && options.hasKey("resampleQuality") && "high".equals(options.getString("resampleQuality")) ? MA_MAX_FILTER_ORDER : 1;
             double batchMs = options != null && options.hasKey("batchDurationMs") ? options.getDouble("batchDurationMs") : 100.0;
             if (batchMs <= 0) {
                 batchMs = 100.0;
