@@ -25,14 +25,6 @@ export async function startCallKitSession(
     await WebRTCModule.startCallKitSession(config.displayName, config.isVideo);
 }
 
-export async function reportIncomingCall(config: CallKitConfig): Promise<void> {
-    if (Platform.OS !== 'ios') {
-        return;
-    }
-
-    await WebRTCModule.reportIncomingCall(config.displayName, config.isVideo);
-}
-
 export async function endCallKitSession(): Promise<void> {
     if (Platform.OS !== 'ios') {
         return;

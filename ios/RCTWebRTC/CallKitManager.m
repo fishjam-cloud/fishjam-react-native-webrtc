@@ -12,12 +12,12 @@
 @implementation CallKitManager
 
 + (instancetype)shared {
-    static CallKitManager *sharedInstace = nil;
+    static CallKitManager *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sharedInstace = [[CallKitManager alloc] init];
+        sharedInstance = [[CallKitManager alloc] init];
     });
-    return sharedInstace;
+    return sharedInstance;
 }
 
 - (instancetype)init {
