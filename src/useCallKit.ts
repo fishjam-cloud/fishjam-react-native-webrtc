@@ -6,7 +6,7 @@ import {
     CallKitConfig,
     endCallKitSession,
     hasActiveCallKitSession,
-    startCallKitSession
+    startCallKitSession,
 } from './CallKit';
 import { addListener, removeListener } from './EventEmitter';
 

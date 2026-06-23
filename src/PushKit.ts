@@ -6,6 +6,6 @@ export function getVoipToken(): string | null {
     if (Platform.OS !== 'ios') {
         return null;
     }
-    const token = WebRTCModule.getVoipToken()
+    const token = WebRTCModule.getVoipToken();
     return typeof token === 'string' ? token : null;
 }

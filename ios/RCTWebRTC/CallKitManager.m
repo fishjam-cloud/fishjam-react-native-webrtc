@@ -84,10 +84,10 @@
         NSLog(@"[CallKitManager] Call already in progress");
         return;
     }
-    
+
     NSUUID *uuid = [NSUUID UUID];
     self.currentCallUUID = uuid;
-    
+
     CXCallUpdate *update = [[CXCallUpdate alloc] init];
     update.remoteHandle = [[CXHandle alloc] initWithType:CXHandleTypeGeneric value:displayName];
     update.localizedCallerName = displayName;
@@ -96,7 +96,7 @@
     update.supportsGrouping = NO;
     update.supportsUngrouping = NO;
     update.supportsDTMF = NO;
-    
+
     __weak typeof(self) weakSelf = self;
     [self.provider reportNewIncomingCallWithUUID:uuid
                                           update:update
