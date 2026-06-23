@@ -11,6 +11,11 @@ if (WebRTCModule === null) {
     );
 }
 
+import {
+    startAudioExtraction,
+    type AudioExtractionOptions,
+    type AudioTrackData,
+} from './AudioExtraction';
 import { type CallKitAction, type CallKitConfig } from './CallKit';
 import { setupNativeEvents } from './EventEmitter';
 import Logger from './Logger';
@@ -111,6 +116,9 @@ export {
     useCallKitService,
     useForegroundService,
     useAudioOutput,
+    startAudioExtraction,
+    type AudioExtractionOptions,
+    type AudioTrackData,
     useLivestreamStatus,
     writeLivestreamCredentials,
     type CallKitAction,
