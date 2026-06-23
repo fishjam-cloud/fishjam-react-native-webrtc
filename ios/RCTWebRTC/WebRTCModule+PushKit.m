@@ -9,16 +9,16 @@
     __weak typeof(self) weakSelf = self;
 
     push.onTokenUpdated = ^(NSString *token) {
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"registered" : token ?: @""}];
+        [weakSelf sendEventWithName:kEventVoipPush body:@{@"registered" : token ?: @""}];
     };
 
     push.onIncomingPush = ^(NSDictionary *payload) {
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"incoming" : payload ?: @{}}];
+        [weakSelf sendEventWithName:kEventVoipPush body:@{@"incoming" : payload ?: @{}}];
     };
 
     NSString *token = push.token;
     if (token.length > 0) {
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"registered" : token}];
+        [weakSelf sendEventWithName:kEventVoipPush body:@{@"registered" : token}];
     }
 }
 
@@ -26,6 +26,10 @@
     FishjamVoIPPush *push = [FishjamVoIPPush shared];
     push.onTokenUpdated = nil;
     push.onIncomingPush = nil;
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getVoipToken) {
+    return [FishjamVoIPPush shared].token ?: [NSNull null];
 }
 
 @end

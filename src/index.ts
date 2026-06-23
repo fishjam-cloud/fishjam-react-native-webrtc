@@ -60,6 +60,7 @@ import {
   type LivestreamStatus,
   type LivestreamStatusInfo,
 } from './useLivestreamStatus';
+import { getVoipToken } from './PushKit';
 import { useVoIPEvents, type VoIPEventHandlers, type VoipIncomingPayload } from './useVoIPEvents';
 import { Event, EventTarget } from './vendor/event-target-shim';
 import writeLivestreamCredentials, {
@@ -73,7 +74,7 @@ setupNativeEvents();
 
 export {
   AudioDeviceType, AudioOutputManager, Event,
-  EventTarget, mediaDevices, MediaStream,
+  EventTarget, getVoipToken, mediaDevices, MediaStream,
   MediaStreamTrack, permissions,
   presentBroadcastPicker,
   presentLivestreamBroadcastPicker,
