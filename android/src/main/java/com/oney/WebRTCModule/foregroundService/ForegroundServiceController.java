@@ -35,6 +35,7 @@ public class ForegroundServiceController {
     private String notificationTitle = "[PLACEHOLDER] Tap to return to the call.";
     private String notificationContent = "[PLACEHOLDER] Your video call is ongoing";
     private String importance = "high";
+    private boolean onlyAlertOnce = false;
 
     private volatile CompletableFuture<Void> foregroundedFuture;
 
@@ -52,10 +53,9 @@ public class ForegroundServiceController {
     }
 
     // Called by WebRTCForegroundService after startForeground() completes.
-    public static void onServiceForegrounded() {
-        ForegroundServiceController ctrl = instance;
-        if (ctrl != null && ctrl.foregroundedFuture != null) {
-            ctrl.foregroundedFuture.complete(null);
+    public void onServiceForegrounded() {
+        if (this.foregroundedFuture != null) {
+            this.foregroundedFuture.complete(null);
         }
     }
 
@@ -69,6 +69,7 @@ public class ForegroundServiceController {
         if (config.hasKey("notificationTitle")) notificationTitle = config.getString("notificationTitle");
         if (config.hasKey("notificationContent")) notificationContent = config.getString("notificationContent");
         if (config.hasKey("importance")) importance = config.getString("importance");
+        if (config.hasKey("onlyAlertOnce")) onlyAlertOnce = config.getBoolean("onlyAlertOnce");
 
         applyState();
         promise.resolve(null);
@@ -78,6 +79,7 @@ public class ForegroundServiceController {
         cameraRequested = false;
         microphoneRequested = false;
         screenSharingAllowed = false;
+        screenShareActive = false;
         applyState();
         promise.resolve(null);
     }
@@ -108,6 +110,8 @@ public class ForegroundServiceController {
     }
 
     private void applyState() {
+        if (reactContext == null) return;
+
         boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
         int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested, screenShareNeedsService);
 
@@ -123,6 +127,7 @@ public class ForegroundServiceController {
         serviceIntent.putExtra("notificationTitle", notificationTitle);
         serviceIntent.putExtra("notificationContent", notificationContent);
         serviceIntent.putExtra("importance", importance);
+        serviceIntent.putExtra("onlyAlertOnce", onlyAlertOnce);
         serviceIntent.putExtra("foregroundServiceTypes", types);
 
         try {

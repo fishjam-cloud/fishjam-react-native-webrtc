@@ -138,6 +138,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         super.invalidate();
         audioOutputManager.stopObserving();
         getUserMediaImpl.dispose();
+        // prevent using stale context
+        foregroundServiceController.setContext(null);
     }
 
     @NonNull
