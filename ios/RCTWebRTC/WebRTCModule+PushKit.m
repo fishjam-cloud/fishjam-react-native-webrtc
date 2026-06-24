@@ -1,11 +1,11 @@
 #import "WebRTCModule+PushKit.h"
 
-#import "FishjamVoIPPush.h"
+#import "VoIPPushManager.h"
 
 @implementation WebRTCModule (PushKit)
 
 - (void)startObservingPushKit {
-    FishjamVoIPPush *push = [FishjamVoIPPush shared];
+    VoIPPushManager *push = [VoIPPushManager shared];
     __weak typeof(self) weakSelf = self;
 
     push.onTokenUpdated = ^(NSString *token) {
@@ -23,13 +23,13 @@
 }
 
 - (void)stopObservingPushKit {
-    FishjamVoIPPush *push = [FishjamVoIPPush shared];
+    VoIPPushManager *push = [VoIPPushManager shared];
     push.onTokenUpdated = nil;
     push.onIncomingPush = nil;
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getVoipToken) {
-    return [FishjamVoIPPush shared].token ?: [NSNull null];
+    return [VoIPPushManager shared].token ?: [NSNull null];
 }
 
 @end

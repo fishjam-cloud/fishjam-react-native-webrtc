@@ -1,20 +1,20 @@
-#import "FishjamVoIPPush.h"
+#import "VoIPPushManager.h"
 #import <PushKit/PushKit.h>
 #import "CallKitManager.h"
 
-@interface FishjamVoIPPush ()<PKPushRegistryDelegate>
+@interface VoIPPushManager ()<PKPushRegistryDelegate>
 @property(nonatomic, strong) PKPushRegistry *registry;
 @property(nonatomic, strong) dispatch_queue_t registryQueue;
 @property(copy, readwrite, nullable) NSString *token;
 @end
 
-@implementation FishjamVoIPPush
+@implementation VoIPPushManager
 
 + (instancetype)shared {
-    static FishjamVoIPPush *sharedInstance = nil;
+    static VoIPPushManager *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sharedInstance = [[FishjamVoIPPush alloc] init];
+        sharedInstance = [[VoIPPushManager alloc] init];
     });
 
     return sharedInstance;
@@ -66,7 +66,7 @@
                               forType:(PKPushType)type
                 withCompletionHandler:(void (^)(void))completion {
     NSDictionary *dict = payload.dictionaryPayload;
-    NSString *displayName = dict[@"displayName"] ?: dict[@"username"];
+    NSString *displayName = dict[@"displayName"];
     BOOL isVideo = [dict[@"isVideo"] boolValue];
 
     if (displayName == nil || displayName.length == 0) {
