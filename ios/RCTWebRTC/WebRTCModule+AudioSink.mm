@@ -1,3 +1,4 @@
+#import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 
@@ -10,8 +11,8 @@
 #endif
 
 #import "FJAudioSinkJSI.h"
-#import "WebRTCModule.h"
 #import "WebRTCModule+RTCMediaStream.h"
+#import "WebRTCModule.h"
 
 #include <mutex>
 #include <vector>
@@ -36,7 +37,7 @@
 // Accumulates int16 PCM from a remote track, converts each batch to the
 // requested format/rate/channels with a persistent miniaudio converter, and
 // delivers the result to JS via FJAudioSink.
-@interface FJAudioSinkRenderer : NSObject <RTC_OBJC_TYPE (RTCAudioRenderer)>
+@interface FJAudioSinkRenderer : NSObject<RTC_OBJC_TYPE (RTCAudioRenderer)>
 - (instancetype)initWithSink:(std::shared_ptr<FJAudioSink>)sink
                         pcId:(NSNumber *)pcId
                      trackId:(NSString *)trackId
@@ -72,13 +73,13 @@
 }
 
 - (instancetype)initWithSink:(std::shared_ptr<FJAudioSink>)sink
-                       pcId:(NSNumber *)pcId
-                    trackId:(NSString *)trackId
-                    outRate:(int)outRate
-                outChannels:(int)outChannels
-                  outFormat:(ma_format)outFormat
-                   lpfOrder:(int)lpfOrder
-                    batchMs:(double)batchMs {
+                        pcId:(NSNumber *)pcId
+                     trackId:(NSString *)trackId
+                     outRate:(int)outRate
+                 outChannels:(int)outChannels
+                   outFormat:(ma_format)outFormat
+                    lpfOrder:(int)lpfOrder
+                     batchMs:(double)batchMs {
     if (self = [super init]) {
         _sink = std::move(sink);
         _pcId = pcId;
@@ -124,9 +125,12 @@
     _inChannels = channels;
     int outRate = _requestedOutRate > 0 ? _requestedOutRate : sampleRate;  // outRate 0 => keep input rate
 
-    ma_data_converter_config config = ma_data_converter_config_init(
-        ma_format_s16, _outFormat, (ma_uint32)channels, (ma_uint32)_outChannels,
-        (ma_uint32)sampleRate, (ma_uint32)outRate);
+    ma_data_converter_config config = ma_data_converter_config_init(ma_format_s16,
+                                                                    _outFormat,
+                                                                    (ma_uint32)channels,
+                                                                    (ma_uint32)_outChannels,
+                                                                    (ma_uint32)sampleRate,
+                                                                    (ma_uint32)outRate);
     config.resampling.algorithm = ma_resample_algorithm_linear;
     config.resampling.linear.lpfOrder = (ma_uint32)_lpfOrder;
 
@@ -158,8 +162,8 @@
 
         ma_uint64 framesIn = framesRemaining;
         ma_uint64 framesOut = expectedFrames;
-        if (ma_data_converter_process_pcm_frames(&_converter, readPtr, &framesIn,
-                                                 output.data() + writeOffset, &framesOut) != MA_SUCCESS) {
+        if (ma_data_converter_process_pcm_frames(
+                &_converter, readPtr, &framesIn, output.data() + writeOffset, &framesOut) != MA_SUCCESS) {
             break;
         }
         output.resize(writeOffset + (size_t)(framesOut * _outChannels * outBytesPerSample));
@@ -175,8 +179,12 @@
     if (output.empty()) {
         return;
     }
-    _sink->deliver(_pcId.intValue, _trackId.UTF8String, _outRate, _outChannels,
-                   _outFormat == ma_format_f32 ? "f32" : "s16", std::move(output));
+    _sink->deliver(_pcId.intValue,
+                   _trackId.UTF8String,
+                   _outRate,
+                   _outChannels,
+                   _outFormat == ma_format_f32 ? "f32" : "s16",
+                   std::move(output));
 }
 
 - (void)teardown {
@@ -192,6 +200,11 @@
 }
 
 @end
+
+static const void *kLocalAudioEngineKey = &kLocalAudioEngineKey;
+
+// pcId the JS side uses to mean "the local mic track", not a remote pc track.
+static const int kFJLocalTrackPcId = -1;
 
 #pragma mark - WebRTCModule (AudioSink)
 
@@ -223,9 +236,9 @@
 #endif
 }
 
-RCT_REMAP_METHOD(installAudioSinkJSI,
-                 installAudioSinkJSIWithResolver : (RCTPromiseResolveBlock)resolve
-                 rejecter : (RCTPromiseRejectBlock)reject) {
+RCT_REMAP_METHOD(installAudioSinkJSI, installAudioSinkJSIWithResolver
+                 : (RCTPromiseResolveBlock)resolve rejecter
+                 : (RCTPromiseRejectBlock)reject) {
     FJAudioSinkBox *box = [self fj_audioSinkBox];
     if (box == nil) {
         reject(@"E_NO_JSI", @"Audio extraction requires the New Architecture.", nil);
@@ -238,8 +251,19 @@ RCT_REMAP_METHOD(installAudioSinkJSI,
     box->sink->install([resolve]() { resolve(@YES); });
 }
 
-// trackId -> attached renderer.
+// trackId -> attached renderer (remote tracks only).
 - (NSMutableDictionary<NSString *, FJAudioSinkRenderer *> *)audioRenderers {
+    static const void *key = &key;
+    NSMutableDictionary *renderers = objc_getAssociatedObject(self, key);
+    if (renderers == nil) {
+        renderers = [NSMutableDictionary new];
+        objc_setAssociatedObject(self, key, renderers, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return renderers;
+}
+
+// trackId -> attached renderer (local tracks, pcId == -1).
+- (NSMutableDictionary<NSString *, FJAudioSinkRenderer *> *)fj_localRenderers {
     static const void *key = &key;
     NSMutableDictionary *renderers = objc_getAssociatedObject(self, key);
     if (renderers == nil) {
@@ -257,15 +281,29 @@ RCT_EXPORT_METHOD(startAudioExtraction
     if (box == nil) {
         return;
     }
-    RTCMediaStreamTrack *track = [self trackForId:trackId pcId:pcId];
-    if (![track isKindOfClass:[RTC_OBJC_TYPE(RTCAudioTrack) class]]) {
-        return;
-    }
-    NSMutableDictionary *renderers = [self audioRenderers];
-    if (renderers[trackId] != nil) {
-        return;
-    }
 
+    FJAudioSinkRenderer *renderer = [self fj_makeRendererWithBox:box pcId:pcId trackId:trackId options:options];
+
+    if ([pcId intValue] == kFJLocalTrackPcId) {
+        [self fj_startLocalExtractionForTrackId:trackId renderer:renderer];
+    } else {
+        [self fj_startRemoteExtractionForTrackId:trackId pcId:pcId renderer:renderer];
+    }
+}
+
+RCT_EXPORT_METHOD(stopAudioExtraction : (nonnull NSNumber *)pcId trackId : (nonnull NSString *)trackId) {
+    if ([pcId intValue] == kFJLocalTrackPcId) {
+        [self fj_stopLocalExtractionForTrackId:trackId];
+    } else {
+        [self fj_stopRemoteExtractionForTrackId:trackId pcId:pcId];
+    }
+}
+
+// Builds a renderer from the JS options (defaults match Android), source-agnostic.
+- (FJAudioSinkRenderer *)fj_makeRendererWithBox:(FJAudioSinkBox *)box
+                                           pcId:(NSNumber *)pcId
+                                        trackId:(NSString *)trackId
+                                        options:(NSDictionary *)options {
     int outRate = options[@"sampleRate"] ? [options[@"sampleRate"] intValue] : 16000;
     int outChannels = options[@"channels"] ? [options[@"channels"] intValue] : 1;
     ma_format outFormat = [options[@"format"] isEqualToString:@"s16"] ? ma_format_s16 : ma_format_f32;
@@ -277,22 +315,36 @@ RCT_EXPORT_METHOD(startAudioExtraction
     if (batchMs <= 0) {
         batchMs = 100.0;
     }
+    return [[FJAudioSinkRenderer alloc] initWithSink:box->sink
+                                                pcId:pcId
+                                             trackId:trackId
+                                             outRate:outRate
+                                         outChannels:outChannels
+                                           outFormat:outFormat
+                                            lpfOrder:lpfOrder
+                                             batchMs:batchMs];
+}
 
-    FJAudioSinkRenderer *renderer = [[FJAudioSinkRenderer alloc] initWithSink:box->sink
-                                                                         pcId:pcId
-                                                                      trackId:trackId
-                                                                      outRate:outRate
-                                                                  outChannels:outChannels
-                                                                    outFormat:outFormat
-                                                                     lpfOrder:lpfOrder
-                                                                      batchMs:batchMs];
+#pragma mark - Remote track extraction (RTCAudioRenderer)
+
+// Remote: fed by WebRTC's RTCAudioRenderer. All access is on the React method
+// queue, so audioRenderers needs no locking (unlike the local path).
+- (void)fj_startRemoteExtractionForTrackId:(NSString *)trackId
+                                      pcId:(NSNumber *)pcId
+                                  renderer:(FJAudioSinkRenderer *)renderer {
+    RTCMediaStreamTrack *track = [self trackForId:trackId pcId:pcId];
+    if (![track isKindOfClass:[RTC_OBJC_TYPE(RTCAudioTrack) class]]) {
+        return;
+    }
+    NSMutableDictionary *renderers = [self audioRenderers];
+    if (renderers[trackId] != nil) {
+        return;
+    }
     [(RTC_OBJC_TYPE(RTCAudioTrack) *)track addRenderer:renderer];
     renderers[trackId] = renderer;
 }
 
-RCT_EXPORT_METHOD(stopAudioExtraction
-                  : (nonnull NSNumber *)pcId trackId
-                  : (nonnull NSString *)trackId) {
+- (void)fj_stopRemoteExtractionForTrackId:(NSString *)trackId pcId:(NSNumber *)pcId {
     NSMutableDictionary *renderers = [self audioRenderers];
     FJAudioSinkRenderer *renderer = renderers[trackId];
     if (renderer == nil) {
@@ -304,6 +356,124 @@ RCT_EXPORT_METHOD(stopAudioExtraction
         [(RTC_OBJC_TYPE(RTCAudioTrack) *)track removeRenderer:renderer];
     }
     [renderer teardown];
+}
+
+#pragma mark - Local track extraction (AVAudioEngine input tap)
+
+// Local: fed by the AVAudioEngine tap on an audio thread, so fj_localRenderers
+// is guarded by @synchronized(self).
+- (void)fj_startLocalExtractionForTrackId:(NSString *)trackId renderer:(FJAudioSinkRenderer *)renderer {
+    @synchronized(self) {
+        NSMutableDictionary *localRenderers = [self fj_localRenderers];
+        if (localRenderers[trackId] != nil) {
+            return;
+        }
+        localRenderers[trackId] = renderer;
+    }
+    [self fj_startLocalAudioEngineIfNeeded];
+}
+
+- (void)fj_stopLocalExtractionForTrackId:(NSString *)trackId {
+    FJAudioSinkRenderer *renderer;
+    @synchronized(self) {
+        NSMutableDictionary *localRenderers = [self fj_localRenderers];
+        renderer = localRenderers[trackId];
+        if (renderer == nil) {
+            return;
+        }
+        [localRenderers removeObjectForKey:trackId];
+    }
+    [renderer teardown];
+    [self fj_stopLocalAudioEngineIfNoMoreRenderers];
+}
+
+#pragma mark - Local audio engine lifecycle
+
+// One shared input tap feeds every local renderer: started on the first local
+// track, torn down with the last.
+- (void)fj_startLocalAudioEngineIfNeeded {
+    if (objc_getAssociatedObject(self, kLocalAudioEngineKey) != nil) {
+        return;
+    }
+
+    AVAudioEngine *engine = [[AVAudioEngine alloc] init];
+    AVAudioInputNode *inputNode = engine.inputNode;
+    AVAudioFormat *format = [inputNode outputFormatForBus:0];
+
+    __weak __typeof__(self) weakSelf = self;
+    [inputNode installTapOnBus:0
+                    bufferSize:4096
+                        format:format
+                         block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
+                             [weakSelf fj_deliverLocalAudioBuffer:buffer];
+                         }];
+
+    NSError *error = nil;
+    [engine prepare];
+    if (![engine startAndReturnError:&error]) {
+        NSLog(@"[FJAudioSink] Failed to start local audio engine: %@", error);
+        [inputNode removeTapOnBus:0];
+        return;
+    }
+
+    objc_setAssociatedObject(self, kLocalAudioEngineKey, engine, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (void)fj_deliverLocalAudioBuffer:(AVAudioPCMBuffer *)buffer {
+    if (buffer.frameLength == 0 || buffer.format.channelCount == 0 || buffer.floatChannelData == nil) {
+        return;
+    }
+
+    NSArray<FJAudioSinkRenderer *> *snapshot;
+    @synchronized(self) {
+        snapshot = [[self fj_localRenderers] allValues];
+    }
+    if (snapshot.count == 0) {
+        return;
+    }
+
+    AVAudioChannelCount channels = buffer.format.channelCount;
+    double sampleRate = buffer.format.sampleRate;
+    AVAudioFrameCount frameCount = buffer.frameLength;
+    NSUInteger totalSamples = (NSUInteger)(frameCount * channels);
+
+    // Convert non-interleaved float32 → interleaved int16
+    NSMutableData *int16Data = [NSMutableData dataWithLength:totalSamples * sizeof(int16_t)];
+    int16_t *dst = (int16_t *)int16Data.mutableBytes;
+    float *const *src = buffer.floatChannelData;
+    for (AVAudioFrameCount f = 0; f < frameCount; f++) {
+        for (AVAudioChannelCount ch = 0; ch < channels; ch++) {
+            float s = src[ch][f];
+            if (s > 1.0f)
+                s = 1.0f;
+            else if (s < -1.0f)
+                s = -1.0f;
+            dst[f * channels + ch] = (int16_t)(s * 32767.0f);
+        }
+    }
+
+    for (FJAudioSinkRenderer *renderer in snapshot) {
+        [renderer renderPCMBuffer:int16Data.bytes
+                    bitsPerSample:16
+                       sampleRate:(int)sampleRate
+                 numberOfChannels:(size_t)channels
+                   numberOfFrames:(size_t)frameCount];
+    }
+}
+
+- (void)fj_stopLocalAudioEngineIfNoMoreRenderers {
+    @synchronized(self) {
+        if ([self fj_localRenderers].count > 0)
+            return;
+    }
+
+    AVAudioEngine *engine = objc_getAssociatedObject(self, kLocalAudioEngineKey);
+    if (engine == nil) {
+        return;
+    }
+    [engine.inputNode removeTapOnBus:0];
+    [engine stop];
+    objc_setAssociatedObject(self, kLocalAudioEngineKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
 @end
