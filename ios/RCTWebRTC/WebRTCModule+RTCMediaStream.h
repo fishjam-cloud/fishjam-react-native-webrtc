@@ -9,5 +9,6 @@
 - (RTCVideoTrack *)createVideoTrackWithCaptureController:
     (CaptureController * (^)(RTCVideoSource *))captureControllerCreator;
 - (NSArray *)createMediaStream:(NSArray<RTCMediaStreamTrack *> *)tracks;
+- (nullable RTCMediaStreamTrack *)trackForId:(nonnull NSString *)trackId pcId:(nonnull NSNumber *)pcId;
 
 @end

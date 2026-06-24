@@ -27,7 +27,15 @@ static NSString *const kEventLivestreamStatusChanged = @"livestreamStatusChanged
 static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaStreamVideoTracksChangedNotification";
 static NSString *const kEventVoipPush = @"voipPushEvent";
 
+@class FJAudioSinkBox;
+
+#if __has_include(<React/RCTCallInvokerModule.h>)
+#import <React/RCTCallInvokerModule.h>
+@interface WebRTCModule : RCTEventEmitter<RCTBridgeModule, RCTCallInvokerModule>
+@property(nonatomic, nullable) RCTCallInvoker *callInvoker;  // RN sets this automatically (bridge + bridgeless)
+#else
 @interface WebRTCModule : RCTEventEmitter<RCTBridgeModule>
+#endif
 
 @property(nonatomic, strong) dispatch_queue_t workerQueue;
 
@@ -42,5 +50,8 @@ static NSString *const kEventVoipPush = @"voipPushEvent";
 - (RTCMediaStream *)streamForReactTag:(NSString *)reactTag;
 - (void)removeAudioRouteObserver;
 - (void)removeLivestreamStatusObserver;
+
+// Opaque audio-sink box; nil when extraction is unsupported (old architecture).
+- (nullable FJAudioSinkBox *)fj_audioSinkBox;
 
 @end
