@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 
-@interface VoIPPushManager : NSObject
+@interface VoipManager : NSObject
 @property(nonatomic, copy, readonly, nullable) NSString *token;
 @property(nonatomic, copy) void (^onTokenUpdated)(NSString *token);
 @property(nonatomic, copy) void (^onIncomingPush)(NSDictionary *payload);

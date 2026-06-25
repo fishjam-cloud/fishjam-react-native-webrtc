@@ -1,11 +1,11 @@
 #import "WebRTCModule+PushKit.h"
 
-#import "VoIPPushManager.h"
+#import "VoipManager.h"
 
 @implementation WebRTCModule (PushKit)
 
 - (void)startObservingPushKit {
-    VoIPPushManager *push = [VoIPPushManager shared];
+    VoipManager *push = [VoipManager shared];
     __weak typeof(self) weakSelf = self;
 
     push.onTokenUpdated = ^(NSString *token) {
@@ -23,13 +23,13 @@
 }
 
 - (void)stopObservingPushKit {
-    VoIPPushManager *push = [VoIPPushManager shared];
+    VoipManager *push = [VoipManager shared];
     push.onTokenUpdated = nil;
     push.onIncomingPush = nil;
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getVoipToken) {
-    return [VoIPPushManager shared].token ?: [NSNull null];
+    return [VoipManager shared].token ?: [NSNull null];
 }
 
 @end

@@ -1,20 +1,20 @@
-#import "VoIPPushManager.h"
+#import "VoipManager.h"
 #import <PushKit/PushKit.h>
 #import "CallKitManager.h"
 
-@interface VoIPPushManager ()<PKPushRegistryDelegate>
+@interface VoipManager ()<PKPushRegistryDelegate>
 @property(nonatomic, strong) PKPushRegistry *registry;
 @property(nonatomic, strong) dispatch_queue_t registryQueue;
 @property(copy, readwrite, nullable) NSString *token;
 @end
 
-@implementation VoIPPushManager
+@implementation VoipManager
 
 + (instancetype)shared {
-    static VoIPPushManager *sharedInstance = nil;
+    static VoipManager *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sharedInstance = [[VoIPPushManager alloc] init];
+        sharedInstance = [[VoipManager alloc] init];
     });
 
     return sharedInstance;
