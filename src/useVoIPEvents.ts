@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 import { addListener, removeListener } from './EventEmitter';
 import { getVoipToken } from './PushKit';
 
-export type VoipIncomingPayload = { roomId: string; username: string };
+export type VoipIncomingPayload = { roomName: string; displayName: string };
 
 export type VoIPEventHandlers = {
     onIncoming?: (payload: VoipIncomingPayload) => void;
