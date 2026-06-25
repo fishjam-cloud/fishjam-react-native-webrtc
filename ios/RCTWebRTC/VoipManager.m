@@ -65,12 +65,14 @@
     didReceiveIncomingPushWithPayload:(PKPushPayload *)payload
                               forType:(PKPushType)type
                 withCompletionHandler:(void (^)(void))completion {
-    NSDictionary *dict = payload.dictionaryPayload;
+    NSMutableDictionary *dict = [payload.dictionaryPayload mutableCopy];
     NSString *displayName = dict[@"displayName"];
     BOOL isVideo = [dict[@"isVideo"] boolValue];
+    dict[@"isVideo"] = @(isVideo);
 
     if (displayName == nil || displayName.length == 0) {
         displayName = @"Incoming call";
+        dict[@"displayName"] = displayName;
     }
 
     [[CallKitManager shared] reportIncomingCallWithDisplayName:displayName isVideo:isVideo];
