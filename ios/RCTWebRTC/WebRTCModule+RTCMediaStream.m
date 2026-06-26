@@ -11,6 +11,7 @@
 #import "WebRTCModuleOptions.h"
 
 #import <React/RCTUIManager.h>
+#import "CustomVideoCaptureController.h"
 #import "ProcessorProvider.h"
 #import "ScreenCaptureController.h"
 #import "ScreenCapturer.h"
@@ -219,6 +220,72 @@ RCT_EXPORT_METHOD(getDisplayMedia
                 resolve(@{@"streamId" : mediaStreamId, @"track" : trackInfo});
             }];
     };
+#endif
+}
+
+#pragma mark - Custom video track (app-rendered, IOSurface-backed frames)
+
+/**
+ * Creates a custom video track whose frames are rendered by the app into
+ * IOSurface-backed CVPixelBuffers. Mirrors getDisplayMedia in that it resolves a
+ * {streamId, track} pair, but additionally returns the buffer descriptors the
+ * app needs to import each IOSurface (once) and push frames into (per frame, via
+ * the JSI channel installed by installCustomVideoJSI).
+ *
+ * @param init dictionary of {width, height, poolSize}.
+ */
+RCT_EXPORT_METHOD(createCustomVideoTrack
+                  : (NSDictionary *)init resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+#if TARGET_OS_TV
+    reject(@"unsupported_platform", @"createCustomVideoTrack is not supported on tvOS", nil);
+    return;
+#else
+    NSInteger width = [init[@"width"] integerValue];
+    NSInteger height = [init[@"height"] integerValue];
+    NSInteger poolSize = [init[@"poolSize"] integerValue];
+
+    RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
+
+    NSString *trackUUID = [[NSUUID UUID] UUIDString];
+    RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:trackUUID];
+
+    NSError *error = nil;
+    CustomVideoCaptureController *captureController =
+        [[CustomVideoCaptureController alloc] initWithVideoSource:videoSource
+                                                           width:width
+                                                          height:height
+                                                        poolSize:poolSize
+                                                           error:&error];
+    if (captureController == nil) {
+        reject(@"custom_video_track_failed",
+               error.localizedDescription ?: @"Failed to create custom video capture controller",
+               error);
+        return;
+    }
+
+    videoTrack.captureController = captureController;
+    [captureController startCapture];
+
+    NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
+    RTCMediaStream *mediaStream = [self.peerConnectionFactory mediaStreamWithStreamId:mediaStreamId];
+    [mediaStream addVideoTrack:videoTrack];
+
+    self.localTracks[trackUUID] = videoTrack;
+    self.localStreams[mediaStreamId] = mediaStream;
+
+    resolve(@{
+        @"streamId" : mediaStreamId,
+        @"track" : @{
+            @"id" : trackUUID,
+            @"kind" : videoTrack.kind,
+            @"readyState" : @"live",
+            @"remote" : @(NO),
+            @"enabled" : @(videoTrack.isEnabled),
+        },
+        @"buffers" : captureController.bufferDescriptors,
+    });
 #endif
 }
 
