@@ -24,7 +24,11 @@ import MediaStream from './MediaStream';
 import MediaStreamTrack, { type MediaTrackSettings } from './MediaStreamTrack';
 import MediaStreamTrackEvent from './MediaStreamTrackEvent';
 import permissions from './Permissions';
-import { getVoipToken } from './PushKit';
+import {
+    clearPendingIncomingCall,
+    getPendingIncomingCall,
+    getVoipToken,
+} from './PushKit';
 import RTCAudioSession from './RTCAudioSession';
 import RTCCertificate from './RTCCertificate';
 import RTCErrorEvent from './RTCErrorEvent';
@@ -84,8 +88,10 @@ setupNativeEvents();
 export {
     AudioDeviceType,
     AudioOutputManager,
+    clearPendingIncomingCall,
     Event,
     EventTarget,
+    getPendingIncomingCall,
     getVoipToken,
     mediaDevices,
     MediaStream,

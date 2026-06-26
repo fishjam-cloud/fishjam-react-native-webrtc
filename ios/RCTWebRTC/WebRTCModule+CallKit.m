@@ -85,4 +85,8 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(hasActiveCallKitSession) {
     return @([self callKitManager].hasActiveCall);
 }
 
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isCallAnswered) {
+    return @([self callKitManager].isCallAnswered);
+}
+
 @end

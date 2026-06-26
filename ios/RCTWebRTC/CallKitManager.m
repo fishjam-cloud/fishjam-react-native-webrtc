@@ -7,6 +7,7 @@
 @property(nonatomic, strong) CXCallController *callController;
 @property(nonatomic, strong) CXProvider *provider;
 @property(nonatomic, strong) NSUUID *currentCallUUID;
+@property(nonatomic, assign) BOOL isCallAnswered;
 @end
 
 @implementation CallKitManager
@@ -87,6 +88,7 @@
 
     NSUUID *uuid = [NSUUID UUID];
     self.currentCallUUID = uuid;
+    self.isCallAnswered = NO;
 
     CXCallUpdate *update = [[CXCallUpdate alloc] init];
     update.remoteHandle = [[CXHandle alloc] initWithType:CXHandleTypeGeneric value:displayName];
@@ -137,6 +139,7 @@
 
 - (void)cleanup {
     self.currentCallUUID = nil;
+    self.isCallAnswered = NO;
 }
 
 #pragma mark - CXProviderDelegate
@@ -158,6 +161,7 @@
 }
 
 - (void)provider:(CXProvider *)provider performAnswerCallAction:(CXAnswerCallAction *)action {
+    self.isCallAnswered = YES;
     if (self.onCallAnswered) {
         self.onCallAnswered();
     }

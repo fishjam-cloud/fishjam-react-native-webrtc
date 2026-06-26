@@ -1,8 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 
+import { hasActiveCallKitSession, isCallAnswered } from './CallKit';
 import { addListener, removeListener } from './EventEmitter';
-import { getVoipToken } from './PushKit';
+import {
+    clearPendingIncomingCall,
+    getPendingIncomingCall,
+    getVoipToken,
+} from './PushKit';
 import { useCallKitEvent } from './useCallKit';
 
 // If you don't provide displayName it will default to incoming call, isVideo to false
@@ -40,7 +45,10 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
     const listener = useRef({});
 
     useCallKitEvent('answer', () => handlersRef.current.onAnswered?.());
-    useCallKitEvent('ended', () => handlersRef.current.onEnded?.());
+    useCallKitEvent('ended', () => {
+        clearPendingIncomingCall();
+        handlersRef.current.onEnded?.();
+    });
 
     useEffect(() => {
         // PushKit events (registered / incoming) arrive on the VoIP push channel.
@@ -63,11 +71,31 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
             }
         });
 
-        // The VoIP token is usually issued before JS subscribes
-        // Read the current token and deliver it to the handler on mount
+        // The VoIP token / incoming call are usually issued before JS subscribes
+        // so the live events above are missed. Recover them from the
+        // native buffer on mount.
         const token = getVoipToken();
         if (token) {
             handlersRef.current.onRegistered?.(token);
+        }
+
+        const pendingCall = getPendingIncomingCall();
+        if (pendingCall && hasActiveCallKitSession()) {
+            try {
+                assertRoomName(pendingCall);
+                handlersRef.current.onIncoming?.(
+                    pendingCall as unknown as VoipIncomingPayload,
+                );
+
+                // The user may have accepted before JS was
+                // ready, so the live onAnswered was missed. Recover it from
+                // native state so the call connects instead of staying stuck.
+                if (isCallAnswered()) {
+                    handlersRef.current.onAnswered?.();
+                }
+            } catch {
+                // Ignore a malformed buffered payload.
+            }
         }
 
         return () => {

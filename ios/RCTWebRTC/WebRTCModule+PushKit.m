@@ -20,6 +20,11 @@
     if (token.length > 0) {
         [weakSelf sendEventWithName:kEventVoipPush body:@{@"registered" : token}];
     }
+
+    NSDictionary *pendingCall = push.pendingIncomingCall;
+    if (pendingCall) {
+        [weakSelf sendEventWithName:kEventVoipPush body:@{@"incoming" : pendingCall}];
+    }
 }
 
 - (void)stopObservingPushKit {
@@ -30,6 +35,14 @@
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getVoipToken) {
     return [VoipManager shared].token ?: [NSNull null];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getPendingIncomingCall) {
+    return [VoipManager shared].pendingIncomingCall ?: [NSNull null];
+}
+
+RCT_EXPORT_METHOD(clearPendingIncomingCall) {
+    [[VoipManager shared] clearPendingIncomingCall];
 }
 
 @end

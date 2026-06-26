@@ -6,6 +6,7 @@
 @property(nonatomic, strong) PKPushRegistry *registry;
 @property(nonatomic, strong) dispatch_queue_t registryQueue;
 @property(copy, readwrite, nullable) NSString *token;
+@property(copy, readwrite, nullable) NSDictionary *pendingIncomingCall;
 @end
 
 @implementation VoipManager
@@ -77,11 +78,18 @@
 
     [[CallKitManager shared] reportIncomingCallWithDisplayName:displayName isVideo:isVideo];
 
+    // Buffer the payload if the app was cold-launched and JS side hasn't yet loaded
+    self.pendingIncomingCall = dict;
+
     if (self.onIncomingPush) {
         self.onIncomingPush(dict ?: @{});
     }
 
     completion();
+}
+
+- (void)clearPendingIncomingCall {
+    self.pendingIncomingCall = nil;
 }
 
 @end

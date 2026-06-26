@@ -14,6 +14,7 @@ typedef void (^CallKitBoolCallback)(BOOL);
 @property(nonatomic, copy) CallKitBoolCallback onCallMuted;
 @property(nonatomic, copy) CallKitBoolCallback onCallHeld;
 @property(nonatomic, readonly) BOOL hasActiveCall;
+@property(nonatomic, readonly) BOOL isCallAnswered;
 
 + (instancetype)shared;
 
