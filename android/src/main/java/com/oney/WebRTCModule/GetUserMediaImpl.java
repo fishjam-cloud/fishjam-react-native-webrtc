@@ -499,6 +499,102 @@ class GetUserMediaImpl {
     }
 
     /**
+     * Creates a custom video track whose frames are rendered by the app on the GPU into
+     * AHardwareBuffer (AHB) backed surfaces, mirroring the iOS {@code createCustomVideoTrack}
+     * (IOSurface CVPixelBuffer pool). Resolves the same cross-platform shape as iOS:
+     * {@code { streamId, track, buffers:[{ index, surfaceHandle, width, height }] }} which the
+     * platform-neutral {@code src/createCustomVideoTrack.ts} wrapper consumes unchanged.
+     *
+     * <p>Requires API level 26+ (the AHB pool uses {@code __INTRODUCED_IN(26)} APIs); rejects on
+     * older devices BEFORE referencing {@link CustomVideoCaptureController}/{@link AHardwareBufferPool},
+     * so the native AHB library is never loaded on unsupported systems.
+     *
+     * @param init    {@code { width, height, poolSize }} pool description.
+     * @param promise resolves with {@code { streamId, track, buffers }} or rejects on failure.
+     */
+    void createCustomVideoTrack(ReadableMap init, Promise promise) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            promise.reject("custom_video_track_unsupported",
+                    "Custom video tracks require Android 8.0 (API 26) or newer.");
+            return;
+        }
+
+        int width = init != null && init.hasKey("width") ? init.getInt("width") : 0;
+        int height = init != null && init.hasKey("height") ? init.getInt("height") : 0;
+        int poolSize = init != null && init.hasKey("poolSize") ? init.getInt("poolSize") : 0;
+
+        CustomVideoCaptureController captureController;
+        try {
+            captureController = new CustomVideoCaptureController(width, height, poolSize);
+        } catch (Exception e) {
+            promise.reject("custom_video_track_failed", e.getMessage(), e);
+            return;
+        }
+
+        PeerConnectionFactory pcFactory = webRTCModule.mFactory;
+
+        // Capturer-less video source: no SurfaceTextureHelper / VideoCapturer. Frames are pushed
+        // by the app. isScreencast=false keeps the standard (non-screen) encoder tuning.
+        VideoSource videoSource = pcFactory.createVideoSource(false);
+        // Mark the source as started so it accepts delivered frames (mirrors
+        // VideoCapturer.initialize(...).startCapture() signalling onCapturerStarted).
+        videoSource.getCapturerObserver().onCapturerStarted(true);
+
+        // Wire frame delivery (AHB -> OES texture -> VideoFrame, gated by a sync-fd fence) into the
+        // source, then start accepting pushes.
+        captureController.attachVideoSource(videoSource);
+        captureController.startCapture();
+
+        String trackId = UUID.randomUUID().toString();
+        VideoTrack videoTrack = pcFactory.createVideoTrack(trackId, videoSource);
+        videoTrack.setEnabled(true);
+
+        // Register so the existing disposeTrack -> TrackPrivate.dispose path tears down the AHB
+        // pool (CustomVideoCaptureController.dispose) and disposes the source/track.
+        tracks.put(trackId,
+                new TrackPrivate(videoTrack, videoSource, captureController, /* surfaceTextureHelper */ null));
+
+        String streamId = UUID.randomUUID().toString();
+        MediaStream mediaStream = pcFactory.createLocalMediaStream(streamId);
+        mediaStream.addTrack(videoTrack);
+        webRTCModule.localStreams.put(streamId, mediaStream);
+
+        WritableMap trackInfo = Arguments.createMap();
+        trackInfo.putString("id", trackId);
+        trackInfo.putString("kind", videoTrack.kind());
+        trackInfo.putString("readyState", "live");
+        trackInfo.putBoolean("remote", false);
+        trackInfo.putBoolean("enabled", videoTrack.enabled());
+
+        WritableMap data = Arguments.createMap();
+        data.putString("streamId", streamId);
+        data.putMap("track", trackInfo);
+        data.putArray("buffers", captureController.getBufferDescriptors());
+
+        Log.d(TAG, "createCustomVideoTrack streamId=" + streamId + " trackId=" + trackId);
+        promise.resolve(data);
+    }
+
+    /**
+     * Pushes one app-rendered frame into a custom video track. Routed from the JSI push channel
+     * ({@link FJVideoPushInstaller}); looks up the track's {@link CustomVideoCaptureController} and
+     * hands it the frame, which imports the AHB at {@code bufferIndex} as a GL OES texture, waits on
+     * the sync-fd fence carried in {@code fenceHandle} for the GPU render to complete, wraps it in a
+     * {@code TextureBufferImpl}/{@code VideoFrame}, and feeds the {@code VideoSource}'s
+     * {@code CapturerObserver}. {@code fenceSignaledValue} is unused on Android. Fire-and-forget.
+     */
+    void pushCustomVideoFrame(
+            String trackId, int bufferIndex, long fenceHandle, long fenceSignaledValue, long timestampNs, int rotation) {
+        TrackPrivate track = tracks.get(trackId);
+        if (track == null || !(track.videoCaptureController instanceof CustomVideoCaptureController)) {
+            Log.w(TAG, "pushCustomVideoFrame: no custom video track for id " + trackId);
+            return;
+        }
+        ((CustomVideoCaptureController) track.videoCaptureController)
+                .pushFrame(bufferIndex, fenceHandle, fenceSignaledValue, timestampNs, rotation);
+    }
+
+    /**
      * Set video effects to the TrackPrivate corresponding to the trackId with the help of VideoEffectProcessor
      * corresponding to the names.
      * @param trackId TrackPrivate id

@@ -72,6 +72,12 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     private FJAudioSinkInstaller audioSinkInstaller;
     private boolean audioSinkInstallerInitialized;
 
+    // JSI push channel for custom video tracks. Lazily built from the JS
+    // CallInvoker; null on the old architecture (no JSI). Mirrors the audio
+    // installer; each pushed frame is routed to the matching custom video track.
+    private FJVideoPushInstaller videoPushInstaller;
+    private boolean videoPushInstallerInitialized;
+
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
 
@@ -821,6 +827,17 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         ThreadUtils.runOnExecutor(() -> getUserMediaImpl.getDisplayMedia(constraints, promise));
     }
 
+    /**
+     * Creates a custom video track backed by an AHardwareBuffer pool the app renders into on the
+     * GPU. Resolves the same {@code { streamId, track, buffers }} shape as iOS, consumed by
+     * {@code src/createCustomVideoTrack.ts}. See
+     * {@link GetUserMediaImpl#createCustomVideoTrack(ReadableMap, Promise)}.
+     */
+    @ReactMethod
+    public void createCustomVideoTrack(ReadableMap init, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createCustomVideoTrack(init, promise));
+    }
+
     @ReactMethod
     public void getUserMedia(ReadableMap constraints, Callback successCallback, Callback errorCallback) {
         ThreadUtils.runOnExecutor(() -> getUserMediaImpl.getUserMedia(constraints, successCallback, errorCallback));
@@ -989,6 +1006,43 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         FJAudioSinkInstaller inst = getAudioSinkInstaller();
         if (inst == null) {
             promise.reject("E_NO_JSI", "Audio extraction requires the New Architecture.");
+            return;
+        }
+        inst.install(promise);
+    }
+
+    /**
+     * Lazily builds the custom-video JSI push installer from the JS CallInvoker. Returns null when
+     * there is no CallInvoker (old architecture) or it can't be acquired, which makes custom video
+     * tracks unsupported. Mirrors {@link #getAudioSinkInstaller()}. Each frame pushed through the
+     * JSI global is routed back to the matching custom video track on the native-modules executor.
+     */
+    private synchronized FJVideoPushInstaller getVideoPushInstaller() {
+        if (videoPushInstallerInitialized) {
+            return videoPushInstaller;
+        }
+        videoPushInstallerInitialized = true;
+        try {
+            ReactApplicationContext ctx = getReactApplicationContext();
+            // Custom video tracks need a JSI CallInvoker; absent on the old architecture.
+            if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
+                videoPushInstaller = new FJVideoPushInstaller(ctx,
+                        (trackId, bufferIndex, timestampNs, rotation, fenceHandle, fenceSignaledValue)
+                                -> ThreadUtils.runOnExecutor(()
+                                        -> getUserMediaImpl.pushCustomVideoFrame(trackId, bufferIndex,
+                                                fenceHandle, fenceSignaledValue, timestampNs, rotation)));
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Custom video tracks unavailable: failed to build the JSI installer", t);
+        }
+        return videoPushInstaller;
+    }
+
+    @ReactMethod
+    public void installCustomVideoJSI(Promise promise) {
+        FJVideoPushInstaller inst = getVideoPushInstaller();
+        if (inst == null) {
+            promise.reject("E_NO_JSI", "Custom video tracks require the New Architecture.");
             return;
         }
         inst.install(promise);
