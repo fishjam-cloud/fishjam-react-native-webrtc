@@ -87,6 +87,7 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
                 handlersRef.current.onIncoming?.(
                     pendingCall as unknown as VoipIncomingPayload,
                 );
+                clearPendingIncomingCall();
 
                 // The user may have accepted before JS was
                 // ready, so the live onAnswered was missed. Recover it from
