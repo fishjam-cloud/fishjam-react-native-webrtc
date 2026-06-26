@@ -68,6 +68,7 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
                 handlersRef.current.onIncoming?.(
                     payload.incoming as VoipIncomingPayload,
                 );
+                clearPendingIncomingCall();
             }
         });
 
