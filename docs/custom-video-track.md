@@ -81,6 +81,26 @@ camera import and the blur itself — are the hard parts, and they are entirely 
   fence and native waits for it; **omit the fence** to deliver immediately (CPU-filled or
   already-finished frames).
 
+## Platform notes
+
+- **Surface pixel format.** The pooled surfaces are **BGRA8 on iOS** (IOSurface) and **RGBA8 on
+  Android** (AHardwareBuffer). Create the GPU texture you render into with the matching format —
+  e.g. with react-native-webgpu, `format: Platform.OS === 'android' ? 'rgba8unorm' : 'bgra8unorm'`.
+  (This is channel order only; the encoder does any YUV conversion itself.)
+- **New Architecture only.** The per-frame push is a JSI binding, so the feature requires the New
+  Architecture. `createCustomVideoTrack` rejects with a clear error on the old architecture.
+- **Android API level.** The `AHardwareBuffer` path needs Android 8.0 (API 26). The package keeps
+  `minSdk 24`, but `createCustomVideoTrack` rejects on older devices rather than crashing.
+- **Fence handles are platform GPU primitives** — an `MTLSharedEvent` on iOS, a `sync` file
+  descriptor on Android — passed as `bigint`. `signaledValue` is used on iOS (the value the event
+  reaches); on Android a sync fd carries no value, so pass `0n`.
+
+## A complete example
+
+For a full, copy-pasteable end-to-end example — create the track, import the pool into WebGPU,
+drive an animated render loop with a GPU fence, and publish it — see
+[**`example.md`**](./example.md).
+
 ## Is the abstraction the right level?
 
 **For what it is, yes** — it's minimal, unopinionated, composable, and reusable beyond
