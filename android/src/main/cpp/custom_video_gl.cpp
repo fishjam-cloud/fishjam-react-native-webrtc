@@ -19,7 +19,7 @@
 //   - eglGetNativeClientBufferANDROID   (EGL_ANDROID_get_native_client_buffer)
 //   - eglCreateImageKHR / eglDestroyImageKHR (EGL_KHR_image_base)
 //   - glEGLImageTargetTexture2DOES      (GL_OES_EGL_image)
-//   - eglCreateSyncKHR / eglWaitSyncKHR / eglDestroySyncKHR
+//   - eglCreateSyncKHR / eglClientWaitSyncKHR / eglDestroySyncKHR
 //                                       (EGL_KHR_fence_sync + EGL_ANDROID_native_fence_sync)
 //
 // None of these are __INTRODUCED_IN-versioned NDK symbols (they are all resolved
@@ -46,10 +46,16 @@ PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHRFn = nullptr;
 PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHRFn = nullptr;
 PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOESFn = nullptr;
 PFNEGLCREATESYNCKHRPROC eglCreateSyncKHRFn = nullptr;
-PFNEGLWAITSYNCKHRPROC eglWaitSyncKHRFn = nullptr;
+PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHRFn = nullptr;
 PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHRFn = nullptr;
 bool extensionsResolved = false;
 
+// Resolves the EGL/GLES extension entry points used in this file. Like every
+// entry point here it assumes the single shared-context GL thread (an EGL
+// context current on it) and is NOT thread-safe off it: the function-pointer
+// globals and the one-shot `extensionsResolved` guard are written without
+// synchronisation, so calling this (or any function below) from another thread
+// races and corrupts GL/EGL state.
 bool resolveExtensions() {
     if (extensionsResolved) {
         return eglGetNativeClientBufferANDROIDFn != nullptr && eglCreateImageKHRFn != nullptr &&
@@ -67,8 +73,8 @@ bool resolveExtensions() {
             eglGetProcAddress("glEGLImageTargetTexture2DOES"));
     eglCreateSyncKHRFn =
             reinterpret_cast<PFNEGLCREATESYNCKHRPROC>(eglGetProcAddress("eglCreateSyncKHR"));
-    eglWaitSyncKHRFn =
-            reinterpret_cast<PFNEGLWAITSYNCKHRPROC>(eglGetProcAddress("eglWaitSyncKHR"));
+    eglClientWaitSyncKHRFn = reinterpret_cast<PFNEGLCLIENTWAITSYNCKHRPROC>(
+            eglGetProcAddress("eglClientWaitSyncKHR"));
     eglDestroySyncKHRFn =
             reinterpret_cast<PFNEGLDESTROYSYNCKHRPROC>(eglGetProcAddress("eglDestroySyncKHR"));
 
@@ -156,11 +162,26 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
     return result;
 }
 
-// Server-side wait for the GPU fence behind `fenceFd` (a dup'd sync-fd file
-// descriptor, or -1 for no fence). Makes the encoder GL thread block (on the GPU
-// timeline) until the WebGPU render that produced the AHB contents has completed,
-// BEFORE the encoder samples the OES texture. EGL takes ownership of the fd inside
-// eglCreateSyncKHR, so we must NOT close it ourselves on the success path.
+// Client (CPU) wait on the glHandler delivery thread for the GPU fence behind
+// `fenceFd` (a dup'd sync-fd file descriptor, or -1 for no fence). Blocks THIS
+// thread (the GL delivery thread, NOT the JS thread) until the WebGPU render that
+// produced the AHB contents has fully completed, BEFORE onFrameCaptured hands the
+// OES texture to any encoder.
+//
+// WHY a client wait and not a server-side eglWaitSyncKHR: WebRTC's hardware
+// encoder samples the imported GL_TEXTURE_EXTERNAL_OES on ITS OWN EGL
+// context/thread (a separate context in the share group). A server-side wait
+// (eglWaitSyncKHR) only orders subsequent GPU work on the CURRENT (glHandler)
+// context, so it would NOT gate the encoder's context — under GPU load the
+// encoder could sample a half-rendered AHardwareBuffer (tearing). A client wait
+// blocks the delivery thread until the fence signals, so the render is provably
+// complete before the texture reaches ANY encoder context. It does NOT copy
+// pixels (zero-copy preserved); it is purely a sync barrier.
+//
+// EGL takes ownership of the fd inside eglCreateSyncKHR (react-native-webgpu
+// dup()s the sync-fd before handing it over, so EGL owning + closing it is
+// correct — no double-close). On success EGL closes the fd when the sync is
+// destroyed; on failure ownership stays with us, so we close it ourselves.
 //
 // MUST run on the shared-context GL thread (the same one that will sample the
 // texture). fenceFd < 0 means no fence supplied -> no-op (deliver immediately,
@@ -171,7 +192,8 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
     if (fenceFd < 0) {
         return;  // no-fence fallback
     }
-    if (!resolveExtensions() || eglCreateSyncKHRFn == nullptr || eglWaitSyncKHRFn == nullptr) {
+    if (!resolveExtensions() || eglCreateSyncKHRFn == nullptr ||
+            eglClientWaitSyncKHRFn == nullptr) {
         close(fenceFd);
         return;
     }
@@ -191,8 +213,10 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
         return;
     }
 
-    // Server-side wait: schedules the GPU to wait, does not block the CPU thread.
-    eglWaitSyncKHRFn(display, sync, 0);
+    // Client (CPU) wait: blocks this delivery thread until the producer fence
+    // signals. EGL_SYNC_FLUSH_COMMANDS_BIT_KHR flushes this context's pending
+    // commands first so the wait cannot deadlock; EGL_FOREVER_KHR = no timeout.
+    eglClientWaitSyncKHRFn(display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
     if (eglDestroySyncKHRFn != nullptr) {
         eglDestroySyncKHRFn(display, sync);
     }

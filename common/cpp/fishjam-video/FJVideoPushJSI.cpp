@@ -24,27 +24,44 @@ void FJVideoPush::install(std::function<void()> onInstalled) {
                 }
                 jsi::Object frame = args[0].getObject(rt);
 
-                std::string trackId = frame.getProperty(rt, "trackId").asString(rt).utf8(rt);
-                int bufferIndex = (int)frame.getProperty(rt, "bufferIndex").asNumber();
-                uint64_t timestampNs = (uint64_t)frame.getProperty(rt, "timestampNs").asNumber();
+                // Per-frame hot path: validate every field and silently drop a
+                // malformed frame rather than throwing a jsi::JSError back into JS.
+                jsi::Value trackIdValue = frame.getProperty(rt, "trackId");
+                jsi::Value bufferIndexValue = frame.getProperty(rt, "bufferIndex");
+                jsi::Value timestampValue = frame.getProperty(rt, "timestampNs");
+                if (!trackIdValue.isString() || !bufferIndexValue.isNumber() ||
+                    !timestampValue.isNumber()) {
+                    return jsi::Value::undefined();
+                }
 
-                // rotation is optional; default to 0 when absent or not a number.
+                std::string trackId = trackIdValue.asString(rt).utf8(rt);
+                int bufferIndex = static_cast<int>(bufferIndexValue.asNumber());
+                uint64_t timestampNs = static_cast<uint64_t>(timestampValue.asNumber());
+
+                // rotation is optional; accept only the four valid quarter turns,
+                // defaulting to 0 for absent / non-numeric / out-of-domain values.
                 int rotation = 0;
                 jsi::Value rotationValue = frame.getProperty(rt, "rotation");
                 if (rotationValue.isNumber()) {
-                    rotation = (int)rotationValue.asNumber();
+                    int requested = static_cast<int>(rotationValue.asNumber());
+                    if (requested == 90 || requested == 180 || requested == 270) {
+                        rotation = requested;
+                    }
                 }
 
-                // fence is optional; absent/null means no fence -> immediate
-                // delivery, signalled by passing 0/0 to the delivery callback.
+                // fence is optional; absent/null/malformed means no fence -> 0/0
+                // (immediate delivery). Only read handle/value when both are bigints.
                 uint64_t fenceHandle = 0;
                 uint64_t fenceSignaledValue = 0;
                 jsi::Value fenceValue = frame.getProperty(rt, "fence");
                 if (fenceValue.isObject()) {
                     jsi::Object fenceObject = fenceValue.getObject(rt);
-                    fenceHandle = fenceObject.getProperty(rt, "handle").asBigInt(rt).getUint64(rt);
-                    fenceSignaledValue =
-                        fenceObject.getProperty(rt, "signaledValue").asBigInt(rt).getUint64(rt);
+                    jsi::Value handleValue = fenceObject.getProperty(rt, "handle");
+                    jsi::Value signaledValue = fenceObject.getProperty(rt, "signaledValue");
+                    if (handleValue.isBigInt() && signaledValue.isBigInt()) {
+                        fenceHandle = handleValue.asBigInt(rt).getUint64(rt);
+                        fenceSignaledValue = signaledValue.asBigInt(rt).getUint64(rt);
+                    }
                 }
 
                 if (self->deliver_) {

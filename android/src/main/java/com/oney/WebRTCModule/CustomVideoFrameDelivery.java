@@ -63,7 +63,10 @@ final class CustomVideoFrameDelivery {
     private final Object stateLock = new Object();
     private boolean accepting = false;
     private int inFlightCount = 0;
-    private boolean released = false;
+    /** Set by {@link #drain()}: stopped accepting and all in-flight deliveries ran. */
+    private boolean drained = false;
+    /** Set by {@link #releaseGlResources()}: OES textures/EGLImages freed, STH disposed. */
+    private boolean glResourcesReleased = false;
 
     /** Identity transform: the WebGPU render already produced an upright RGBA image. */
     private static final Matrix IDENTITY_MATRIX = new Matrix();
@@ -119,7 +122,7 @@ final class CustomVideoFrameDelivery {
         // Reserve an in-flight slot only while accepting. stopCapture() synchronises
         // against this so the drain loop is guaranteed to converge.
         synchronized (stateLock) {
-            if (!accepting || released) {
+            if (!accepting || drained) {
                 closeFd(fenceFd);
                 return;
             }
@@ -160,9 +163,12 @@ final class CustomVideoFrameDelivery {
             textureId = cachedTextureIds[bufferIndex];
         }
 
-        // 2. Wait the GPU fence BEFORE the encoder samples this texture. EGL takes
-        //    ownership of the fd here (server-side wait; <0 is a no-op), so drop our
-        //    ownership immediately to avoid a double-close on any later throw.
+        // 2. Wait the GPU fence BEFORE the encoder samples this texture. This is a
+        //    client (CPU) wait that blocks THIS GL delivery thread until the render
+        //    completes, so the texture is gated for the encoder's separate context
+        //    too (a server-side wait would only order this context). EGL takes
+        //    ownership of the fd here (<0 is a no-op), so drop our ownership
+        //    immediately to avoid a double-close on any later throw.
         int fenceFd = ownedFd[0];
         ownedFd[0] = -1;
         nativeWaitSyncFd(fenceFd);
@@ -192,17 +198,33 @@ final class CustomVideoFrameDelivery {
     }
 
     /**
-     * Stops accepting frames, drains the in-flight ones, frees every cached
-     * EGLImage/OES texture on the GL thread, then disposes the
-     * {@link SurfaceTextureHelper}. Idempotent. Returns once teardown is complete.
+     * Full teardown: {@link #drain()} then {@link #releaseGlResources()}. Idempotent.
+     *
+     * <p>Used as the safety-net path. The correct custom-video teardown ordering
+     * (see {@code GetUserMediaImpl.TrackPrivate.dispose}) calls the two halves
+     * separately so the {@code VideoSource}/{@code VideoTrack} can be disposed
+     * BETWEEN them — the encoder must be quiesced before the GL textures/AHBs are
+     * freed, otherwise it samples a deleted texture / freed buffer (UAF).
      */
     void release() {
+        drain();
+        releaseGlResources();
+    }
+
+    /**
+     * Stops accepting new pushes and blocks until every in-flight delivery runnable
+     * has run, so no Runnable is still using a cached OES texture / AHB. Does NOT
+     * free GL resources — call {@link #releaseGlResources()} for that, but only
+     * AFTER the {@code VideoSource}/{@code VideoTrack} have been disposed so the
+     * encoder is quiesced and no longer retains a delivered frame. Idempotent.
+     */
+    void drain() {
         synchronized (stateLock) {
-            if (released) {
+            if (drained) {
                 return;
             }
             accepting = false;
-            released = true;
+            drained = true;
             // Wait for armed deliveries to run and decrement inFlightCount.
             while (inFlightCount > 0) {
                 try {
@@ -212,6 +234,21 @@ final class CustomVideoFrameDelivery {
                     break;
                 }
             }
+        }
+    }
+
+    /**
+     * Frees every cached EGLImage/OES texture on the GL thread, then disposes the
+     * {@link SurfaceTextureHelper}. MUST be called after {@link #drain()} AND after
+     * the encoder has been quiesced (its {@code VideoSource}/{@code VideoTrack}
+     * disposed), so no encoder context can still sample the textures. Idempotent.
+     */
+    void releaseGlResources() {
+        synchronized (stateLock) {
+            if (glResourcesReleased) {
+                return;
+            }
+            glResourcesReleased = true;
         }
 
         // Free GL resources on the GL thread (context current there), then dispose.

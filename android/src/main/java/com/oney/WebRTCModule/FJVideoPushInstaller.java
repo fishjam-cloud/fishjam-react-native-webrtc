@@ -49,14 +49,22 @@ final class FJVideoPushInstaller {
         mHybridData = initHybrid((CallInvokerHolderImpl) reactContext.getJSCallInvokerHolder());
     }
 
-    /** Installs the JSI global, resolving {@code promise} once it is in place. */
+    /**
+     * Installs (or re-installs) the JSI global, resolving {@code promise} once it
+     * is in place.
+     *
+     * <p>Always (re)invokes the native install rather than short-circuiting on
+     * {@link #isInstalled()}: after a JS reload this installer (and the owning
+     * native module) persist while the JS runtime is recreated, so a cached
+     * "already installed" flag would leave the global unset on the new runtime.
+     * {@code FJVideoPush::install} owns idempotency — it resets its installed flag
+     * and re-sets the global — so a redundant call when nothing reloaded is
+     * harmless. Concurrent callers are still batched so only one
+     * {@link #installPush()} is in flight at a time.
+     */
     void install(Promise promise) {
         boolean alreadyInFlight;
         synchronized (this) {
-            if (isInstalled()) {
-                promise.resolve(true);
-                return;
-            }
             alreadyInFlight = !pendingInstalls.isEmpty();
             pendingInstalls.add(promise);
         }

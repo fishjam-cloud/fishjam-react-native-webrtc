@@ -683,6 +683,33 @@ class GetUserMediaImpl {
 
         public void dispose() {
             if (!disposed) {
+                /*
+                 * Custom-video teardown ORDERING (GPU UAF guard). The hardware
+                 * encoder samples the delivered OES texture / AHardwareBuffer on
+                 * ITS OWN EGL context and may retain a VideoFrame past this call.
+                 * So we MUST quiesce the encoder (dispose the VideoSource then the
+                 * VideoTrack, which makes libwebrtc stop the encoder and release
+                 * retained frames) BEFORE freeing the GL textures/EGLImages and the
+                 * AHB pool — otherwise the encoder samples a deleted texture / freed
+                 * buffer. Required order:
+                 *   stop accepting + drain delivery runnables
+                 *     -> dispose VideoSource/VideoTrack (quiesce encoder)
+                 *     -> free GL imports + AHB pool.
+                 * The generic path below frees capturer resources before
+                 * mediaSource/track, which is unsafe for this capturer-less track.
+                 * (surfaceTextureHelper is always null for custom video.)
+                 */
+                if (videoCaptureController instanceof CustomVideoCaptureController) {
+                    CustomVideoCaptureController customController =
+                            (CustomVideoCaptureController) videoCaptureController;
+                    customController.stopAccepting();
+                    mediaSource.dispose();
+                    track.dispose();
+                    customController.releaseGpuResources();
+                    disposed = true;
+                    return;
+                }
+
                 if (videoCaptureController != null) {
                     if (videoCaptureController.stopCapture()) {
                         videoCaptureController.dispose();

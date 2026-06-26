@@ -193,14 +193,30 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
         return true;
     }
 
-    @Override
-    public void dispose() {
-        if (disposed) {
-            return;
-        }
-        disposed = true;
-        // Safety net: stopCapture normally releases delivery; release() is idempotent.
+    /**
+     * Custom-video teardown, phase 1 (see {@code GetUserMediaImpl.TrackPrivate.dispose}):
+     * stop accepting pushes and drain the in-flight delivery runnables. Frees NO
+     * GL/AHB resources — the hardware encoder may still hold a delivered
+     * {@code VideoFrame} until the {@code VideoSource}/{@code VideoTrack} are
+     * disposed, so the textures/AHBs must stay alive past this point. Idempotent.
+     */
+    void stopAccepting() {
         if (frameDelivery != null) {
+            frameDelivery.drain();
+        }
+    }
+
+    /**
+     * Custom-video teardown, phase 2: free the GL import resources (OES textures /
+     * EGLImages, GL thread) and release the AHB pool. Call ONLY after the
+     * {@code VideoSource}/{@code VideoTrack} have been disposed so the encoder is
+     * quiesced and no longer references the textures/AHBs; freeing earlier is a
+     * use-after-free (the encoder samples a deleted texture / freed buffer).
+     * Idempotent.
+     */
+    void releaseGpuResources() {
+        if (frameDelivery != null) {
+            // release() = drain() (idempotent after stopAccepting) + free GL imports.
             frameDelivery.release();
             frameDelivery = null;
         }
@@ -210,5 +226,17 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
                 bufferHandles[index] = 0;
             }
         }
+    }
+
+    @Override
+    public void dispose() {
+        if (disposed) {
+            return;
+        }
+        disposed = true;
+        // Safety net for any path that disposes without the ordered two-phase
+        // teardown above; releaseGpuResources() (drain + free GL imports + AHB
+        // pool) is idempotent.
+        releaseGpuResources();
     }
 }

@@ -1,5 +1,6 @@
 package com.oney.WebRTCModule;
 
+import android.os.Build;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -1040,11 +1041,27 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
     @ReactMethod
     public void installCustomVideoJSI(Promise promise) {
+        // Gate on API 26 BEFORE getVideoPushInstaller(), which constructs
+        // FJVideoPushInstaller and so triggers System.loadLibrary("webrtc-custom-video-track").
+        // That lib references AHardwareBuffer_* (__INTRODUCED_IN(26)); __builtin_available
+        // guards in the C++ do NOT stop link-time symbol resolution, so loading it on
+        // API 24-25 can fail (surfacing as a misleading E_NO_JSI). Rejecting here
+        // guarantees the native AHB lib is never loaded on <26, keeping the
+        // minSdk-24 package safe. This is the load-safety guarantee for the lib.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            promise.reject("E_API_LEVEL", "Custom video tracks require Android 8.0 (API 26).");
+            return;
+        }
         FJVideoPushInstaller inst = getVideoPushInstaller();
         if (inst == null) {
             promise.reject("E_NO_JSI", "Custom video tracks require the New Architecture.");
             return;
         }
+        // Re-run the C++ install on every call: after a JS reload the JS runtime is
+        // recreated but this native module (and the cached installer) persist, so the
+        // JSI global must be re-set on the new runtime. FJVideoPush::install owns
+        // idempotency (it resets its installed flag and re-sets the global), so the
+        // Java side must NOT short-circuit on a cached "already installed" flag (m7).
         inst.install(promise);
     }
 

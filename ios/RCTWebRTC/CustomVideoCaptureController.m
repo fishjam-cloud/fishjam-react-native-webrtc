@@ -23,13 +23,19 @@
     MTLSharedEventListener *_sharedEventListener API_AVAILABLE(ios(13.0));
     dispatch_queue_t _fenceCallbackQueue;
 
-    // Lifecycle / drain bookkeeping. _stateLock guards _accepting and
-    // _inFlightCount; _drainCondition lets stopCapture wait for the in-flight
-    // notify blocks to finish before the pool is torn down.
-    NSLock *_stateLock;
+    // Lifecycle / drain bookkeeping. A single NSCondition, _drainCondition, is the
+    // one mutual-exclusion lock guarding _accepting, _inFlightCount and _tornDown,
+    // and it also provides the wait/signal channel stopCapture uses to drain the
+    // in-flight notify blocks before the pool is torn down. Keeping all three
+    // fields under the same lock is what makes the accepting-check + in-flight
+    // increment atomic against teardown (no use-after-free).
     NSCondition *_drainCondition;
     BOOL _accepting;
     NSInteger _inFlightCount;
+    // Set (under _drainCondition) by stopCapture immediately before releaseBuffers.
+    // Any notify/no-fence completion that runs after this is set must NOT deliver,
+    // because the CVPixelBuffers it would ship have already been freed.
+    BOOL _tornDown;
 }
 
 - (nullable instancetype)initWithVideoSource:(RTCVideoSource *)videoSource
@@ -58,10 +64,10 @@
     _width = width;
     _height = height;
 
-    _stateLock = [[NSLock alloc] init];
     _drainCondition = [[NSCondition alloc] init];
     _accepting = NO;
     _inFlightCount = 0;
+    _tornDown = NO;
 
     _fenceCallbackQueue =
         dispatch_queue_create("com.fishjam.webrtc.customVideoTrack.fence", DISPATCH_QUEUE_SERIAL);
@@ -167,23 +173,32 @@
 #pragma mark - CaptureController overrides
 
 - (void)startCapture {
-    [_stateLock lock];
+    [_drainCondition lock];
     _accepting = YES;
-    [_stateLock unlock];
+    [_drainCondition unlock];
 }
 
 - (void)stopCapture {
-    // Stop accepting new pushes first so _inFlightCount can only decrease.
-    [_stateLock lock];
-    _accepting = NO;
-    [_stateLock unlock];
-
-    // Wait for any armed fence-notify blocks to run and deliver their frame.
-    // They decrement _inFlightCount and signal the condition when done.
     [_drainCondition lock];
+    // Stop accepting new pushes first so _inFlightCount can only decrease.
+    _accepting = NO;
+
+    // Wait for any armed fence-notify blocks to run and deliver their frame; they
+    // decrement _inFlightCount and signal the condition when done. The wait is
+    // BOUNDED: _inFlightCount only drops inside an MTLSharedEvent notify block, so
+    // a fence that the GPU never signals would otherwise deadlock teardown forever.
+    // After the deadline we abandon any stragglers and tear down anyway.
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:2.0];
     while (_inFlightCount > 0) {
-        [_drainCondition wait];
+        if (![_drainCondition waitUntilDate:deadline]) {
+            break;  // deadline elapsed — proceed even though stragglers remain
+        }
     }
+
+    // Mark torn down under the same lock that the completion path checks, so any
+    // straggler notify block either already finished delivering (it held this lock)
+    // or will observe _tornDown and bail without touching the buffers we free below.
+    _tornDown = YES;
     [_drainCondition unlock];
 
     [self releaseBuffers];
@@ -210,28 +225,46 @@
         return;
     }
 
-    // Reserve an in-flight slot only if we are still accepting. This is the
-    // point that stopCapture synchronises against: once _accepting is NO, no new
-    // slot is reserved, so the drain loop is guaranteed to converge.
-    [_stateLock lock];
+    // Atomically check we are still accepting AND reserve the in-flight slot under
+    // the single lock. This is the point stopCapture synchronises against: doing
+    // the check and the increment as one critical section means a push can never
+    // pass the accepting check, get preempted while stopCapture drains (sees count
+    // 0) and frees the buffers, then resume and deliver a freed buffer (UAF).
+    [_drainCondition lock];
     if (!_accepting) {
-        [_stateLock unlock];
+        [_drainCondition unlock];
         return;
     }
-    [_stateLock unlock];
-
-    [_drainCondition lock];
     _inFlightCount++;
     [_drainCondition unlock];
 
     CVPixelBufferRef buffer = (CVPixelBufferRef)[_pixelBuffers[bufferIndex] pointerValue];
 
-    // No fence: a handle of 0 means JS supplied no fence (the JSI core passes
-    // 0/0 in that case). Deliver immediately, accepting that the GPU render may
-    // not be complete.
-    if (fenceHandle == 0) {
-        [self deliverBuffer:buffer timestampNs:timestampNs rotation:rotation];
-        [self finishInFlight];
+    // Decide whether we have a usable fence to wait on. A handle of 0 means JS
+    // supplied no fence (the JSI core passes 0/0 in that case); pre-iOS-13 has no
+    // MTLSharedEvent. In those cases we deliver without waiting on the GPU.
+    BOOL hasFence = (fenceHandle != 0);
+    if (@available(iOS 13.0, *)) {
+        // MTLSharedEvent available.
+    } else {
+        hasFence = NO;
+    }
+
+    if (!hasFence) {
+        // No-fence delivery must NOT run on the calling (JS) thread: hop onto the
+        // fence callback queue so JS is never blocked by source-side work, and so
+        // this path shares the serialisation and torn-down guard of the fenced one.
+        // The in-flight slot was reserved above; it is released inside.
+        __weak __typeof__(self) weakSelf = self;
+        dispatch_async(_fenceCallbackQueue, ^{
+            __typeof__(self) strongSelf = weakSelf;
+            if (strongSelf == nil) {
+                return;
+            }
+            [strongSelf completeInFlightDeliveringBuffer:buffer
+                                             timestampNs:timestampNs
+                                                rotation:rotation];
+        });
         return;
     }
 
@@ -239,32 +272,43 @@
         // The fence handle is the exported id<MTLSharedEvent> object pointer
         // reinterpreted as uint64_t (confirmed in react-native-webgpu
         // GPUSharedFence.cpp — reinterpret_cast<uint64_t> of the id<MTLSharedEvent>
-        // held by SharedFenceMTLSharedEventExportInfo). It is a BORROWED,
-        // non-owning reference: neither export nor import retains it, so we use
-        // __bridge (no ARC ownership transfer) and rely on JS keeping the
-        // originating fence alive for the duration of this callback.
+        // held by SharedFenceMTLSharedEventExportInfo). The cast is __bridge (no
+        // ARC ownership transfer); on its own that reference is non-owning, so if
+        // JS drops the originating fence before the GPU signals, the event could
+        // deallocate and we'd miss the callback / message a freed object.
         id<MTLSharedEvent> event = (__bridge id<MTLSharedEvent>)(void *)(uintptr_t)fenceHandle;
         if (event == nil) {
-            [self deliverBuffer:buffer timestampNs:timestampNs rotation:rotation];
-            [self finishInFlight];
+            // Reserved a slot but have nothing to wait on; complete off-thread.
+            __weak __typeof__(self) weakSelf = self;
+            dispatch_async(_fenceCallbackQueue, ^{
+                __typeof__(self) strongSelf = weakSelf;
+                if (strongSelf == nil) {
+                    return;
+                }
+                [strongSelf completeInFlightDeliveringBuffer:buffer
+                                                 timestampNs:timestampNs
+                                                    rotation:rotation];
+            });
             return;
         }
+
+        // Take an owning reference for the armed listener's lifetime so the event
+        // cannot deallocate out from under the notify block. Balanced by exactly
+        // one CFRelease inside the block, on every path out of it.
+        CFRetain((__bridge CFTypeRef)event);
 
         __weak __typeof__(self) weakSelf = self;
         [event notifyListener:_sharedEventListener
                       atValue:fenceSignaledValue
                         block:^(id<MTLSharedEvent> _Nonnull notifyingEvent, uint64_t signaledValue) {
                             __typeof__(self) strongSelf = weakSelf;
-                            if (strongSelf == nil) {
-                                return;
+                            if (strongSelf != nil) {
+                                [strongSelf completeInFlightDeliveringBuffer:buffer
+                                                                timestampNs:timestampNs
+                                                                   rotation:rotation];
                             }
-                            [strongSelf deliverBuffer:buffer timestampNs:timestampNs rotation:rotation];
-                            [strongSelf finishInFlight];
+                            CFRelease((__bridge CFTypeRef)event);
                         }];
-    } else {
-        // MTLSharedEvent requires iOS 13; fall back to immediate delivery.
-        [self deliverBuffer:buffer timestampNs:timestampNs rotation:rotation];
-        [self finishInFlight];
     }
 }
 
@@ -283,17 +327,45 @@
     [_videoSource capturer:nil didCaptureVideoFrame:frame];
 }
 
-- (void)finishInFlight {
+// Single completion path for an in-flight frame, shared by the fenced and
+// no-fence routes. We decide-and-retain under _drainCondition, then deliver
+// OUTSIDE the lock — never holding it across the WebRTC delivery call (which can
+// apply back-pressure and would otherwise stall pushFrame on the JS thread).
+// Retaining the CVPixelBuffer under the lock keeps it alive through delivery even
+// if stopCapture's releaseBuffers (which only runs after _tornDown is set under
+// this same lock) drops the pool's reference concurrently — so there is no
+// use-after-free. A completion that starts after teardown observes _tornDown and
+// skips delivery. The in-flight slot reserved in pushFrame is released here,
+// signalling stopCapture once the count reaches zero.
+- (void)completeInFlightDeliveringBuffer:(CVPixelBufferRef)buffer
+                             timestampNs:(int64_t)timestampNs
+                                rotation:(RTCVideoRotation)rotation {
+    CVPixelBufferRef bufferToDeliver = NULL;
     [_drainCondition lock];
+    if (!_tornDown && buffer != NULL) {
+        bufferToDeliver = buffer;
+        CVPixelBufferRetain(bufferToDeliver);
+    }
     _inFlightCount--;
     if (_inFlightCount <= 0) {
         [_drainCondition broadcast];
     }
     [_drainCondition unlock];
+
+    if (bufferToDeliver != NULL) {
+        [self deliverBuffer:bufferToDeliver timestampNs:timestampNs rotation:rotation];
+        CVPixelBufferRelease(bufferToDeliver);
+    }
 }
 
 #pragma mark - Teardown
 
+// Safe to run while fence listeners are still armed or a delivery is in progress:
+// stopCapture sets _tornDown under _drainCondition before calling this, so a
+// completion starting afterwards observes _tornDown and skips delivery, and a
+// completion already in flight has retained its CVPixelBuffer under the lock — so
+// the CVPixelBufferRelease here only drops the pool's reference, never the last
+// one. An armed notify block still fires and balances its CFRetain.
 - (void)releaseBuffers {
     if (_pixelBuffers) {
         for (NSValue *boxed in _pixelBuffers) {

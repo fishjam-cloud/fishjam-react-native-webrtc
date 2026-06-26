@@ -29,6 +29,14 @@ android {
             cmake {
                 cppFlags "-std=c++20"
                 arguments "-DANDROID_STL=c++_shared"
+                // The custom-video-track lib references AHardwareBuffer_* (__INTRODUCED_IN(26))
+                // while this package is minSdk 24. Load-safety is guaranteed by the API-26 gate
+                // in WebRTCModule.installCustomVideoJSI (and createCustomVideoTrack): the native
+                // lib is never loaded on API <26, so its strong AHB symbol references are never
+                // resolved by the dynamic linker on older devices. (Alternative for true weak
+                // linking, if ever loaded on <26: add "-DANDROID_WEAK_API_DEFS=ON" here so the
+                // __builtin_available guards become effective at runtime — left off as the
+                // install gate is sufficient and this keeps the verified build unchanged.)
             }
         }
 

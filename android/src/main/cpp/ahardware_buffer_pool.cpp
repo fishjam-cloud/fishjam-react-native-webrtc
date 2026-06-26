@@ -59,6 +59,10 @@ Java_com_oney_WebRTCModule_AHardwareBufferPool_allocateFramebufferAHB(
 // Releases the two references taken in allocateFramebufferAHB (the +1 from
 // AHardwareBuffer_allocate and the +1 from AHardwareBuffer_acquire). Safe to
 // call once per allocated handle; passing 0 is a no-op.
+//
+// NOTE: the raw AHB pointer handed to JS (as a long) is a dangling pointer once
+// this returns — it must NOT be imported/used by JS/WebGPU after releaseAHB().
+// The Java pool nulls its handle here so no further frame can reference it.
 JNIEXPORT void JNICALL
 Java_com_oney_WebRTCModule_AHardwareBufferPool_releaseAHB(
         JNIEnv* /* env */, jclass /* clazz */, jlong handle) {

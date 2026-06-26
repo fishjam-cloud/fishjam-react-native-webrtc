@@ -60,18 +60,52 @@
 #endif
 }
 
-// Looks up the custom-video capture controller registered for trackId. Returns
-// nil when the track is unknown or is not a custom video track.
+#pragma mark - CustomVideoRegistry
+
+// Lazily-created trackId -> CustomVideoCaptureController registry, stored as an
+// associated object on the module. Strong keys, weak values: when the track and
+// its controller are released, the entry zeroes itself, so no explicit removal is
+// needed on the stop/dispose paths. NSMapTable is not thread-safe, so every access
+// is serialised; the registry object itself is the lock token (its pointer is
+// stable once created under @synchronized(self)).
+- (NSMapTable<NSString *, CustomVideoCaptureController *> *)customVideoControllerRegistry {
+    static const void *key = &key;
+    @synchronized(self) {
+        NSMapTable *registry = objc_getAssociatedObject(self, key);
+        if (registry == nil) {
+            registry = [NSMapTable strongToWeakObjectsMapTable];
+            objc_setAssociatedObject(self, key, registry, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        return registry;
+    }
+}
+
+- (void)registerCustomVideoController:(CustomVideoCaptureController *)controller
+                           forTrackId:(NSString *)trackId {
+    if (controller == nil || trackId == nil) {
+        return;
+    }
+    NSMapTable *registry = [self customVideoControllerRegistry];
+    @synchronized(registry) {
+        [registry setObject:controller forKey:trackId];
+    }
+}
+
+- (CustomVideoCaptureController *)registeredCustomVideoControllerForTrackId:(NSString *)trackId {
+    if (trackId == nil) {
+        return nil;
+    }
+    NSMapTable *registry = [self customVideoControllerRegistry];
+    @synchronized(registry) {
+        return [registry objectForKey:trackId];
+    }
+}
+
+// Looks up the custom-video capture controller registered for trackId. Backed by
+// the lock-guarded registry above so the per-frame deliver callback never touches
+// the unsynchronised localTracks dictionary from the JS thread.
 - (CustomVideoCaptureController *)customVideoCaptureControllerForTrackId:(NSString *)trackId {
-    RTCMediaStreamTrack *track = self.localTracks[trackId];
-    if (track == nil || ![track isKindOfClass:[RTCVideoTrack class]]) {
-        return nil;
-    }
-    RTCVideoTrack *videoTrack = (RTCVideoTrack *)track;
-    if (![videoTrack.captureController isKindOfClass:[CustomVideoCaptureController class]]) {
-        return nil;
-    }
-    return (CustomVideoCaptureController *)videoTrack.captureController;
+    return [self registeredCustomVideoControllerForTrackId:trackId];
 }
 
 RCT_REMAP_METHOD(installCustomVideoJSI,

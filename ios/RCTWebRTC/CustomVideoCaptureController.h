@@ -4,6 +4,7 @@
 #import <WebRTC/RTCVideoSource.h>
 
 #import "CaptureController.h"
+#import "WebRTCModule.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -79,6 +80,27 @@ NS_ASSUME_NONNULL_BEGIN
              fenceSignaledValue:(uint64_t)fenceSignaledValue
                     timestampNs:(int64_t)timestampNs
                        rotation:(RTCVideoRotation)rotation;
+
+@end
+
+/**
+ * Thread-safe registry mapping a custom-video trackId to its capture controller.
+ *
+ * The per-frame deliver callback runs on the JS thread; resolving the controller
+ * through `self.localTracks` there raced with the RN thread mutating that
+ * dictionary (unsynchronised NSMutableDictionary access). This registry decouples
+ * delivery from `localTracks`: it is O(1), guarded by its own lock, and holds the
+ * controller weakly, so the entry clears itself when the track and its controller
+ * are released — no explicit unregister on the teardown paths is required.
+ */
+@interface WebRTCModule (CustomVideoRegistry)
+
+/** Registers (or replaces) the controller for trackId. */
+- (void)registerCustomVideoController:(CustomVideoCaptureController *)controller
+                           forTrackId:(NSString *)trackId;
+
+/** Looks up the live controller for trackId, or nil if none/already released. */
+- (nullable CustomVideoCaptureController *)registeredCustomVideoControllerForTrackId:(NSString *)trackId;
 
 @end
 

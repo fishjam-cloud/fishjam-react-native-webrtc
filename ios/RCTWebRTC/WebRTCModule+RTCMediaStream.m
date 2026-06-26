@@ -266,6 +266,11 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
     }
 
     videoTrack.captureController = captureController;
+    // Register before startCapture so the per-frame deliver callback can resolve
+    // the controller via the lock-guarded registry instead of racing on
+    // self.localTracks from the JS thread. The registry holds it weakly, so it
+    // clears itself when the track/controller is released.
+    [self registerCustomVideoController:captureController forTrackId:trackUUID];
     [captureController startCapture];
 
     NSString *mediaStreamId = [[NSUUID UUID] UUIDString];
