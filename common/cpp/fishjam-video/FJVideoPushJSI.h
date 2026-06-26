@@ -1,5 +1,5 @@
 // JSI channel for pushing custom video frames from JS to native. Installs a
-// global `__fishjamWebrtcPushVideoFrame(frame)` that JS calls per frame; each
+// global `__fishjamWebrtcPushCustomVideoFrame(frame)` that JS calls per frame; each
 // push is forwarded to a registered delivery callback that the platform layer
 // sets. Pure C++20.
 #pragma once
