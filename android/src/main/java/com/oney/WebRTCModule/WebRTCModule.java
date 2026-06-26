@@ -73,8 +73,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     private boolean audioSinkInstallerInitialized;
 
     // JSI push channel for custom video tracks. Lazily built from the JS
-    // CallInvoker; null on the old architecture (no JSI). Mirrors the audio
-    // installer; each pushed frame is routed to the matching custom video track.
+    // CallInvoker; null on the old architecture (no JSI). Each pushed frame is
+    // routed to the matching custom video track.
     private FJVideoPushInstaller videoPushInstaller;
     private boolean videoPushInstallerInitialized;
 
@@ -829,7 +829,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
     /**
      * Creates a custom video track backed by an AHardwareBuffer pool the app renders into on the
-     * GPU. Resolves the same {@code { streamId, track, buffers }} shape as iOS, consumed by
+     * GPU. Resolves the {@code { streamId, track, buffers }} shape consumed by
      * {@code src/createCustomVideoTrack.ts}. See
      * {@link GetUserMediaImpl#createCustomVideoTrack(ReadableMap, Promise)}.
      */
@@ -1014,8 +1014,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     /**
      * Lazily builds the custom-video JSI push installer from the JS CallInvoker. Returns null when
      * there is no CallInvoker (old architecture) or it can't be acquired, which makes custom video
-     * tracks unsupported. Mirrors {@link #getAudioSinkInstaller()}. Each frame pushed through the
-     * JSI global is routed back to the matching custom video track on the native-modules executor.
+     * tracks unsupported. Each frame pushed through the JSI global is routed back to the matching
+     * custom video track on the native-modules executor.
      */
     private synchronized FJVideoPushInstaller getVideoPushInstaller() {
         if (videoPushInstallerInitialized) {

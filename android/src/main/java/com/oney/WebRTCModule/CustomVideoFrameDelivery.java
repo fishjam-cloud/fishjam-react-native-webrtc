@@ -15,13 +15,10 @@ import org.webrtc.YuvConverter;
  * Delivers app-rendered {@code AHardwareBuffer} (AHB) frames into a WebRTC
  * {@link VideoSource} for the Android custom-video-track.
  *
- * <p>This is the Android analog of the iOS {@code CustomVideoCaptureController}
- * frame push: where iOS waits an {@code MTLSharedEvent} fence and ships an
- * {@code RTCCVPixelBuffer} {@code RTCVideoFrame}, Android waits a sync-fd GPU
- * fence and ships an OES-texture-backed {@link VideoFrame}. libwebrtc encodes
- * from a GL texture (not an AHB), so per pooled AHB we build a
- * {@code GL_TEXTURE_EXTERNAL_OES} texture aliasing it ONCE (native:
- * AHB&nbsp;→&nbsp;EGLImage&nbsp;→&nbsp;OES) and reuse it for every frame.
+ * <p>Waits a sync-fd GPU fence, then ships an OES-texture-backed
+ * {@link VideoFrame}. libwebrtc encodes from a GL texture (not an AHB), so per
+ * pooled AHB we build a {@code GL_TEXTURE_EXTERNAL_OES} texture aliasing it ONCE
+ * (native: AHB&nbsp;→&nbsp;EGLImage&nbsp;→&nbsp;OES) and reuse it for every frame.
  *
  * <h2>Threading / EGL context</h2>
  * All GL work — the AHB import, the fence wait, and the {@code onFrameCaptured}
@@ -39,7 +36,7 @@ import org.webrtc.YuvConverter;
  */
 final class CustomVideoFrameDelivery {
     static {
-        // Same .so as the AHB pool; the GL import/sync entry points live alongside it.
+        // Loads the native library backing the GL import/sync entry points below.
         System.loadLibrary("webrtc-custom-video-track");
     }
 
@@ -94,7 +91,7 @@ final class CustomVideoFrameDelivery {
         this.glHandler.post(() -> yuvConverter = new YuvConverter());
     }
 
-    /** Begin accepting pushed frames (mirrors iOS startCapture). */
+    /** Begin accepting pushed frames. */
     void start() {
         synchronized (stateLock) {
             accepting = true;

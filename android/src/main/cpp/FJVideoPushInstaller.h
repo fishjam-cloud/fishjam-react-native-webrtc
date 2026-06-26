@@ -4,8 +4,7 @@
 // (via the CallInvoker), then notifies the Java peer so the install Promise
 // resolves only once the global actually exists. Each frame the JS global pushes
 // is forwarded back to the Java peer's deliverFrame(...), which routes it to the
-// matching CustomVideoFrameDelivery. Android counterpart of the iOS install
-// channel; mirrors FJAudioSinkInstaller.
+// matching CustomVideoFrameDelivery.
 #pragma once
 
 #include <ReactCommon/CallInvokerHolder.h>

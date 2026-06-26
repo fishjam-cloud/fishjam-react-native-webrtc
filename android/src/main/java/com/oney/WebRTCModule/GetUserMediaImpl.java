@@ -500,8 +500,7 @@ class GetUserMediaImpl {
 
     /**
      * Creates a custom video track whose frames are rendered by the app on the GPU into
-     * AHardwareBuffer (AHB) backed surfaces, mirroring the iOS {@code createCustomVideoTrack}
-     * (IOSurface CVPixelBuffer pool). Resolves the same cross-platform shape as iOS:
+     * AHardwareBuffer (AHB) backed surfaces. Resolves the cross-platform shape
      * {@code { streamId, track, buffers:[{ index, surfaceHandle, width, height }] }} which the
      * platform-neutral {@code src/createCustomVideoTrack.ts} wrapper consumes unchanged.
      *

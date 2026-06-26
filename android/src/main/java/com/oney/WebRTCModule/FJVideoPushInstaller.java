@@ -11,8 +11,7 @@ import java.util.List;
 
 /**
  * Installs the JS global {@code __fishjamWebrtcPushCustomVideoFrame(frame)} that the
- * JS SDK calls to push custom video frames. Android counterpart of the iOS install
- * channel; the per-frame push mirror of {@link FJAudioSinkInstaller}.
+ * JS SDK calls to push custom video frames.
  *
  * <p>A JSI global must be set on the JS thread with the live runtime, which a
  * React method (running on the native-modules thread) can't do directly. So we

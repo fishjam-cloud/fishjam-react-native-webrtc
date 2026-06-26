@@ -69,8 +69,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param bufferIndex        pool index that JS rendered into.
  * @param fenceHandle        the exported MTLSharedEvent handle reinterpreted as
  *                          uint64_t. A handle of 0 means no fence was supplied
- *                          and the frame is delivered immediately (no-fence
- *                          fallback for bring-up).
+ *                          and the frame is delivered immediately.
  * @param fenceSignaledValue the value the GPU will signal on the shared event.
  * @param timestampNs        frame timestamp in nanoseconds.
  * @param rotation           frame rotation.

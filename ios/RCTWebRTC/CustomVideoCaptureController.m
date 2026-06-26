@@ -226,10 +226,9 @@
 
     CVPixelBufferRef buffer = (CVPixelBufferRef)[_pixelBuffers[bufferIndex] pointerValue];
 
-    // No-fence fallback: a handle of 0 means JS supplied no fence (the JSI core
-    // passes 0/0 in that case). Deliver immediately, accepting that the GPU
-    // render may not be complete. Useful for bring-up before the Metal fence
-    // path is wired.
+    // No fence: a handle of 0 means JS supplied no fence (the JSI core passes
+    // 0/0 in that case). Deliver immediately, accepting that the GPU render may
+    // not be complete.
     if (fenceHandle == 0) {
         [self deliverBuffer:buffer timestampNs:timestampNs rotation:rotation];
         [self finishInFlight];
@@ -279,8 +278,8 @@
     RTCVideoFrame *frame = [[RTCVideoFrame alloc] initWithBuffer:rtcPixelBuffer
                                                         rotation:rotation
                                                      timeStampNs:timestampNs];
-    // The RTCVideoSource is an RTCVideoCapturerDelegate; deliver straight to it
-    // (proven by VideoEffectProcessor). No RTCVideoCapturer subclass needed.
+    // The RTCVideoSource is an RTCVideoCapturerDelegate; deliver straight to it.
+    // No RTCVideoCapturer subclass needed.
     [_videoSource capturer:nil didCaptureVideoFrame:frame];
 }
 

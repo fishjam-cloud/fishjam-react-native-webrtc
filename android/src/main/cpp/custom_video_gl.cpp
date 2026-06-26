@@ -157,15 +157,14 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
 }
 
 // Server-side wait for the GPU fence behind `fenceFd` (a dup'd sync-fd file
-// descriptor, or -1 for no fence). This is the analog of the iOS MTLSharedEvent
-// notifyListener wait: it makes the encoder GL thread block (on the GPU timeline)
-// until the WebGPU render that produced the AHB contents has completed, BEFORE
-// the encoder samples the OES texture. EGL takes ownership of the fd inside
+// descriptor, or -1 for no fence). Makes the encoder GL thread block (on the GPU
+// timeline) until the WebGPU render that produced the AHB contents has completed,
+// BEFORE the encoder samples the OES texture. EGL takes ownership of the fd inside
 // eglCreateSyncKHR, so we must NOT close it ourselves on the success path.
 //
 // MUST run on the shared-context GL thread (the same one that will sample the
-// texture). With fenceFd < 0 it is a no-op (no-fence fallback: deliver immediately,
-// accepting the render may not be finished — only used for bring-up).
+// texture). fenceFd < 0 means no fence supplied -> no-op (deliver immediately,
+// accepting the render may not be finished).
 JNIEXPORT void JNICALL
 Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
         JNIEnv* /* env */, jclass /* clazz */, jint fenceFd) {

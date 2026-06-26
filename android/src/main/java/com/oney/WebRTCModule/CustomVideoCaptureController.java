@@ -14,8 +14,7 @@ import org.webrtc.VideoSource;
  * the app renders frames on the GPU into AHardwareBuffer (AHB) backed surfaces
  * instead of a camera/screen {@link VideoCapturer} producing them.
  *
- * <p>Mirrors the iOS {@code CustomVideoCaptureController} (IOSurface CVPixelBuffer
- * pool). It owns an AHB pool allocated with
+ * <p>It owns an AHB pool allocated with
  * {@code GPU_FRAMEBUFFER | GPU_SAMPLED_IMAGE} so JS/WebGPU can import each buffer
  * (by {@code surfaceHandle}) and render into it. {@link #pushFrame} hands each
  * app-rendered AHB to a {@link CustomVideoFrameDelivery}, which imports it as a
@@ -186,8 +185,8 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
     @Override
     public boolean stopCapture() {
         // Stop accepting and drain in-flight frames, then free the GL import
-        // resources (EGLImages/OES textures) and the GL thread. Mirrors iOS
-        // stopCapture's drain. Report success so TrackPrivate proceeds to dispose().
+        // resources (EGLImages/OES textures) and the GL thread. Report success so
+        // TrackPrivate proceeds to dispose().
         if (frameDelivery != null) {
             frameDelivery.release();
         }

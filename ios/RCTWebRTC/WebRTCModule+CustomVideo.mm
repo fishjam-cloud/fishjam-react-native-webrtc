@@ -19,7 +19,7 @@
 #pragma mark - FJVideoPushBox
 
 // ObjC holder for the C++ shared_ptr<FJVideoPush>, stored on the module as an
-// associated object (mirrors FJAudioSinkBox in WebRTCModule+AudioSink.mm).
+// associated object.
 @interface FJVideoPushBox : NSObject {
    @public
     std::shared_ptr<FJVideoPush> push;
@@ -61,8 +61,7 @@
 }
 
 // Looks up the custom-video capture controller registered for trackId. Returns
-// nil when the track is unknown or is not a custom video track. Mirrors the
-// lookup the old bridge pushCustomVideoFrame method used.
+// nil when the track is unknown or is not a custom video track.
 - (CustomVideoCaptureController *)customVideoCaptureControllerForTrackId:(NSString *)trackId {
     RTCMediaStreamTrack *track = self.localTracks[trackId];
     if (track == nil || ![track isKindOfClass:[RTCVideoTrack class]]) {
