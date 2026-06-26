@@ -36,7 +36,81 @@
  *
  * @module createCustomVideoTrack
  */
+import { NativeModules } from 'react-native';
+
 import MediaStream from './MediaStream';
+import MediaStreamError from './MediaStreamError';
+import type { MediaStreamTrackInfo } from './MediaStreamTrack';
+
+const { WebRTCModule } = NativeModules;
+
+// Installed natively once the JSI binding is in place (see installCustomVideoJSI).
+declare const global: {
+    __fishjamWebrtcPushCustomVideoFrame?: (frame: CustomVideoFramePush) => void;
+};
+
+// The old architecture has no JSI-capable invoker, so the install may never
+// resolve — cap the wait and reject rather than hang.
+const INSTALL_TIMEOUT_MS = 10_000;
+
+let installPromise: Promise<void> | null = null;
+
+function normalizeInstallError(cause: unknown): Error {
+    if (
+        cause instanceof Error &&
+        (cause as { code?: string }).code !== 'E_NO_JSI'
+    ) {
+        return cause;
+    }
+    return new Error('Custom video tracks require the New Architecture.');
+}
+
+// Install the native JSI binding once. Re-runnable after a JS reload.
+function ensureInstalled(): Promise<void> {
+    if (installPromise) {
+        return installPromise;
+    }
+    let timeoutId!: ReturnType<typeof setTimeout>;
+    const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+            () =>
+                reject(new Error('Custom video track install timed out.')),
+            INSTALL_TIMEOUT_MS,
+        );
+    });
+    const install = WebRTCModule.installCustomVideoJSI().then(() => {
+        if (typeof global.__fishjamWebrtcPushCustomVideoFrame !== 'function') {
+            throw new Error('Custom video track binding was not installed.');
+        }
+    });
+    installPromise = Promise.race([install, timeout])
+        .finally(() => clearTimeout(timeoutId))
+        .catch((cause: unknown) => {
+            installPromise = null;
+            throw normalizeInstallError(cause);
+        });
+    return installPromise;
+}
+
+// Shape of one pooled surface as it arrives over the React Native bridge, where
+// the 64-bit surface handle is carried as a decimal string to avoid losing
+// precision through a JS number.
+type BridgeCustomVideoBuffer = {
+    index: number;
+    surfaceHandle: string;
+    width: number;
+    height: number;
+};
+
+// Shape resolved by the native createCustomVideoTrack method over the bridge.
+// Distinct from the public CustomVideoTrack: the bridge hands back the raw
+// stream/track ids and string handles, which the wrapper converts into a
+// MediaStream and bigint-handle buffers.
+type BridgeCustomVideoTrack = {
+    streamId: string;
+    track: MediaStreamTrackInfo;
+    buffers: BridgeCustomVideoBuffer[];
+};
 
 /**
  * Settings for {@link createCustomVideoTrack}, describing the pool of native
@@ -197,13 +271,36 @@ export interface CustomVideoFramePush {
  * @param init Pool dimensions and size; see {@link CustomVideoTrackInit}.
  * @returns A promise resolving to the {@link CustomVideoTrack} (stream + pool).
  */
-export function createCustomVideoTrack(
+export async function createCustomVideoTrack(
     init: CustomVideoTrackInit,
 ): Promise<CustomVideoTrack> {
-    void init;
-    throw new Error(
-        'createCustomVideoTrack: not implemented yet (Phase 2)',
-    );
+    await ensureInstalled();
+
+    let data: BridgeCustomVideoTrack;
+    try {
+        data = await WebRTCModule.createCustomVideoTrack(init);
+    } catch (error) {
+        throw new MediaStreamError(error);
+    }
+
+    const { streamId, track, buffers } = data;
+
+    const stream = new MediaStream({
+        streamId: streamId,
+        streamReactTag: streamId,
+        tracks: [track],
+    });
+
+    // The bridge carries each surface handle as a decimal string; expose it as a
+    // bigint, the public type the GPU import path consumes.
+    const pool: CustomVideoBuffer[] = buffers.map((buffer) => ({
+        index: buffer.index,
+        surfaceHandle: BigInt(buffer.surfaceHandle),
+        width: buffer.width,
+        height: buffer.height,
+    }));
+
+    return { stream, buffers: pool };
 }
 
 /**
@@ -222,8 +319,11 @@ export function createCustomVideoTrack(
  * @param frame The frame to deliver; see {@link CustomVideoFramePush}.
  */
 export function pushCustomVideoFrame(frame: CustomVideoFramePush): void {
-    void frame;
-    throw new Error(
-        'pushCustomVideoFrame: not implemented yet (Phase 2)',
-    );
+    if (typeof global.__fishjamWebrtcPushCustomVideoFrame !== 'function') {
+        throw new Error(
+            'Custom video frame binding is not installed; call ' +
+                'createCustomVideoTrack first (New Architecture only).',
+        );
+    }
+    global.__fishjamWebrtcPushCustomVideoFrame(frame);
 }
