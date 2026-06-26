@@ -17,6 +17,15 @@ import {
     type AudioTrackData,
 } from './AudioExtraction';
 import { type CallKitAction, type CallKitConfig } from './CallKit';
+import {
+    createCustomVideoTrack,
+    pushCustomVideoFrame,
+    type CustomVideoTrackInit,
+    type CustomVideoBuffer,
+    type CustomVideoTrack,
+    type CustomVideoFrameFence,
+    type CustomVideoFramePush,
+} from './createCustomVideoTrack';
 import { setupNativeEvents } from './EventEmitter';
 import Logger from './Logger';
 import mediaDevices from './MediaDevices';
@@ -119,6 +128,13 @@ export {
     startAudioExtraction,
     type AudioExtractionOptions,
     type AudioTrackData,
+    createCustomVideoTrack,
+    pushCustomVideoFrame,
+    type CustomVideoTrackInit,
+    type CustomVideoBuffer,
+    type CustomVideoTrack,
+    type CustomVideoFrameFence,
+    type CustomVideoFramePush,
     useLivestreamStatus,
     writeLivestreamCredentials,
     type CallKitAction,
