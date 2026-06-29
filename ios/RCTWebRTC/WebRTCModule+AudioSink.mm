@@ -370,7 +370,14 @@ RCT_EXPORT_METHOD(stopAudioExtraction : (nonnull NSNumber *)pcId trackId : (nonn
         }
         localRenderers[trackId] = renderer;
     }
-    [self fj_startLocalAudioEngineIfNeeded];
+    // Roll back the just-registered renderer if the engine can't start, otherwise
+    // it stays wedged in fj_localRenderers (blocking retry, with no engine running).
+    if (![self fj_startLocalAudioEngineIfNeeded]) {
+        @synchronized(self) {
+            [[self fj_localRenderers] removeObjectForKey:trackId];
+        }
+        [renderer teardown];
+    }
 }
 
 - (void)fj_stopLocalExtractionForTrackId:(NSString *)trackId {
@@ -390,10 +397,10 @@ RCT_EXPORT_METHOD(stopAudioExtraction : (nonnull NSNumber *)pcId trackId : (nonn
 #pragma mark - Local audio engine lifecycle
 
 // One shared input tap feeds every local renderer: started on the first local
-// track, torn down with the last.
-- (void)fj_startLocalAudioEngineIfNeeded {
+// track, torn down with the last. Returns NO if the engine could not start.
+- (BOOL)fj_startLocalAudioEngineIfNeeded {
     if (objc_getAssociatedObject(self, kLocalAudioEngineKey) != nil) {
-        return;
+        return YES;
     }
 
     AVAudioEngine *engine = [[AVAudioEngine alloc] init];
@@ -413,10 +420,11 @@ RCT_EXPORT_METHOD(stopAudioExtraction : (nonnull NSNumber *)pcId trackId : (nonn
     if (![engine startAndReturnError:&error]) {
         NSLog(@"[FJAudioSink] Failed to start local audio engine: %@", error);
         [inputNode removeTapOnBus:0];
-        return;
+        return NO;
     }
 
     objc_setAssociatedObject(self, kLocalAudioEngineKey, engine, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return YES;
 }
 
 - (void)fj_deliverLocalAudioBuffer:(AVAudioPCMBuffer *)buffer {

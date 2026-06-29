@@ -43,6 +43,10 @@ final class AudioExtractionController {
     // Read on the ADM capture thread, written on the RN executor thread.
     private final Set<String> localAudioSinks = ConcurrentHashMap.newKeySet();
 
+    // Reused direct buffer for local samples; confined to the ADM capture thread
+    // (the only caller of onLocalAudioSamplesReady), grown when a chunk is larger.
+    private ByteBuffer localSamplesBuffer;
+
     // Lazily built from the JS CallInvoker; null on the old architecture (no JSI).
     private FJAudioSinkInstaller audioSinkInstaller;
     private boolean audioSinkInstallerInitialized;
@@ -161,9 +165,14 @@ final class AudioExtractionController {
         }
         byte[] data = samples.getData();
         int frames = data.length / (samples.getChannelCount() * 2); // int16 = 2 bytes/sample
-        ByteBuffer buf = ByteBuffer.allocateDirect(data.length);
+        ByteBuffer buf = localSamplesBuffer;
+        if (buf == null || buf.capacity() < data.length) {
+            buf = ByteBuffer.allocateDirect(data.length);
+            localSamplesBuffer = buf;
+        }
+        buf.clear();
         buf.put(data);
-        buf.flip();
+        buf.flip(); // limit = data.length, so reusing a larger buffer reads only this chunk
         for (String trackId : localAudioSinks) {
             buf.rewind();
             installer.onAudioData(trackId, buf, samples.getSampleRate(), samples.getChannelCount(), frames);
