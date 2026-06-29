@@ -81,11 +81,6 @@
 }
 
 - (void)reportIncomingCallWithDisplayName:(NSString *)displayName isVideo:(BOOL)isVideo {
-    if (self.currentCallUUID != nil) {
-        NSLog(@"[CallKitManager] Call already in progress");
-        return;
-    }
-
     NSUUID *uuid = [NSUUID UUID];
     self.currentCallUUID = uuid;
     self.isCallAnswered = NO;
