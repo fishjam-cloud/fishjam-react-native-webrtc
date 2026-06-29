@@ -14,6 +14,15 @@ jobs:
         runs-on: macos-latest
         steps:
             - uses: actions/checkout@v4
+
+            # react-native 0.71.4's bundled Yoga (log.cpp) does not compile under
+            # the runner's default Xcode 26.5; pin to 26.3 (also installed on the
+            # macos-26 image) which builds the example cleanly.
+            - name: Select Xcode 26.3
+              run: |
+                  sudo xcode-select -s /Applications/Xcode_26.3.app
+                  xcodebuild -version
+
             - uses: actions/setup-node@v4
               with:
                   node-version-file: '.nvmrc'
