@@ -24,6 +24,11 @@ import MediaStream from './MediaStream';
 import MediaStreamTrack, { type MediaTrackSettings } from './MediaStreamTrack';
 import MediaStreamTrackEvent from './MediaStreamTrackEvent';
 import permissions from './Permissions';
+import {
+    clearPendingIncomingCall,
+    getPendingIncomingCall,
+    getVoipToken,
+} from './PushKit';
 import RTCAudioSession from './RTCAudioSession';
 import RTCCertificate from './RTCCertificate';
 import RTCErrorEvent from './RTCErrorEvent';
@@ -47,8 +52,8 @@ import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
 import {
-    AudioOutputManager,
     AudioDeviceType,
+    AudioOutputManager,
     type AudioDevice,
     type AudioOutputChangedInfo,
 } from './audioOutputManager';
@@ -57,14 +62,19 @@ import presentLivestreamBroadcastPicker from './presentLivestreamBroadcastPicker
 import { useAudioOutput, type UseAudioOutputResult } from './useAudioOutput';
 import { useCallKit, useCallKitEvent, useCallKitService } from './useCallKit';
 import {
-    type ForegroundServiceConfig,
     useForegroundService,
+    type ForegroundServiceConfig,
 } from './useForegroundService';
 import {
+    useLivestreamStatus,
     type LivestreamStatus,
     type LivestreamStatusInfo,
-    useLivestreamStatus,
 } from './useLivestreamStatus';
+import {
+    useVoIPEvents,
+    type VoIPEventHandlers,
+    type VoipIncomingPayload,
+} from './useVoIPEvents';
 import { Event, EventTarget } from './vendor/event-target-shim';
 import writeLivestreamCredentials, {
     type LivestreamCredentials,
@@ -76,58 +86,64 @@ Logger.enable(`${Logger.ROOT_PREFIX}:*`);
 setupNativeEvents();
 
 export {
+    AudioDeviceType,
+    AudioOutputManager,
+    clearPendingIncomingCall,
     Event,
     EventTarget,
-    AudioOutputManager,
-    AudioDeviceType,
-    type AudioDevice,
-    type AudioOutputChangedInfo,
-    RTCIceCandidate,
-    RTCPeerConnection,
-    RTCSessionDescription,
-    RTCCertificate,
-    RTCView,
-    RTCPIPView,
-    ScreenCapturePickerView,
-    RTCRtpEncodingParameters,
-    RTCRtpTransceiver,
-    RTCRtpReceiver,
-    RTCRtpSender,
-    RTCRtpSendParameters,
-    RTCErrorEvent,
-    RTCAudioSession,
+    getPendingIncomingCall,
+    getVoipToken,
+    mediaDevices,
     MediaStream,
     MediaStreamTrack,
-    type MediaTrackSettings,
-    type RTCRtpEncodingParametersInit,
-    type RTCRtpSendParametersInit,
-    type RTCVideoViewProps,
-    type RTCPIPViewProps,
-    type RTCPIPOptions,
-    mediaDevices,
     permissions,
     presentBroadcastPicker,
     presentLivestreamBroadcastPicker,
     registerGlobals,
+    RTCAudioSession,
+    RTCCertificate,
+    RTCErrorEvent,
+    RTCIceCandidate,
+    RTCPeerConnection,
+    RTCPIPView,
+    RTCRtpEncodingParameters,
+    RTCRtpReceiver,
+    RTCRtpSender,
+    RTCRtpSendParameters,
+    RTCRtpTransceiver,
+    RTCSessionDescription,
+    RTCView,
+    ScreenCapturePickerView,
+    startAudioExtraction,
     startPIP,
     stopPIP,
+    useAudioOutput,
     useCallKit,
     useCallKitEvent,
     useCallKitService,
     useForegroundService,
-    useAudioOutput,
-    startAudioExtraction,
-    type AudioExtractionOptions,
-    type AudioTrackData,
     useLivestreamStatus,
+    useVoIPEvents,
     writeLivestreamCredentials,
+    type AudioDevice,
+    type AudioExtractionOptions,
+    type AudioOutputChangedInfo,
+    type AudioTrackData,
     type CallKitAction,
     type CallKitConfig,
     type ForegroundServiceConfig,
     type LivestreamCredentials,
     type LivestreamStatus,
     type LivestreamStatusInfo,
+    type MediaTrackSettings,
+    type RTCPIPOptions,
+    type RTCPIPViewProps,
+    type RTCRtpEncodingParametersInit,
+    type RTCRtpSendParametersInit,
+    type RTCVideoViewProps,
     type UseAudioOutputResult,
+    type VoIPEventHandlers,
+    type VoipIncomingPayload,
 };
 
 declare const global: any;

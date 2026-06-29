@@ -9,6 +9,7 @@ export type CallKitConfig = {
 
 export type CallKitAction = {
     started?: undefined;
+    answer?: undefined;
     ended?: undefined;
     failed?: string;
     muted?: boolean;
@@ -35,5 +36,12 @@ export function hasActiveCallKitSession(): boolean {
     if (Platform.OS !== 'ios') {
         return false;
     }
-    return WebRTCModule.hasActiveCallKitSession;
+    return WebRTCModule.hasActiveCallKitSession();
+}
+
+export function isCallAnswered(): boolean {
+    if (Platform.OS !== 'ios') {
+        return false;
+    }
+    return WebRTCModule.isCallAnswered();
 }

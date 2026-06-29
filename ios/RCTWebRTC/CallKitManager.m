@@ -7,9 +7,19 @@
 @property(nonatomic, strong) CXCallController *callController;
 @property(nonatomic, strong) CXProvider *provider;
 @property(nonatomic, strong) NSUUID *currentCallUUID;
+@property(nonatomic, assign) BOOL isCallAnswered;
 @end
 
 @implementation CallKitManager
+
++ (instancetype)shared {
+    static CallKitManager *sharedInstance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        sharedInstance = [[CallKitManager alloc] init];
+    });
+    return sharedInstance;
+}
 
 - (instancetype)init {
     self = [super init];
@@ -70,6 +80,35 @@
                 }];
 }
 
+- (void)reportIncomingCallWithDisplayName:(NSString *)displayName isVideo:(BOOL)isVideo {
+    NSUUID *uuid = [NSUUID UUID];
+    self.currentCallUUID = uuid;
+    self.isCallAnswered = NO;
+
+    CXCallUpdate *update = [[CXCallUpdate alloc] init];
+    update.remoteHandle = [[CXHandle alloc] initWithType:CXHandleTypeGeneric value:displayName];
+    update.localizedCallerName = displayName;
+    update.hasVideo = isVideo;
+    update.supportsHolding = NO;
+    update.supportsGrouping = NO;
+    update.supportsUngrouping = NO;
+    update.supportsDTMF = NO;
+
+    __weak typeof(self) weakSelf = self;
+    [self.provider reportNewIncomingCallWithUUID:uuid
+                                          update:update
+                                      completion:^(NSError *_Nullable error) {
+                                          if (error) {
+                                              NSLog(@"[CallKitManager] Failed to report incoming call: %@",
+                                                    error.localizedDescription);
+                                              weakSelf.currentCallUUID = nil;
+                                              if (weakSelf.onCallFailed) {
+                                                  weakSelf.onCallFailed(error.localizedDescription);
+                                              }
+                                          }
+                                      }];
+}
+
 - (void)endCall {
     if (self.currentCallUUID == nil) {
         NSLog(@"[CallKitManager] No active call to end");
@@ -95,6 +134,7 @@
 
 - (void)cleanup {
     self.currentCallUUID = nil;
+    self.isCallAnswered = NO;
 }
 
 #pragma mark - CXProviderDelegate
@@ -116,6 +156,10 @@
 }
 
 - (void)provider:(CXProvider *)provider performAnswerCallAction:(CXAnswerCallAction *)action {
+    self.isCallAnswered = YES;
+    if (self.onCallAnswered) {
+        self.onCallAnswered();
+    }
     [action fulfill];
 }
 

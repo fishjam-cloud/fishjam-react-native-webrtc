@@ -6,6 +6,8 @@
 
 #import "CallKitManager.h"
 
+#import "WebRTCModule+PushKit.h"
+
 static void *CallKitManagerKey = &CallKitManagerKey;
 
 @implementation WebRTCModule (CallKit)
@@ -16,10 +18,13 @@ static void *CallKitManagerKey = &CallKitManagerKey;
         return manager;
     }
 
-    manager = [[CallKitManager alloc] init];
+    manager = [CallKitManager shared];
     __weak typeof(self) weakSelf = self;
     manager.onCallStarted = ^{
         [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"started" : [NSNull null]}];
+    };
+    manager.onCallAnswered = ^{
+        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"answer" : [NSNull null]}];
     };
     manager.onCallEnded = ^{
         [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"ended" : [NSNull null]}];
@@ -36,6 +41,17 @@ static void *CallKitManagerKey = &CallKitManagerKey;
 
     objc_setAssociatedObject(self, CallKitManagerKey, manager, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     return manager;
+}
+
+- (void)startObserving {
+    [super startObserving];
+    [self callKitManager];
+    [self startObservingPushKit];
+}
+
+- (void)stopObserving {
+    [self stopObservingPushKit];
+    [super stopObserving];
 }
 
 RCT_EXPORT_METHOD(startCallKitSession
@@ -67,6 +83,10 @@ RCT_EXPORT_METHOD(endCallKitSession : (RCTPromiseResolveBlock)resolve rejecter :
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(hasActiveCallKitSession) {
     return @([self callKitManager].hasActiveCall);
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isCallAnswered) {
+    return @([self callKitManager].isCallAnswered);
 }
 
 @end
