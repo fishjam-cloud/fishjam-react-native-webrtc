@@ -54,11 +54,15 @@ final class CustomVideoFrameDelivery {
     /** Created on {@link #glHandler}; backs TextureBufferImpl.toI420(). */
     private YuvConverter yuvConverter;
 
-    /** Per-pool-index AHB handles (AHardwareBuffer* as longs), index-stable. */
+    /**
+     * Per-pool-index AHB handles (AHardwareBuffer* as longs), index-stable, for the
+     * pooled path. {@code null} in forwarding mode (external buffers carry their own
+     * pointer/size per frame and are not pool-indexed).
+     */
     private final long[] bufferHandles;
-    /** Per-index cached EGLImageKHR (as long); 0 until first import. */
+    /** Per-index cached EGLImageKHR (as long); 0 until first import. Pooled only. */
     private final long[] cachedEglImages;
-    /** Per-index cached OES GL texture id; 0 until first import. */
+    /** Per-index cached OES GL texture id; 0 until first import. Pooled only. */
     private final int[] cachedTextureIds;
 
     /** Lifecycle / drain bookkeeping, guarded by {@code stateLock}. */
@@ -78,8 +82,10 @@ final class CustomVideoFrameDelivery {
         this.bufferHandles = bufferHandles;
         this.width = width;
         this.height = height;
-        this.cachedEglImages = new long[bufferHandles.length];
-        this.cachedTextureIds = new int[bufferHandles.length];
+        // Forwarding mode has no pool, so no per-index caches (length 0).
+        int poolSize = bufferHandles != null ? bufferHandles.length : 0;
+        this.cachedEglImages = new long[poolSize];
+        this.cachedTextureIds = new int[poolSize];
 
         EglBase.Context rootContext = EglUtils.getRootEglBaseContext();
         if (rootContext == null) {
@@ -119,6 +125,12 @@ final class CustomVideoFrameDelivery {
      * @param rotation    frame rotation in degrees (0/90/180/270).
      */
     void pushFrame(int bufferIndex, int fenceFd, long timestampNs, int rotation) {
+        if (bufferHandles == null) {
+            // Forwarding-mode delivery received a pooled push (JS misuse); drop it.
+            Log.w(TAG, "pushFrame on a forwarding track; dropping frame");
+            closeFd(fenceFd);
+            return;
+        }
         if (bufferIndex < 0 || bufferIndex >= bufferHandles.length) {
             Log.w(TAG, "pushFrame: bufferIndex " + bufferIndex + " out of range");
             closeFd(fenceFd);
@@ -206,6 +218,125 @@ final class CustomVideoFrameDelivery {
             videoSource.getCapturerObserver().onFrameCaptured(frame);
         } finally {
             frame.release();  // balances TextureBufferImpl's initial +1 ref
+        }
+    }
+
+    /**
+     * Forwards one finished external {@code AHardwareBuffer*} (forwarding mode).
+     *
+     * <p>Takes an owning reference on the AHB <em>synchronously on the calling
+     * (worklet) thread</em>, BEFORE returning, so the buffer survives the caller's
+     * {@code frame.dispose()} that runs immediately after the push. The import into
+     * an OES texture and the delivery then run on the GL thread. Unlike the pooled
+     * path there is no fence wait (a forwarded buffer is already complete) and no
+     * index caching (external pointers are unbounded, so the texture/EGLImage are
+     * created per frame and destroyed by the {@code VideoFrame} release callback).
+     *
+     * @param ahbHandle   the finished {@code AHardwareBuffer*} (as a {@code long}).
+     * @param timestampNs frame presentation timestamp in nanoseconds; {@code 0}
+     *                    means stamp with {@code System.nanoTime()} at delivery.
+     * @param rotation    frame rotation in degrees (0/90/180/270).
+     */
+    void pushExternalBuffer(long ahbHandle, long timestampNs, int rotation) {
+        if (ahbHandle == 0) {
+            return;
+        }
+
+        // Reserve an in-flight slot only while accepting, and capture the current
+        // generation so a later pause/resume/release can tell this runnable is stale.
+        final long frameGeneration;
+        synchronized (stateLock) {
+            if (!accepting || glResourcesReleased) {
+                return;
+            }
+            frameGeneration = generation;
+            inFlightCount++;
+        }
+
+        // Take the owning ref NOW, on the caller's thread, before it releases its
+        // own reference. The GL runnable (or the frame's release callback) balances
+        // this with exactly one nativeReleaseAhb.
+        nativeAcquireAhb(ahbHandle);
+
+        glHandler.post(() -> {
+            // The AHB is owned by this Runnable until ownership passes to the
+            // delivered frame's release callback; ownedAhb[0] is zeroed on that
+            // hand-off so the finally does not double-release.
+            long[] ownedAhb = {ahbHandle};
+            try {
+                deliverExternalOnGlThread(ownedAhb, frameGeneration, timestampNs, rotation);
+            } catch (Throwable t) {
+                Log.e(TAG, "pushExternalBuffer: delivery failed", t);
+            } finally {
+                if (ownedAhb[0] != 0) {
+                    nativeReleaseAhb(ownedAhb[0]);
+                }
+                finishInFlight();
+            }
+        });
+    }
+
+    /** Runs entirely on the GL thread (shared EGL context current). */
+    private void deliverExternalOnGlThread(long[] ownedAhb, long frameGeneration, long timestampNs, int rotation) {
+        long ahbHandle = ownedAhb[0];
+        if (!shouldDeliver(frameGeneration)) {
+            return;  // outer finally releases the AHB
+        }
+
+        // External buffers carry their own dimensions (no pool geometry to reuse).
+        int[] dimensions = nativeDescribeAhb(ahbHandle);
+        if (dimensions == null || dimensions.length != 2 || dimensions[0] <= 0 || dimensions[1] <= 0) {
+            Log.e(TAG, "AHB describe failed for forwarded buffer");
+            return;
+        }
+
+        // Per-frame import (external pointers are unbounded, so nothing to cache).
+        long[] imported = nativeImportAhbToOesTexture(ahbHandle);
+        if (imported == null || imported.length != 2 || imported[1] == 0) {
+            Log.e(TAG, "AHB import failed for forwarded buffer");
+            return;
+        }
+        long eglImage = imported[0];
+        int textureId = (int) imported[1];
+
+        if (!shouldDeliver(frameGeneration)) {
+            nativeReleaseImportedTexture(eglImage, textureId);  // AHB released by finally
+            return;
+        }
+
+        // A raw buffer pointer carries no presentation time; stamp a monotonic
+        // timestamp when JS did not supply one.
+        long stampNs = timestampNs != 0 ? timestampNs : System.nanoTime();
+
+        // Ownership of {AHB, EGLImage, OES texture} now transfers to the frame's
+        // release callback, fired when the encoder drops its last reference.
+        ownedAhb[0] = 0;
+        TextureBufferImpl buffer = new TextureBufferImpl(dimensions[0], dimensions[1],
+                VideoFrame.TextureBuffer.Type.OES, textureId, IDENTITY_MATRIX, glHandler, yuvConverter,
+                () -> releaseForwardedFrame(eglImage, textureId, ahbHandle));
+        VideoFrame frame = new VideoFrame(buffer, rotation, stampNs);
+        try {
+            videoSource.getCapturerObserver().onFrameCaptured(frame);
+        } finally {
+            frame.release();  // balances TextureBufferImpl's initial +1 ref
+        }
+    }
+
+    /**
+     * Frees one forwarded frame's per-frame GL import and its acquired AHB ref.
+     * Invoked from {@link TextureBufferImpl}'s release callback when the encoder
+     * drops its last reference — on whatever thread that release happens, so the GL
+     * teardown is posted onto the GL thread. If the GL thread is already gone
+     * (teardown raced ahead) the texture/EGLImage die with the context; the AHB
+     * release is thread-safe, so we still balance the acquire directly.
+     */
+    private void releaseForwardedFrame(long eglImage, int textureId, long ahbHandle) {
+        boolean posted = glHandler.post(() -> {
+            nativeReleaseImportedTexture(eglImage, textureId);
+            nativeReleaseAhb(ahbHandle);
+        });
+        if (!posted) {
+            nativeReleaseAhb(ahbHandle);
         }
     }
 
@@ -341,4 +472,15 @@ final class CustomVideoFrameDelivery {
 
     /** Closes a raw fd; safe to call from any thread (no GL/EGL state touched). */
     private static native void nativeCloseFd(int fenceFd);
+
+    // --- Forwarding-mode AHB ref-counting/describe; thread-safe (no GL/EGL state). ---
+
+    /** Takes one owning ref on a forwarded AHB; called on the worklet push thread. */
+    private static native void nativeAcquireAhb(long ahbHandle);
+
+    /** Releases one ref taken by {@link #nativeAcquireAhb(long)}. */
+    private static native void nativeReleaseAhb(long ahbHandle);
+
+    /** Returns {@code {width, height}} of a forwarded AHB, or null on failure. */
+    private static native int[] nativeDescribeAhb(long ahbHandle);
 }

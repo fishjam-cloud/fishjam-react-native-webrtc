@@ -1,5 +1,8 @@
 #include "FJVideoPushInstaller.h"
 
+// facebook::jni::ThreadScope is declared in <fbjni/detail/Environment.h>, pulled
+// in transitively by <fbjni/fbjni.h> (included from FJVideoPushInstaller.h).
+
 namespace jni = facebook::jni;
 
 namespace fishjam {
@@ -8,22 +11,32 @@ FJVideoPushInstaller::FJVideoPushInstaller(jni::alias_ref<jhybridobject> javaThi
                                            std::shared_ptr<FJVideoPush> push)
     : javaPart_(jni::make_global(javaThis)), push_(std::move(push)) {
     // Route every JS-pushed frame back to the Java peer, which forwards it to the
-    // matching CustomVideoFrameDelivery. The deliver callback runs on the JS
-    // thread (a JVM thread), so calling into Java via JNI here is valid. On
-    // Android the fence is a sync-fd carried in fenceHandle; fenceSignaledValue is
-    // unused (the fd already encodes the signal) but is forwarded for parity with
-    // the shared DeliverFn contract. Capturing the global_ref keeps the Java peer
-    // alive for the lifetime of the callback.
+    // matching CustomVideoFrameDelivery. `nativeBuffer` is the forwarding
+    // discriminator: non-zero => a finished AHardwareBuffer* to forward
+    // (bufferIndex/fence unused); zero => pooled delivery of `bufferIndex` with the
+    // sync-fd carried in fenceHandle (fenceSignaledValue unused on Android — the fd
+    // already encodes the signal — but forwarded for parity with the shared
+    // DeliverFn contract).
+    //
+    // deliver_ now runs on whatever thread called sink.push. For a VisionCamera
+    // frame-processor that is a worklet thread NOT attached to the JVM, so we
+    // establish a ThreadScope (attach the current thread for the duration of the
+    // JNI dispatch) before touching any JNIEnv. ThreadScope is a no-op on threads
+    // already attached (e.g. the RN JS thread), so the pooled path pays nothing.
+    // Capturing the global_ref keeps the Java peer alive for the callback lifetime.
     auto javaPart = javaPart_;
-    push_->setDeliver([javaPart](const std::string &trackId, int bufferIndex, uint64_t timestampNs,
-                                 int rotation, uint64_t fenceHandle, uint64_t fenceSignaledValue) {
+    push_->setDeliver([javaPart](const std::string &trackId, int bufferIndex, uint64_t nativeBuffer,
+                                 uint64_t timestampNs, int rotation, uint64_t fenceHandle,
+                                 uint64_t fenceSignaledValue) {
+        facebook::jni::ThreadScope threadScope;
         static const auto deliverFrame =
             javaPart->getClass()
-                ->getMethod<void(jni::alias_ref<jstring>, jint, jlong, jint, jlong, jlong)>(
+                ->getMethod<void(jni::alias_ref<jstring>, jint, jlong, jlong, jint, jlong, jlong)>(
                     "deliverFrame");
         deliverFrame(javaPart, jni::make_jstring(trackId), static_cast<jint>(bufferIndex),
-                     static_cast<jlong>(timestampNs), static_cast<jint>(rotation),
-                     static_cast<jlong>(fenceHandle), static_cast<jlong>(fenceSignaledValue));
+                     static_cast<jlong>(nativeBuffer), static_cast<jlong>(timestampNs),
+                     static_cast<jint>(rotation), static_cast<jlong>(fenceHandle),
+                     static_cast<jlong>(fenceSignaledValue));
     });
 }
 

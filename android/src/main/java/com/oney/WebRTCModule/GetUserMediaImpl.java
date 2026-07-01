@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -58,6 +59,25 @@ class GetUserMediaImpl {
      * track ID.
      */
     private final Map<String, TrackPrivate> tracks = new HashMap<>();
+
+    /**
+     * poolId -> {@link CustomVideoBufferPool} registry for custom-video pooled
+     * buffers. Pools are owned by JS: an entry is added by
+     * {@link #createCustomVideoBufferPool} and removed by
+     * {@link #releaseCustomVideoBufferPool}. Mutated only on the module executor,
+     * but concurrent for parity with {@link #customVideoControllers}.
+     */
+    private final Map<String, CustomVideoBufferPool> customVideoBufferPools = new ConcurrentHashMap<>();
+
+    /**
+     * trackId -> {@link CustomVideoCaptureController} registry, resolved by the
+     * per-frame push path. That push runs synchronously on the caller's (worklet)
+     * thread, which races the executor mutating {@link #tracks} (an unsynchronised
+     * HashMap); this concurrent registry decouples delivery from {@code tracks}.
+     * Entries are added by {@link #createCustomVideoTrack} and removed by
+     * {@link #disposeTrack}.
+     */
+    private final Map<String, CustomVideoCaptureController> customVideoControllers = new ConcurrentHashMap<>();
 
     private final WebRTCModule webRTCModule;
 
@@ -252,6 +272,7 @@ class GetUserMediaImpl {
 
     void disposeTrack(String id) {
         TrackPrivate track = tracks.remove(id);
+        customVideoControllers.remove(id);
         if (track != null) {
             track.dispose();
         }
@@ -499,19 +520,21 @@ class GetUserMediaImpl {
     }
 
     /**
-     * Creates a custom video track whose frames are rendered by the app on the GPU into
-     * AHardwareBuffer (AHB) backed surfaces. Resolves the cross-platform shape
-     * {@code { streamId, track, buffers:[{ index, surfaceHandle, width, height }] }} which the
-     * platform-neutral {@code src/createCustomVideoTrack.ts} wrapper consumes unchanged.
+     * Allocates a pool of AHardwareBuffer (AHB) backed surfaces the app renders into on the GPU
+     * (pooled mode). Resolves the cross-platform shape
+     * {@code { poolId, buffers:[{ index, surfaceHandle, width, height }] }} which
+     * {@code src/createCustomVideoTrack.ts} consumes unchanged. The pool is owned by JS and freed
+     * via {@link #releaseCustomVideoBufferPool}; attach it to a track with
+     * {@link #createCustomVideoTrack}.
      *
      * <p>Requires API level 26+ (the AHB pool uses {@code __INTRODUCED_IN(26)} APIs); rejects on
-     * older devices BEFORE referencing {@link CustomVideoCaptureController}/{@link AHardwareBufferPool},
+     * older devices BEFORE referencing {@link CustomVideoBufferPool}/{@link AHardwareBufferPool},
      * so the native AHB library is never loaded on unsupported systems.
      *
      * @param init    {@code { width, height, poolSize }} pool description.
-     * @param promise resolves with {@code { streamId, track, buffers }} or rejects on failure.
+     * @param promise resolves with {@code { poolId, buffers }} or rejects on failure.
      */
-    void createCustomVideoTrack(ReadableMap init, Promise promise) {
+    void createCustomVideoBufferPool(ReadableMap init, Promise promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             promise.reject("E_UNSUPPORTED_API_LEVEL",
                     "Custom video tracks require Android 8.0 (API 26) or newer.");
@@ -526,20 +549,97 @@ class GetUserMediaImpl {
             height = init != null && init.hasKey("height") ? init.getInt("height") : 0;
             poolSize = init != null && init.hasKey("poolSize") ? init.getInt("poolSize") : 0;
         } catch (Exception e) {
-            promise.reject("E_INVALID_CUSTOM_VIDEO_TRACK_INIT",
-                    "Custom video track width, height and poolSize must be positive integers.", e);
+            promise.reject("E_INVALID_CUSTOM_VIDEO_BUFFER_POOL_INIT",
+                    "Custom video buffer pool width, height and poolSize must be positive integers.", e);
+            return;
+        }
+        if (width <= 0 || height <= 0 || poolSize <= 0) {
+            promise.reject("E_INVALID_CUSTOM_VIDEO_BUFFER_POOL_INIT",
+                    "Custom video buffer pool width, height and poolSize must be positive integers.");
             return;
         }
 
-        CustomVideoCaptureController captureController;
+        CustomVideoBufferPool pool;
         try {
-            captureController = new CustomVideoCaptureController(width, height, poolSize);
+            pool = new CustomVideoBufferPool(width, height, poolSize);
         } catch (IllegalArgumentException e) {
-            promise.reject("E_INVALID_CUSTOM_VIDEO_TRACK_INIT", e.getMessage(), e);
+            promise.reject("E_INVALID_CUSTOM_VIDEO_BUFFER_POOL_INIT", e.getMessage(), e);
             return;
         } catch (Exception e) {
-            promise.reject("E_CUSTOM_VIDEO_TRACK_FAILED", e.getMessage(), e);
+            promise.reject("E_CUSTOM_VIDEO_BUFFER_POOL_FAILED", e.getMessage(), e);
             return;
+        }
+
+        String poolId = UUID.randomUUID().toString();
+        customVideoBufferPools.put(poolId, pool);
+
+        WritableMap data = Arguments.createMap();
+        data.putString("poolId", poolId);
+        data.putArray("buffers", pool.getBufferDescriptors());
+
+        Log.d(TAG, "createCustomVideoBufferPool poolId=" + poolId + " " + width + "x" + height + " x" + poolSize);
+        promise.resolve(data);
+    }
+
+    /**
+     * Releases a pool created by {@link #createCustomVideoBufferPool}, freeing its AHBs. Resolves
+     * null; a no-op (still resolves) when the poolId is null or already released.
+     */
+    void releaseCustomVideoBufferPool(String poolId, Promise promise) {
+        if (poolId == null) {
+            promise.resolve(null);
+            return;
+        }
+        CustomVideoBufferPool pool = customVideoBufferPools.remove(poolId);
+        if (pool != null) {
+            pool.dispose();
+        }
+        promise.resolve(null);
+    }
+
+    /**
+     * Creates a custom video track. Resolves the cross-platform shape
+     * {@code { streamId, track }} which {@code src/createCustomVideoTrack.ts} consumes unchanged.
+     *
+     * <ul>
+     *   <li>{@code poolId} present -> <b>pooled</b>: bind to the named
+     *       {@link CustomVideoBufferPool} (the app renders into it and pushes by index). A pool binds
+     *       to exactly one track; a missing pool rejects {@code E_CUSTOM_VIDEO_TRACK_FAILED}, an
+     *       already-attached pool rejects {@code E_CUSTOM_VIDEO_POOL_IN_USE}.</li>
+     *   <li>{@code poolId} absent -> <b>forwarding</b>: no pool; the app forwards finished
+     *       {@code AHardwareBuffer*}s.</li>
+     * </ul>
+     *
+     * <p>Requires API level 26+; rejects on older devices BEFORE referencing
+     * {@link CustomVideoCaptureController}.
+     *
+     * @param init    {@code { poolId? }}.
+     * @param promise resolves with {@code { streamId, track }} or rejects on failure.
+     */
+    void createCustomVideoTrack(ReadableMap init, Promise promise) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            promise.reject("E_UNSUPPORTED_API_LEVEL",
+                    "Custom video tracks require Android 8.0 (API 26) or newer.");
+            return;
+        }
+
+        String poolId = init != null && init.hasKey("poolId") ? init.getString("poolId") : null;
+
+        CustomVideoCaptureController captureController;
+        if (poolId != null) {
+            CustomVideoBufferPool pool = customVideoBufferPools.get(poolId);
+            if (pool == null) {
+                promise.reject("E_CUSTOM_VIDEO_TRACK_FAILED", "No custom video buffer pool for id " + poolId);
+                return;
+            }
+            if (!pool.tryAttach()) {
+                promise.reject("E_CUSTOM_VIDEO_POOL_IN_USE",
+                        "Custom video buffer pool is already attached to a track.");
+                return;
+            }
+            captureController = new CustomVideoCaptureController(pool);
+        } else {
+            captureController = new CustomVideoCaptureController();
         }
 
         PeerConnectionFactory pcFactory = webRTCModule.mFactory;
@@ -551,8 +651,8 @@ class GetUserMediaImpl {
         // VideoCapturer.initialize(...).startCapture() signalling onCapturerStarted).
         videoSource.getCapturerObserver().onCapturerStarted(true);
 
-        // Wire frame delivery (AHB -> OES texture -> VideoFrame, gated by a sync-fd fence) into the
-        // source, then start accepting pushes.
+        // Wire frame delivery (AHB -> OES texture -> VideoFrame) into the source, then start
+        // accepting pushes.
         captureController.attachVideoSource(videoSource);
         captureController.startCapture();
 
@@ -560,10 +660,12 @@ class GetUserMediaImpl {
         VideoTrack videoTrack = pcFactory.createVideoTrack(trackId, videoSource);
         videoTrack.setEnabled(true);
 
-        // Register so the existing disposeTrack -> TrackPrivate.dispose path tears down the AHB
-        // pool (CustomVideoCaptureController.dispose) and disposes the source/track.
+        // Register so the existing disposeTrack -> TrackPrivate.dispose path tears down the GL
+        // imports (CustomVideoCaptureController.dispose) and disposes the source/track.
         tracks.put(trackId,
                 new TrackPrivate(videoTrack, videoSource, captureController, /* surfaceTextureHelper */ null));
+        // Thread-safe registry read by the per-frame push path (worklet thread).
+        customVideoControllers.put(trackId, captureController);
 
         String streamId = UUID.randomUUID().toString();
         MediaStream mediaStream = pcFactory.createLocalMediaStream(streamId);
@@ -580,29 +682,37 @@ class GetUserMediaImpl {
         WritableMap data = Arguments.createMap();
         data.putString("streamId", streamId);
         data.putMap("track", trackInfo);
-        data.putArray("buffers", captureController.getBufferDescriptors());
 
-        Log.d(TAG, "createCustomVideoTrack streamId=" + streamId + " trackId=" + trackId);
+        Log.d(TAG, "createCustomVideoTrack streamId=" + streamId + " trackId=" + trackId
+                + (poolId != null ? " pooled" : " forwarding"));
         promise.resolve(data);
     }
 
     /**
-     * Pushes one app-rendered frame into a custom video track. Routed from the JSI push channel
-     * ({@link FJVideoPushInstaller}); looks up the track's {@link CustomVideoCaptureController} and
-     * hands it the frame, which imports the AHB at {@code bufferIndex} as a GL OES texture, waits on
-     * the sync-fd fence carried in {@code fenceHandle} for the GPU render to complete, wraps it in a
-     * {@code TextureBufferImpl}/{@code VideoFrame}, and feeds the {@code VideoSource}'s
-     * {@code CapturerObserver}. {@code fenceSignaledValue} is unused on Android. Fire-and-forget.
+     * Pushes one app frame into a custom video track. Routed from the JSI push channel
+     * ({@link FJVideoPushInstaller}) synchronously on the caller's (worklet) thread. Resolves the
+     * track's {@link CustomVideoCaptureController} from the thread-safe registry and hands it the
+     * frame:
+     * <ul>
+     *   <li>{@code nativeBuffer != 0} -> forwarding: {@code pushExternalBuffer} takes an owning ref
+     *       on the AHB before returning, then imports/delivers it on the GL thread.</li>
+     *   <li>otherwise -> pooled: {@code pushFrame} imports the AHB at {@code bufferIndex}, waits the
+     *       sync-fd fence in {@code fenceHandle}, and delivers.</li>
+     * </ul>
+     * {@code fenceSignaledValue} is unused on Android. Fire-and-forget.
      */
-    void pushCustomVideoFrame(
-            String trackId, int bufferIndex, long fenceHandle, long fenceSignaledValue, long timestampNs, int rotation) {
-        TrackPrivate track = tracks.get(trackId);
-        if (track == null || !(track.videoCaptureController instanceof CustomVideoCaptureController)) {
+    void pushCustomVideoFrame(String trackId, int bufferIndex, long nativeBuffer, long fenceHandle,
+            long fenceSignaledValue, long timestampNs, int rotation) {
+        CustomVideoCaptureController controller = customVideoControllers.get(trackId);
+        if (controller == null) {
             Log.w(TAG, "pushCustomVideoFrame: no custom video track for id " + trackId);
             return;
         }
-        ((CustomVideoCaptureController) track.videoCaptureController)
-                .pushFrame(bufferIndex, fenceHandle, fenceSignaledValue, timestampNs, rotation);
+        if (nativeBuffer != 0) {
+            controller.pushExternalBuffer(nativeBuffer, timestampNs, rotation);
+        } else {
+            controller.pushFrame(bufferIndex, fenceHandle, fenceSignaledValue, timestampNs, rotation);
+        }
     }
 
     /**
@@ -701,15 +811,19 @@ class GetUserMediaImpl {
                  * ITS OWN EGL context and may retain a VideoFrame past this call.
                  * So we MUST quiesce the encoder (dispose the VideoSource then the
                  * VideoTrack, which makes libwebrtc stop the encoder and release
-                 * retained frames) BEFORE freeing the GL textures/EGLImages and the
-                 * AHB pool — otherwise the encoder samples a deleted texture / freed
-                 * buffer. Required order:
+                 * retained frames) BEFORE freeing the GL textures/EGLImages —
+                 * otherwise the encoder samples a deleted texture. Required order:
                  *   stop accepting + drain delivery runnables
                  *     -> dispose VideoSource/VideoTrack (quiesce encoder)
-                 *     -> free GL imports + AHB pool.
-                 * The generic path below frees capturer resources before
-                 * mediaSource/track, which is unsafe for this capturer-less track.
-                 * (surfaceTextureHelper is always null for custom video.)
+                 *     -> free GL imports.
+                 * releaseGpuResources() no longer frees the AHBs: in pooled mode
+                 * they are owned by the CustomVideoBufferPool and freed by JS via
+                 * releaseCustomVideoBufferPool (after this, once the OES textures
+                 * aliasing them are gone); forwarding buffers are freed per frame by
+                 * their VideoFrame release callback. The generic path below frees
+                 * capturer resources before mediaSource/track, which is unsafe for
+                 * this capturer-less track. (surfaceTextureHelper is always null for
+                 * custom video.)
                  */
                 if (videoCaptureController instanceof CustomVideoCaptureController) {
                     CustomVideoCaptureController customController =
@@ -766,6 +880,14 @@ class GetUserMediaImpl {
             track.dispose();
         }
         tracks.clear();
+        customVideoControllers.clear();
+
+        // Dispose any buffer pools JS never released (defensive; JS owns pool lifetime). Their
+        // tracks were disposed above, so the GL imports aliasing these AHBs are already freed.
+        for (CustomVideoBufferPool pool : customVideoBufferPools.values()) {
+            pool.dispose();
+        }
+        customVideoBufferPools.clear();
 
         if (reusableCameraSTH != null) {
             reusableCameraSTH.stopListening();

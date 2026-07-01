@@ -32,10 +32,20 @@ final class FJVideoPushInstaller {
         System.loadLibrary("webrtc-custom-video-track");
     }
 
-    /** Routes one JS-pushed frame to its track's delivery engine. */
+    /**
+     * Routes one JS-pushed frame to its track's delivery engine. {@code nativeBuffer}
+     * is the forwarding discriminator: non-zero is a finished {@code AHardwareBuffer*}
+     * to forward; zero means pooled delivery of {@code bufferIndex}.
+     */
     interface FrameRouter {
         void route(
-                String trackId, int bufferIndex, long timestampNs, int rotation, long fenceHandle, long fenceSignaledValue);
+                String trackId,
+                int bufferIndex,
+                long nativeBuffer,
+                long timestampNs,
+                int rotation,
+                long fenceHandle,
+                long fenceSignaledValue);
     }
 
     private final HybridData mHybridData;
@@ -87,14 +97,25 @@ final class FJVideoPushInstaller {
     }
 
     /**
-     * Invoked from C++ on the JS thread for every frame pushed through the JSI
-     * global. {@code fenceHandle} is a sync-fd ({@code 0} = no fence);
-     * {@code fenceSignaledValue} is unused on Android.
+     * Invoked from C++ for every frame pushed through the JSI global. Runs on
+     * whatever thread called {@code sink.push} — the RN JS thread or a
+     * frame-processor worklet thread (attached to the JVM by the C++ ThreadScope) —
+     * so the router must be thread-safe and dispatch synchronously (the forwarding
+     * path must retain {@code nativeBuffer} before this returns). {@code nativeBuffer}
+     * non-zero is a finished {@code AHardwareBuffer*} to forward; zero means pooled
+     * delivery of {@code bufferIndex}. {@code fenceHandle} is a sync-fd
+     * ({@code 0} = no fence); {@code fenceSignaledValue} is unused on Android.
      */
     @DoNotStrip
     private void deliverFrame(
-            String trackId, int bufferIndex, long timestampNs, int rotation, long fenceHandle, long fenceSignaledValue) {
-        frameRouter.route(trackId, bufferIndex, timestampNs, rotation, fenceHandle, fenceSignaledValue);
+            String trackId,
+            int bufferIndex,
+            long nativeBuffer,
+            long timestampNs,
+            int rotation,
+            long fenceHandle,
+            long fenceSignaledValue) {
+        frameRouter.route(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue);
     }
 
     @DoNotStrip

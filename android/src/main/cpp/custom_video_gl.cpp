@@ -254,4 +254,66 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeCloseFd(
     }
 }
 
+// --- Forwarding-mode AHardwareBuffer ref-counting / describe ---
+//
+// Unlike the pooled path (whose AHBs are owned by CustomVideoBufferPool), a
+// forwarded frame hands us an app-owned AHardwareBuffer* that the caller releases
+// right after the push returns. We take an owning reference before returning and
+// balance it once the delivered VideoFrame is released. These three functions
+// touch NO GL/EGL state (only AHardwareBuffer refcounts / metadata), so they are
+// safe off the GL thread — nativeAcquireAhb in particular is called synchronously
+// on the worklet push thread. The AHardwareBuffer_* APIs are __INTRODUCED_IN(26),
+// so each is guarded by __builtin_available; callers reject on SDK_INT < 26.
+
+// Takes one owning reference on a forwarded AHB so it outlives the caller's own
+// release. No-op on 0. MUST be balanced by exactly one nativeReleaseAhb.
+JNIEXPORT void JNICALL
+Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeAcquireAhb(
+        JNIEnv* /* env */, jclass /* clazz */, jlong ahbHandle) {
+    if (ahbHandle == 0) {
+        return;
+    }
+    if (__builtin_available(android 26, *)) {
+        AHardwareBuffer_acquire(reinterpret_cast<AHardwareBuffer*>(ahbHandle));
+    }
+}
+
+// Releases one reference taken by nativeAcquireAhb. Thread-safe; no-op on 0.
+JNIEXPORT void JNICALL
+Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeReleaseAhb(
+        JNIEnv* /* env */, jclass /* clazz */, jlong ahbHandle) {
+    if (ahbHandle == 0) {
+        return;
+    }
+    if (__builtin_available(android 26, *)) {
+        AHardwareBuffer_release(reinterpret_cast<AHardwareBuffer*>(ahbHandle));
+    }
+}
+
+// Reads a forwarded AHB's pixel dimensions (external buffers carry their own size,
+// unlike pooled buffers whose geometry is known up front). Returns a jintArray
+// {width, height}, or null on failure / zero size.
+JNIEXPORT jintArray JNICALL
+Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeDescribeAhb(
+        JNIEnv* env, jclass /* clazz */, jlong ahbHandle) {
+    if (ahbHandle == 0) {
+        return nullptr;
+    }
+    if (__builtin_available(android 26, *)) {
+        AHardwareBuffer_Desc desc = {};
+        AHardwareBuffer_describe(reinterpret_cast<AHardwareBuffer*>(ahbHandle), &desc);
+        if (desc.width == 0 || desc.height == 0) {
+            return nullptr;
+        }
+        jintArray result = env->NewIntArray(2);
+        if (result == nullptr) {
+            return nullptr;
+        }
+        jint dimensions[2] = {static_cast<jint>(desc.width), static_cast<jint>(desc.height)};
+        env->SetIntArrayRegion(result, 0, 2, dimensions);
+        return result;
+    }
+    return nullptr;
+}
+
 }  // extern "C"

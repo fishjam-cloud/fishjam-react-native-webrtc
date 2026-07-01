@@ -829,8 +829,28 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     /**
-     * Creates a custom video track backed by an AHardwareBuffer pool the app renders into on the
-     * GPU. Resolves the {@code { streamId, track, buffers }} shape consumed by
+     * Allocates a pool of AHardwareBuffer-backed surfaces the app renders into on the GPU (pooled
+     * mode). Resolves the {@code { poolId, buffers }} shape consumed by
+     * {@code src/createCustomVideoTrack.ts}. See
+     * {@link GetUserMediaImpl#createCustomVideoBufferPool(ReadableMap, Promise)}.
+     */
+    @ReactMethod
+    public void createCustomVideoBufferPool(ReadableMap init, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createCustomVideoBufferPool(init, promise));
+    }
+
+    /**
+     * Releases a pool created by {@link #createCustomVideoBufferPool(ReadableMap, Promise)}. See
+     * {@link GetUserMediaImpl#releaseCustomVideoBufferPool(String, Promise)}.
+     */
+    @ReactMethod
+    public void releaseCustomVideoBufferPool(String poolId, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.releaseCustomVideoBufferPool(poolId, promise));
+    }
+
+    /**
+     * Creates a custom video track ({@code { poolId? }}; pooled when present, forwarding when
+     * absent). Resolves the {@code { streamId, track }} shape consumed by
      * {@code src/createCustomVideoTrack.ts}. See
      * {@link GetUserMediaImpl#createCustomVideoTrack(ReadableMap, Promise)}.
      */
@@ -1015,8 +1035,14 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     /**
      * Lazily builds the custom-video JSI push installer from the JS CallInvoker. Returns null when
      * there is no CallInvoker (old architecture) or it can't be acquired, which makes custom video
-     * tracks unsupported. Each frame pushed through the JSI global is routed back to the matching
-     * custom video track on the native-modules executor.
+     * tracks unsupported.
+     *
+     * <p>Each frame pushed through the JSI global is routed back to the matching custom video track
+     * SYNCHRONOUSLY on the caller's (worklet) thread — NOT hopped to the native-modules executor —
+     * because the forwarding path must take an owning reference on the buffer before the push
+     * returns (the JS caller disposes its own reference right after). {@code pushCustomVideoFrame}
+     * resolves the controller from a thread-safe registry and only posts cheap work to the GL
+     * thread, so it is safe off the executor.
      */
     private synchronized FJVideoPushInstaller getVideoPushInstaller() {
         if (videoPushInstallerInitialized) {
@@ -1028,10 +1054,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             // Custom video tracks need a JSI CallInvoker; absent on the old architecture.
             if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
                 videoPushInstaller = new FJVideoPushInstaller(ctx,
-                        (trackId, bufferIndex, timestampNs, rotation, fenceHandle, fenceSignaledValue)
-                                -> ThreadUtils.runOnExecutor(()
-                                        -> getUserMediaImpl.pushCustomVideoFrame(trackId, bufferIndex,
-                                                fenceHandle, fenceSignaledValue, timestampNs, rotation)));
+                        (trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue)
+                                -> getUserMediaImpl.pushCustomVideoFrame(trackId, bufferIndex, nativeBuffer,
+                                        fenceHandle, fenceSignaledValue, timestampNs, rotation));
             }
         } catch (Throwable t) {
             Log.w(TAG, "Custom video tracks unavailable: failed to build the JSI installer", t);
