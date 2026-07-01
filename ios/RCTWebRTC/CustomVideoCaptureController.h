@@ -4,23 +4,32 @@
 #import <WebRTC/RTCVideoSource.h>
 
 #import "CaptureController.h"
+#import "CustomVideoBufferPool.h"
 #import "WebRTCModule.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- * Capture controller for a "custom video track": an app-owned source of
- * GPU-rendered frames. Instead of capturing from a camera or the screen, the
- * app renders directly into IOSurface-backed CVPixelBuffers that this
- * controller owns, then pushes them into the WebRTC pipeline.
+ * Capture controller for a "custom video track": an app-owned source of frames.
+ * Instead of capturing from a camera or the screen, the app supplies the frames
+ * and this controller pushes them into the WebRTC pipeline. Two modes:
  *
- * Lifecycle / data flow:
- *   1. createCustomVideoTrack({width, height, poolSize}) builds this controller
- *      together with an RTCVideoSource and a fixed-size pool of
- *      CVPixelBuffers (kCVPixelFormatType_32BGRA, IOSurface-backed).
- *   2. The IOSurface handle of every buffer is handed to JS, which imports each
- *      one once (react-native-webgpu importSharedTextureMemory) and renders
- *      into it on the GPU.
+ *   * Pooled — the app renders GPU frames into the IOSurface-backed
+ *     CVPixelBuffers of a CustomVideoBufferPool and pushes them back by index,
+ *     optionally guarded by a Metal shared-event fence. The controller holds a
+ *     strong reference to the pool but does not own it; the pool is disposed
+ *     separately via releaseCustomVideoBufferPool.
+ *   * Forwarding — the frames are already produced natively (a camera,
+ *     VisionCamera, a native ML pipeline) and the app forwards a finished
+ *     CVPixelBufferRef; no pool and no fence are involved.
+ *
+ * Pooled data flow:
+ *   1. createCustomVideoBufferPool({width, height, poolSize}) allocates a pool
+ *      of CVPixelBuffers (kCVPixelFormatType_32BGRA, IOSurface-backed) and hands
+ *      each IOSurface handle to JS, which imports each one once
+ *      (react-native-webgpu importSharedTextureMemory).
+ *   2. createCustomVideoTrack({poolId}) builds this controller bound to that
+ *      pool together with an RTCVideoSource.
  *   3. Per frame, JS renders into buffer[index], submits, and exports a Metal
  *      shared-event fence; it then pushes the frame through the JSI channel,
  *      which resolves the fence bigints and calls pushFrameForBufferIndex:...
@@ -33,31 +42,36 @@ NS_ASSUME_NONNULL_BEGIN
 @interface CustomVideoCaptureController : CaptureController
 
 /**
- * Builds the controller. The CVPixelBufferPool and its buffers are allocated
- * here so the surface handles are available immediately for the JS resolve.
+ * Builds a pooled controller bound to an app-allocated buffer pool. Holds a
+ * strong reference to the pool (which stays owned by the JS dispose path).
  *
  * @param videoSource the source that frames are delivered to.
- * @param width       pixel width of every buffer in the pool.
- * @param height      pixel height of every buffer in the pool.
- * @param poolSize    number of buffers to pre-allocate and keep at stable
- *                    indices (JS imports each IOSurface exactly once).
- * @param outError    populated when allocation fails (returns nil).
+ * @param pool        the buffer pool this track renders into and pushes by index.
  */
-- (nullable instancetype)initWithVideoSource:(RTCVideoSource *)videoSource
-                                       width:(NSInteger)width
-                                      height:(NSInteger)height
-                                    poolSize:(NSInteger)poolSize
-                                       error:(NSError **)outError;
+- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource
+                                     pool:(CustomVideoBufferPool *)pool;
 
 /**
- * Stable index -> IOSurface handle map, exposed to JS so each surface can be
- * imported once and reused. Each entry is
- *   @{@"index": NSNumber, @"surfaceHandle": NSString (decimal uintptr_t),
- *     @"width": NSNumber, @"height": NSNumber}.
- * The handle is emitted as a decimal string to avoid losing precision through a
- * JS double (a 64-bit pointer does not fit exactly in a double).
+ * Builds a forwarding controller with no pool. Frames arrive as finished native
+ * CVPixelBufferRefs via pushExternalPixelBuffer:.
+ *
+ * @param videoSource the source that frames are delivered to.
  */
-@property(nonatomic, readonly) NSArray<NSDictionary *> *bufferDescriptors;
+- (instancetype)initForwardingWithVideoSource:(RTCVideoSource *)videoSource;
+
+/**
+ * Forwards an already-produced native buffer (forwarding mode). Delivered
+ * synchronously on the calling (worklet) thread: RTCCVPixelBuffer retains the
+ * buffer during initWithPixelBuffer:, so the caller may release its own
+ * reference right after this returns. No pool retain, no fence.
+ *
+ * @param pixelBuffer  the finished CVPixelBufferRef to wrap and deliver.
+ * @param timestampNs  frame timestamp in nanoseconds.
+ * @param rotation     frame rotation.
+ */
+- (void)pushExternalPixelBuffer:(CVPixelBufferRef)pixelBuffer
+                    timestampNs:(int64_t)timestampNs
+                       rotation:(RTCVideoRotation)rotation;
 
 /**
  * Pushes the frame currently rendered into buffer[bufferIndex] once the GPU
@@ -82,7 +96,9 @@ NS_ASSUME_NONNULL_BEGIN
                        rotation:(RTCVideoRotation)rotation;
 
 /**
- * Permanently releases the IOSurface-backed pixel-buffer pool.
+ * Drains any in-flight deliveries and marks the controller torn down so no more
+ * frames are pushed. Does NOT release the buffer pool: in pooled mode the pool is
+ * owned separately and freed via releaseCustomVideoBufferPool.
  *
  * `stopCapture` is only a pause hook because it is used by
  * mediaStreamTrackSetEnabled(false). Call this from true track disposal paths
@@ -110,6 +126,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 /** Looks up the live controller for trackId, or nil if none/already released. */
 - (nullable CustomVideoCaptureController *)registeredCustomVideoControllerForTrackId:(NSString *)trackId;
+
+/**
+ * Looks up the buffer pool registered under poolId, or nil if none. The pool
+ * registry holds strong references; entries are added by createCustomVideoBufferPool
+ * and removed by releaseCustomVideoBufferPool.
+ */
+- (nullable CustomVideoBufferPool *)registeredCustomVideoBufferPoolForPoolId:(NSString *)poolId;
 
 @end
 

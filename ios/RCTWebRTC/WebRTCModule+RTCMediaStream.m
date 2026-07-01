@@ -226,13 +226,17 @@ RCT_EXPORT_METHOD(getDisplayMedia
 #pragma mark - Custom video track (app-rendered, IOSurface-backed frames)
 
 /**
- * Creates a custom video track whose frames are rendered by the app into
- * IOSurface-backed CVPixelBuffers. Mirrors getDisplayMedia in that it resolves a
- * {streamId, track} pair, but additionally returns the buffer descriptors the
- * app needs to import each IOSurface (once) and push frames into (per frame, via
- * the JSI channel installed by installCustomVideoJSI).
+ * Creates a custom video track whose frames are supplied by the app. Mirrors
+ * getDisplayMedia in that it resolves a {streamId, track} pair. Two modes,
+ * selected by the presence of a poolId:
  *
- * @param init dictionary of {width, height, poolSize}.
+ *   * Pooled — init[@"poolId"] names a CustomVideoBufferPool previously allocated
+ *     via createCustomVideoBufferPool. The app renders into that pool's IOSurfaces
+ *     and pushes frames by index (per frame, via the JSI channel installed by
+ *     installCustomVideoJSI). A pool binds to exactly one track.
+ *   * Forwarding — no poolId. The app forwards finished native CVPixelBufferRefs.
+ *
+ * @param init dictionary with an optional {poolId}.
  */
 RCT_EXPORT_METHOD(createCustomVideoTrack
                   : (NSDictionary *)init resolver
@@ -242,33 +246,34 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
     reject(@"E_UNSUPPORTED_PLATFORM", @"createCustomVideoTrack is only supported on iOS and Android.", nil);
     return;
 #else
-    NSInteger width = [init[@"width"] integerValue];
-    NSInteger height = [init[@"height"] integerValue];
-    NSInteger poolSize = [init[@"poolSize"] integerValue];
-    if (width <= 0 || height <= 0 || poolSize <= 0) {
-        reject(@"E_INVALID_CUSTOM_VIDEO_TRACK_INIT",
-               @"Custom video track width, height and poolSize must be positive integers.",
-               nil);
-        return;
-    }
+    NSString *poolId = init[@"poolId"];
 
     RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
 
     NSString *trackUUID = [[NSUUID UUID] UUIDString];
     RTCVideoTrack *videoTrack = [self.peerConnectionFactory videoTrackWithSource:videoSource trackId:trackUUID];
 
-    NSError *error = nil;
-    CustomVideoCaptureController *captureController =
-        [[CustomVideoCaptureController alloc] initWithVideoSource:videoSource
-                                                           width:width
-                                                          height:height
-                                                        poolSize:poolSize
-                                                           error:&error];
-    if (captureController == nil) {
-        reject(@"E_CUSTOM_VIDEO_TRACK_FAILED",
-               error.localizedDescription ?: @"Failed to create custom video capture controller",
-               error);
-        return;
+    CustomVideoCaptureController *captureController = nil;
+    if (poolId != nil && poolId.length > 0) {
+        // Pooled: bind to the app-allocated buffer pool (1<->1 with a track).
+        CustomVideoBufferPool *pool = [self registeredCustomVideoBufferPoolForPoolId:poolId];
+        if (pool == nil) {
+            reject(@"E_CUSTOM_VIDEO_TRACK_FAILED",
+                   @"No custom video buffer pool registered for the given poolId.",
+                   nil);
+            return;
+        }
+        if (pool.attached) {
+            reject(@"E_CUSTOM_VIDEO_POOL_IN_USE",
+                   @"This custom video buffer pool is already attached to a track.",
+                   nil);
+            return;
+        }
+        pool.attached = YES;
+        captureController = [[CustomVideoCaptureController alloc] initPooledWithVideoSource:videoSource pool:pool];
+    } else {
+        // Forwarding: no pool; frames arrive as finished native buffers.
+        captureController = [[CustomVideoCaptureController alloc] initForwardingWithVideoSource:videoSource];
     }
 
     videoTrack.captureController = captureController;
@@ -295,7 +300,6 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
             @"remote" : @(NO),
             @"enabled" : @(videoTrack.isEnabled),
         },
-        @"buffers" : captureController.bufferDescriptors,
     });
 #endif
 }

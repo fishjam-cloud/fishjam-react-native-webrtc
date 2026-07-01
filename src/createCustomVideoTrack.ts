@@ -1,38 +1,34 @@
 /**
  * Custom video track.
  *
- * Lets you feed your own GPU- or CPU-rendered frames into a WebRTC video track.
- * You create a track backed by a small pool of native surfaces, render into one
- * of those surfaces (for example with react-native-webgpu), then hand the frame
- * back so it is encoded and sent on the track's {@link MediaStream}.
+ * Feed your own frames into a WebRTC video track. There are two modes, and you
+ * pick by *how you produce frames*:
  *
- * The typical loop is:
+ * - **Pooled** — *you render the frames yourself* (for example with
+ *   react-native-webgpu). Allocate a pool of native surfaces with
+ *   {@link createCustomVideoBufferPool}, render into them, create a track over the
+ *   pool with {@link createCustomVideoTrack}, and hand each frame back with
+ *   {@link pushFrame} (by pool-slot index, with an optional GPU fence).
+ *
+ * - **Forwarding** — *the frames are already produced natively* (a camera,
+ *   VisionCamera, a native ML pipeline, a compositor) and you only want to forward
+ *   the finished buffer. Create a track with no pool via {@link createCustomVideoTrack},
+ *   and forward each buffer pointer with {@link forwardFrame}.
  *
  * ```ts
- * const { stream, buffers } = await createCustomVideoTrack({
- *   width: 720,
- *   height: 1280,
- *   poolSize: 3,
- * });
+ * // Pooled — render in JS:
+ * const pool = await createCustomVideoBufferPool({ width, height, poolSize: 3 });
+ * const { stream, track } = await createCustomVideoTrack({ pool });
+ * // ...render into pool.buffers[i]...
+ * pushFrame(track, { bufferIndex, timestampNs, fence });
  *
- * // Import each pooled surface into your GPU device once, up front.
- * const textures = buffers.map((buffer) =>
- *   device.importSharedTextureMemory({ handle: buffer.surfaceHandle }),
- * );
- *
- * // Per frame: pick the next pool slot, render into it, then push it.
- * const buffer = buffers[frameCount % buffers.length];
- * renderInto(textures[buffer.index]);
- * pushCustomVideoFrame({
- *   trackId: stream.getVideoTracks()[0].id,
- *   bufferIndex: buffer.index,
- *   timestampNs: performance.now() * 1e6,
- * });
+ * // Forwarding — hand over a finished native buffer:
+ * const { stream, track } = await createCustomVideoTrack();
+ * forwardFrame(track, { nativeBuffer }); // bigint CVPixelBufferRef / AHardwareBuffer*
  * ```
  *
- * New Architecture only. {@link pushCustomVideoFrame} routes through a JSI
- * binding, and {@link createCustomVideoTrack} rejects with a clear error on the
- * old architecture.
+ * New Architecture only: {@link createCustomVideoTrack} rejects with a clear error
+ * on the old architecture, where the per-frame JSI channel is unavailable.
  *
  * @module createCustomVideoTrack
  */
@@ -45,8 +41,9 @@ import type { MediaStreamTrackInfo } from './MediaStreamTrack';
 const { WebRTCModule } = NativeModules;
 
 // Installed natively once the JSI binding is in place (see installCustomVideoJSI).
+// Returns the per-track host object used for hop-free pushes.
 declare const global: {
-    __fishjamWebrtcPushCustomVideoFrame?: (frame: CustomVideoFramePush) => void;
+    __fishjamWebrtcGetCustomVideoSink?: (trackId: string) => CustomVideoSink;
 };
 
 // The old architecture has no JSI-capable invoker, so the install may never
@@ -67,11 +64,11 @@ function normalizeInstallError(cause: unknown): Error {
 
 function invalidInitError(message: string): Error {
     const error = new Error(message) as Error & { code: string };
-    error.code = 'E_INVALID_CUSTOM_VIDEO_TRACK_INIT';
+    error.code = 'E_INVALID_CUSTOM_VIDEO_BUFFER_POOL_INIT';
     return error;
 }
 
-function validateInit(init: CustomVideoTrackInit): void {
+function validatePoolInit(init: CustomVideoBufferPoolInit): void {
     if (
         !Number.isInteger(init?.width) ||
         !Number.isInteger(init?.height) ||
@@ -81,7 +78,7 @@ function validateInit(init: CustomVideoTrackInit): void {
         init.poolSize <= 0
     ) {
         throw invalidInitError(
-            'Custom video track width, height, and poolSize must be positive integers.',
+            'Custom video buffer pool width, height, and poolSize must be positive integers.',
         );
     }
 }
@@ -94,13 +91,12 @@ function ensureInstalled(): Promise<void> {
     let timeoutId!: ReturnType<typeof setTimeout>;
     const timeout = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
-            () =>
-                reject(new Error('Custom video track install timed out.')),
+            () => reject(new Error('Custom video track install timed out.')),
             INSTALL_TIMEOUT_MS,
         );
     });
     const install = WebRTCModule.installCustomVideoJSI().then(() => {
-        if (typeof global.__fishjamWebrtcPushCustomVideoFrame !== 'function') {
+        if (typeof global.__fishjamWebrtcGetCustomVideoSink !== 'function') {
             throw new Error('Custom video track binding was not installed.');
         }
     });
@@ -123,109 +119,92 @@ type BridgeCustomVideoBuffer = {
     height: number;
 };
 
-// Shape resolved by the native createCustomVideoTrack method over the bridge.
-// Distinct from the public CustomVideoTrack: the bridge hands back the raw
-// stream/track ids and string handles, which the wrapper converts into a
-// MediaStream and bigint-handle buffers.
-type BridgeCustomVideoTrack = {
-    streamId: string;
-    track: MediaStreamTrackInfo;
+type BridgeCustomVideoBufferPool = {
+    poolId: string;
     buffers: BridgeCustomVideoBuffer[];
 };
 
+type BridgeCustomVideoTrack = {
+    streamId: string;
+    track: MediaStreamTrackInfo;
+};
+
 /**
- * Settings for {@link createCustomVideoTrack}, describing the pool of native
- * surfaces the track will render into.
+ * Settings for {@link createCustomVideoBufferPool}, describing the pool of native
+ * surfaces you will render into.
  */
-export interface CustomVideoTrackInit {
+export interface CustomVideoBufferPoolInit {
     /**
-     * Width of every pooled surface, in pixels. All frames you push must be
-     * rendered at this size; it also becomes the encoded width of the track.
+     * Width of every pooled surface, in pixels. Becomes the encoded width of any
+     * pooled track fed from this pool.
      */
     width: number;
     /**
-     * Height of every pooled surface, in pixels. All frames you push must be
-     * rendered at this size; it also becomes the encoded height of the track.
+     * Height of every pooled surface, in pixels. Becomes the encoded height of any
+     * pooled track fed from this pool.
      */
     height: number;
     /**
-     * Number of in-flight surfaces to allocate (must be at least `1`, typically
-     * `2`–`3`).
+     * Number of in-flight surfaces to allocate (at least `1`, typically `2`–`3`).
      *
-     * Why more than one: a frame you push may still be in use — being encoded
-     * and delivered — when you want to start drawing the next one. Redrawing a
-     * surface that is still being read would tear or corrupt that frame. With a
-     * pool you render into a different slot each time, cycling round-robin over
-     * the {@link CustomVideoTrack.buffers}, so the producer never overwrites a
-     * buffer still being consumed. Size the pool to the number of frames you
-     * expect to have in flight at once.
+     * A frame you push may still be in use — being encoded and delivered — when
+     * you want to start drawing the next one. Redrawing a surface that is still
+     * being read would tear that frame. With a pool you render into a different
+     * slot each time, cycling round-robin over the {@link CustomVideoBufferPool.buffers},
+     * so the producer never overwrites a buffer still being consumed.
      */
     poolSize: number;
 }
 
 /**
- * One surface in the track's pool. Returned (once, up front) from
- * {@link createCustomVideoTrack}; you render into these and reference them by
- * {@link CustomVideoBuffer.index} when pushing a frame.
+ * One surface in a {@link CustomVideoBufferPool}. Import it into your GPU once, up
+ * front, and reference it by {@link CustomVideoBuffer.index} when pushing a frame.
  */
 export interface CustomVideoBuffer {
     /**
-     * Stable index of this surface within the pool (`0` to `poolSize - 1`).
-     * Pass it back as {@link CustomVideoFramePush.bufferIndex} to identify the
-     * surface you rendered into for a given frame. The index never changes for
-     * the lifetime of the track.
+     * Stable index of this surface within the pool (`0` to `poolSize - 1`). Pass it
+     * back as `pushFrame(track, { bufferIndex })`. Never changes for the pool's
+     * lifetime.
      */
     index: number;
     /**
-     * The 64-bit native surface handle (an `IOSurface` on iOS, an
-     * `AHardwareBuffer` on Android), as a `bigint`.
-     *
-     * Import it into your GPU as a texture you can render into — using whatever
-     * library or native code you like (for example react-native-webgpu:
+     * The 64-bit native surface handle (an `IOSurface` on iOS, an `AHardwareBuffer`
+     * on Android), as a `bigint`. Import it into your GPU as a render target (for
+     * example react-native-webgpu:
      * `device.importSharedTextureMemory({ handle: surfaceHandle })`). Import each
-     * surface once, up front, and reuse the imported texture for every frame you
-     * draw into that slot.
+     * surface once and reuse it for every frame you draw into that slot.
      */
     surfaceHandle: bigint;
-    /** Width of this surface in pixels; matches {@link CustomVideoTrackInit.width}. */
+    /** Width of this surface in pixels; matches {@link CustomVideoBufferPoolInit.width}. */
     width: number;
-    /** Height of this surface in pixels; matches {@link CustomVideoTrackInit.height}. */
+    /** Height of this surface in pixels; matches {@link CustomVideoBufferPoolInit.height}. */
     height: number;
 }
 
 /**
- * The result of {@link createCustomVideoTrack}: a media stream carrying the new
- * video track, plus the pool of surfaces to render into.
+ * A pool of native surfaces you render into, owned independently of any track.
+ * Returned by {@link createCustomVideoBufferPool}; attach it to a pooled track via
+ * {@link createCustomVideoTrack}, and free it yourself with {@link CustomVideoBufferPool.dispose}
+ * once the track has stopped.
  */
-export interface CustomVideoTrack {
-    /**
-     * A {@link MediaStream} containing the single custom video track. Use it as
-     * you would any other stream — add it to an `RTCPeerConnection`, take its
-     * track id from `stream.getVideoTracks()[0].id` to pass as
-     * {@link CustomVideoFramePush.trackId}, render it locally, and so on.
-     */
-    stream: MediaStream;
-    /**
-     * The pool of surfaces to render into, one entry per `poolSize`. Indexed by
-     * {@link CustomVideoBuffer.index}; iterate it once to import every surface
-     * into your GPU device.
-     */
+export interface CustomVideoBufferPool {
+    /** Opaque id identifying this pool to the native layer. */
+    poolId: string;
+    /** The pooled surfaces, one entry per `poolSize`; import each into your GPU once. */
     buffers: CustomVideoBuffer[];
-
-    trackId: string
+    /**
+     * Free the pool's native surfaces. Call it after the track bound to this pool
+     * has stopped ({@link https | track.stream} tracks stopped). Stopping the track
+     * does *not* free the pool — you own it. Safe to call once; a second call is a
+     * no-op.
+     */
+    dispose(): Promise<void>;
 }
 
 /**
- * An optional GPU completion fence that tells the encoder when your rendering
- * into a surface has actually finished on the GPU, so it waits for the draw
- * before reading the frame.
- *
- * This is a standard platform GPU-synchronization primitive — it is not tied to
- * any particular GPU library. You can produce it from raw Metal/Vulkan/GL code
- * or from any library that can surface one. For example, with react-native-webgpu
- * the two values come from an `endAccess` result: `handle` from
- * `fences[0].fence.export().handle` and `signaledValue` from
- * `fences[0].signaledValue` (both already bigints — pass them through unchanged).
+ * An optional GPU completion fence that tells the encoder when your rendering into
+ * a surface has finished on the GPU, so it waits for the draw before reading the
+ * frame. A standard platform GPU-sync primitive — not tied to any GPU library.
  */
 export interface CustomVideoFrameFence {
     /**
@@ -235,119 +214,216 @@ export interface CustomVideoFrameFence {
      */
     handle: bigint;
     /**
-     * The value the fence is signaled to once this frame's GPU work completes.
-     *
-     * Used on iOS, where the encoder waits until the `MTLSharedEvent` reaches
-     * this value. Ignored on Android, where a `sync` fd carries no value (pass
-     * `0n`).
+     * The value the fence is signaled to once this frame's GPU work completes. Used
+     * on iOS (the encoder waits until the `MTLSharedEvent` reaches it); ignored on
+     * Android, where a `sync` fd carries no value (pass `0n`).
      */
     signaledValue: bigint;
 }
 
 /**
- * One frame handed back to the track for encoding, identifying which pooled
- * surface you rendered into and when it should be presented.
+ * The native per-track push channel handed back on a track handle's `sink`.
+ *
+ * Backed by a JSI host object, so it is shared *by reference* into a
+ * frame-processor worklet — calling `push` there dispatches synchronously on the
+ * worklet thread with no hop. You normally don't call this directly; use
+ * {@link pushFrame} / {@link forwardFrame}. It is exposed so it can be captured
+ * into a worklet setup where the wrappers aren't processed.
  */
-export interface CustomVideoFramePush {
-    /**
-     * Id of the custom video track to deliver this frame to. Take it from the
-     * stream returned by {@link createCustomVideoTrack}, via
-     * `stream.getVideoTracks()[0].id`.
-     */
+export interface CustomVideoSink {
+    push(frame: object): void;
+}
+
+/**
+ * Handle for a **pooled** custom video track (you render frames in JS). Plain and
+ * worklet-serializable — store it (not the {@link MediaStream}) in the ref/shared
+ * value your render/worklet loop reads, and pass it to {@link pushFrame}.
+ */
+export interface PooledTrack {
+    readonly kind: 'pooled';
+    /** Id of the underlying video track (`stream.getVideoTracks()[0].id`). */
     trackId: string;
+    /** Native push channel; use {@link pushFrame} rather than calling it directly. */
+    readonly sink: CustomVideoSink;
+}
+
+/**
+ * Handle for a **forwarding** custom video track (frames produced natively). Plain
+ * and worklet-serializable — store it (not the {@link MediaStream}) in the
+ * ref/shared value your frame processor reads, and pass it to {@link forwardFrame}.
+ */
+export interface ForwardTrack {
+    readonly kind: 'forward';
+    /** Id of the underlying video track (`stream.getVideoTracks()[0].id`). */
+    trackId: string;
+    /** Native push channel; use {@link forwardFrame} rather than calling it directly. */
+    readonly sink: CustomVideoSink;
+}
+
+/** Result of {@link createCustomVideoTrack}: the stream to publish + the push handle. */
+export interface CustomVideoTrackResult<Track extends PooledTrack | ForwardTrack> {
     /**
-     * The {@link CustomVideoBuffer.index} of the pooled surface you rendered
-     * into for this frame.
+     * A {@link MediaStream} containing the single custom video track. Use it as any
+     * other stream — publish it (for example via `useCustomSource`), render it
+     * locally, and so on. Keep it on the JS thread; it is not worklet-serializable.
      */
+    stream: MediaStream;
+    /** The worklet-serializable push handle. Pass to {@link pushFrame} / {@link forwardFrame}. */
+    track: Track;
+}
+
+/** Frame arguments for {@link pushFrame} (pooled mode). */
+export interface PushFrameArgs {
+    /** {@link CustomVideoBuffer.index} of the pooled surface you rendered into. */
     bufferIndex: number;
-    /**
-     * Monotonic presentation timestamp for this frame, in nanoseconds. Must
-     * increase from frame to frame; used to pace and time the encoded video.
-     */
+    /** Monotonic presentation timestamp, in nanoseconds. Must increase per frame. */
     timestampNs: number;
-    /**
-     * Clockwise rotation to apply at delivery, in degrees. One of `0`, `90`,
-     * `180`, `270`. Optional; defaults to `0` (no rotation).
-     */
+    /** Clockwise rotation at delivery, in degrees. Defaults to `0`. */
     rotation?: 0 | 90 | 180 | 270;
     /**
-     * Optional GPU completion fence (see {@link CustomVideoFrameFence}). Provide
-     * it when the frame's GPU work may not be finished yet, so the encoder waits
-     * for your draw to complete before reading the surface.
-     *
-     * Omit it to deliver the frame immediately — for CPU-filled frames or any
-     * frame whose rendering has already finished.
+     * Optional GPU completion fence: provide it when the frame's GPU work may not
+     * be finished, so the encoder waits for your draw. Omit for CPU-filled or
+     * already-finished frames.
      */
     fence?: CustomVideoFrameFence;
 }
 
-/**
- * Create a custom video track backed by a pool of native surfaces you render
- * into yourself.
- *
- * Call this once, import every surface in {@link CustomVideoTrack.buffers} into
- * your GPU device, then drive the track by rendering into a surface and calling
- * {@link pushCustomVideoFrame} per frame.
- *
- * New Architecture only: rejects with a clear error on the old architecture.
- *
- * @param init Pool dimensions and size; see {@link CustomVideoTrackInit}.
- * @returns A promise resolving to the {@link CustomVideoTrack} (stream + pool).
- */
-export async function createCustomVideoTrack(
-    init: CustomVideoTrackInit,
-): Promise<CustomVideoTrack> {
-    validateInit(init);
-    await ensureInstalled();
+/** Frame arguments for {@link forwardFrame} (forwarding mode). */
+export interface ForwardFrameArgs {
+    /**
+     * Pointer to the native buffer to forward, as a `bigint` — a retainable,
+     * IOSurface-backed `CVPixelBufferRef` (iOS) or `AHardwareBuffer*` (Android). The
+     * SDK retains it for the duration of encoding, so you may release/dispose your
+     * own reference immediately after this call returns.
+     */
+    nativeBuffer: bigint;
+    /**
+     * Optional monotonic presentation timestamp, in nanoseconds. A raw buffer
+     * pointer carries no timestamp, so when omitted the native layer stamps the
+     * frame with a monotonic clock at delivery. Pass the source's real capture
+     * timestamp only when you need tight A/V sync with a separate audio track.
+     */
+    timestampNs?: number;
+    /** Clockwise rotation at delivery, in degrees. Defaults to `0`. */
+    rotation?: 0 | 90 | 180 | 270;
+}
 
-    let data: BridgeCustomVideoTrack;
+/**
+ * Allocate a pool of native surfaces to render into (pooled mode).
+ *
+ * Call once, import every surface in {@link CustomVideoBufferPool.buffers} into your
+ * GPU, then attach the pool to a track with {@link createCustomVideoTrack}. You own
+ * the pool: free it with {@link CustomVideoBufferPool.dispose} after the track stops.
+ *
+ * @param init Pool dimensions and size; see {@link CustomVideoBufferPoolInit}.
+ */
+export async function createCustomVideoBufferPool(
+    init: CustomVideoBufferPoolInit,
+): Promise<CustomVideoBufferPool> {
+    validatePoolInit(init);
+
+    let data: BridgeCustomVideoBufferPool;
     try {
-        data = await WebRTCModule.createCustomVideoTrack(init);
+        data = await WebRTCModule.createCustomVideoBufferPool(init);
     } catch (error) {
         throw new MediaStreamError(error);
     }
 
-    const { streamId, track, buffers } = data;
-
-    const stream = new MediaStream({
-        streamId: streamId,
-        streamReactTag: streamId,
-        tracks: [track],
-    });
-
     // The bridge carries each surface handle as a decimal string; expose it as a
     // bigint, the public type the GPU import path consumes.
-    const pool: CustomVideoBuffer[] = buffers.map((buffer) => ({
+    const buffers: CustomVideoBuffer[] = data.buffers.map((buffer) => ({
         index: buffer.index,
         surfaceHandle: BigInt(buffer.surfaceHandle),
         width: buffer.width,
         height: buffer.height,
     }));
 
-    return { stream, buffers: pool, trackId: track.id };
+    let disposed = false;
+    return {
+        poolId: data.poolId,
+        buffers,
+        async dispose() {
+            if (disposed) {
+                return;
+            }
+            disposed = true;
+            await WebRTCModule.releaseCustomVideoBufferPool(data.poolId);
+        },
+    };
 }
 
 /**
- * Hand a rendered frame back to its custom video track for encoding and
- * delivery.
+ * Create a custom video track.
  *
- * Call it once per frame, after rendering into the pooled surface named by
- * {@link CustomVideoFramePush.bufferIndex}. Provide a
- * {@link CustomVideoFramePush.fence} when the GPU work may still be in flight,
- * or omit it to deliver immediately.
+ * - Pass `{ pool }` for **pooled** mode (you render into the pool's surfaces and
+ *   push by index). The pool binds to exactly one track — attaching an already-used
+ *   or disposed pool rejects.
+ * - Pass nothing for **forwarding** mode (you forward finished native buffers).
  *
- * New Architecture only: this routes through a JSI binding and has no effect on
- * the old architecture (where {@link createCustomVideoTrack} has already
- * rejected).
+ * Returns the {@link MediaStream} to publish plus a worklet-serializable
+ * {@link PooledTrack} / {@link ForwardTrack} handle for pushing frames.
  *
- * @param frame The frame to deliver; see {@link CustomVideoFramePush}.
+ * New Architecture only: rejects with a clear error on the old architecture.
  */
-export function pushCustomVideoFrame(frame: CustomVideoFramePush): void {
-    if (typeof global.__fishjamWebrtcPushCustomVideoFrame !== 'function') {
-        throw new Error(
-            'Custom video frame binding is not installed; call ' +
-                'createCustomVideoTrack first (New Architecture only).',
-        );
+export async function createCustomVideoTrack(init: {
+    pool: CustomVideoBufferPool;
+}): Promise<CustomVideoTrackResult<PooledTrack>>;
+export async function createCustomVideoTrack(): Promise<
+    CustomVideoTrackResult<ForwardTrack>
+>;
+export async function createCustomVideoTrack(init?: {
+    pool: CustomVideoBufferPool;
+}): Promise<CustomVideoTrackResult<PooledTrack | ForwardTrack>> {
+    await ensureInstalled();
+
+    let data: BridgeCustomVideoTrack;
+    try {
+        data = await WebRTCModule.createCustomVideoTrack({
+            poolId: init?.pool.poolId,
+        });
+    } catch (error) {
+        throw new MediaStreamError(error);
     }
-    global.__fishjamWebrtcPushCustomVideoFrame(frame);
+
+    const { streamId, track } = data;
+    const stream = new MediaStream({
+        streamId,
+        streamReactTag: streamId,
+        tracks: [track],
+    });
+
+    const sink = global.__fishjamWebrtcGetCustomVideoSink!(track.id);
+    const handle = init
+        ? ({ kind: 'pooled', trackId: track.id, sink } as PooledTrack)
+        : ({ kind: 'forward', trackId: track.id, sink } as ForwardTrack);
+
+    return { stream, track: handle };
+}
+
+/**
+ * Hand a rendered frame back to a **pooled** track for encoding (pooled mode).
+ *
+ * Call once per frame, after rendering into the pooled surface named by
+ * {@link PushFrameArgs.bufferIndex}. Worklet-safe: it dispatches synchronously to
+ * native on whatever thread you call it from (a frame-processor worklet or the JS
+ * thread). Provide a {@link PushFrameArgs.fence} when the GPU work may still be in
+ * flight, or omit it to deliver immediately.
+ */
+export function pushFrame(track: PooledTrack, frame: PushFrameArgs): void {
+    'worklet';
+    track.sink.push(frame);
+}
+
+/**
+ * Forward a finished native buffer to a **forwarding** track (forwarding mode).
+ *
+ * Call once per frame with a retainable IOSurface-backed `CVPixelBufferRef` /
+ * `AHardwareBuffer*` pointer (see {@link ForwardFrameArgs.nativeBuffer}). Worklet-safe:
+ * it dispatches synchronously to native on whatever thread you call it from, and the
+ * SDK retains the buffer before returning, so you may release/dispose your own
+ * reference immediately after.
+ */
+export function forwardFrame(track: ForwardTrack, frame: ForwardFrameArgs): void {
+    'worklet';
+    track.sink.push(frame);
 }

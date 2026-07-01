@@ -2,6 +2,111 @@
 
 namespace jsi = facebook::jsi;
 
+jsi::Value CustomVideoSink::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
+    if (name.utf8(rt) != "push") {
+        return jsi::Value::undefined();
+    }
+    // Capture the bound trackId + owner by value so the returned push function is
+    // self-contained and safe to call on whatever runtime `get` ran on (worklet
+    // or main JS). `get` is invoked lazily by the runtime that captured the sink.
+    std::weak_ptr<FJVideoPush> owner = owner_;
+    std::string trackId = trackId_;
+    return jsi::Function::createFromHostFunction(
+        rt, jsi::PropNameID::forAscii(rt, "push"), 1,
+        [owner, trackId](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args,
+                         size_t count) -> jsi::Value {
+            auto push = owner.lock();
+            if (!push || count == 0 || !args[0].isObject()) {
+                return jsi::Value::undefined();
+            }
+            jsi::Object frame = args[0].getObject(rt);
+            push->deliverFrame(rt, trackId, frame);
+            return jsi::Value::undefined();
+        });
+}
+
+void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId,
+                               const jsi::Object &frame) {
+    if (!deliver_) {
+        return;
+    }
+
+    // Per-frame hot path: validate every field and silently drop a malformed
+    // frame rather than throwing a jsi::JSError back into JS.
+
+    // nativeBuffer is the forwarding discriminator: a retainable CVPixelBufferRef
+    // (iOS) / AHardwareBuffer* (Android), carried as a bigint. Non-zero => forward.
+    uint64_t nativeBuffer = 0;
+    jsi::Value nativeBufferValue = frame.getProperty(rt, "nativeBuffer");
+    if (nativeBufferValue.isBigInt()) {
+        nativeBuffer = nativeBufferValue.asBigInt(rt).getUint64(rt);
+    }
+
+    // bufferIndex identifies the pooled surface; required when not forwarding.
+    int bufferIndex = 0;
+    jsi::Value bufferIndexValue = frame.getProperty(rt, "bufferIndex");
+    bool hasBufferIndex = bufferIndexValue.isNumber();
+    if (hasBufferIndex) {
+        bufferIndex = static_cast<int>(bufferIndexValue.asNumber());
+    }
+    if (nativeBuffer == 0 && !hasBufferIndex) {
+        // Neither a forward buffer nor a pool index -> nothing to deliver.
+        return;
+    }
+
+    // timestampNs is optional; 0 tells the native layer to stamp at delivery
+    // (the raw buffer pointer carries no presentation time).
+    uint64_t timestampNs = 0;
+    jsi::Value timestampValue = frame.getProperty(rt, "timestampNs");
+    if (timestampValue.isNumber()) {
+        timestampNs = static_cast<uint64_t>(timestampValue.asNumber());
+    }
+
+    // rotation is optional; accept only the four valid quarter turns, defaulting
+    // to 0 for absent / non-numeric / out-of-domain values.
+    int rotation = 0;
+    jsi::Value rotationValue = frame.getProperty(rt, "rotation");
+    if (rotationValue.isNumber()) {
+        int requested = static_cast<int>(rotationValue.asNumber());
+        if (requested == 90 || requested == 180 || requested == 270) {
+            rotation = requested;
+        }
+    }
+
+    // fence is optional (pooled only); absent/null/malformed means no fence ->
+    // 0/0 (immediate delivery). Only read handle/value when both are bigints.
+    uint64_t fenceHandle = 0;
+    uint64_t fenceSignaledValue = 0;
+    jsi::Value fenceValue = frame.getProperty(rt, "fence");
+    if (fenceValue.isObject()) {
+        jsi::Object fenceObject = fenceValue.getObject(rt);
+        jsi::Value handleValue = fenceObject.getProperty(rt, "handle");
+        jsi::Value signaledValue = fenceObject.getProperty(rt, "signaledValue");
+        if (handleValue.isBigInt() && signaledValue.isBigInt()) {
+            fenceHandle = handleValue.asBigInt(rt).getUint64(rt);
+            fenceSignaledValue = signaledValue.asBigInt(rt).getUint64(rt);
+        }
+    }
+
+    deliver_(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle,
+             fenceSignaledValue);
+}
+
+jsi::Value FJVideoPush::getSink(jsi::Runtime &rt, const std::string &trackId) {
+    std::shared_ptr<CustomVideoSink> sink;
+    {
+        std::lock_guard<std::mutex> lock(sinksMutex_);
+        auto it = sinks_.find(trackId);
+        if (it != sinks_.end()) {
+            sink = it->second;
+        } else {
+            sink = std::make_shared<CustomVideoSink>(weak_from_this(), trackId);
+            sinks_[trackId] = sink;
+        }
+    }
+    return jsi::Object::createFromHostObject(rt, sink);
+}
+
 void FJVideoPush::install(std::function<void()> onInstalled) {
     // Reset for re-install on JS reload: the same FJVideoPush instance may be
     // reused across reloads (iOS associated object), so the flag must be cleared.
@@ -12,65 +117,21 @@ void FJVideoPush::install(std::function<void()> onInstalled) {
         if (!self) {
             return;
         }
-        auto pusher = jsi::Function::createFromHostFunction(
-            rt, jsi::PropNameID::forAscii(rt, "__fishjamWebrtcPushCustomVideoFrame"), 1,
-            [weakSelf](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args, size_t count) -> jsi::Value {
+
+        // Per-track sink accessor: returns a CustomVideoSink host object bound to
+        // the given trackId. Shared by reference into worklets for hop-free push.
+        auto getSink = jsi::Function::createFromHostFunction(
+            rt, jsi::PropNameID::forAscii(rt, "__fishjamWebrtcGetCustomVideoSink"), 1,
+            [weakSelf](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args,
+                       size_t count) -> jsi::Value {
                 auto self = weakSelf.lock();
-                if (!self) {
+                if (!self || count == 0 || !args[0].isString()) {
                     return jsi::Value::undefined();
                 }
-                if (count == 0 || !args[0].isObject()) {
-                    return jsi::Value::undefined();
-                }
-                jsi::Object frame = args[0].getObject(rt);
-
-                // Per-frame hot path: validate every field and silently drop a
-                // malformed frame rather than throwing a jsi::JSError back into JS.
-                jsi::Value trackIdValue = frame.getProperty(rt, "trackId");
-                jsi::Value bufferIndexValue = frame.getProperty(rt, "bufferIndex");
-                jsi::Value timestampValue = frame.getProperty(rt, "timestampNs");
-                if (!trackIdValue.isString() || !bufferIndexValue.isNumber() ||
-                    !timestampValue.isNumber()) {
-                    return jsi::Value::undefined();
-                }
-
-                std::string trackId = trackIdValue.asString(rt).utf8(rt);
-                int bufferIndex = static_cast<int>(bufferIndexValue.asNumber());
-                uint64_t timestampNs = static_cast<uint64_t>(timestampValue.asNumber());
-
-                // rotation is optional; accept only the four valid quarter turns,
-                // defaulting to 0 for absent / non-numeric / out-of-domain values.
-                int rotation = 0;
-                jsi::Value rotationValue = frame.getProperty(rt, "rotation");
-                if (rotationValue.isNumber()) {
-                    int requested = static_cast<int>(rotationValue.asNumber());
-                    if (requested == 90 || requested == 180 || requested == 270) {
-                        rotation = requested;
-                    }
-                }
-
-                // fence is optional; absent/null/malformed means no fence -> 0/0
-                // (immediate delivery). Only read handle/value when both are bigints.
-                uint64_t fenceHandle = 0;
-                uint64_t fenceSignaledValue = 0;
-                jsi::Value fenceValue = frame.getProperty(rt, "fence");
-                if (fenceValue.isObject()) {
-                    jsi::Object fenceObject = fenceValue.getObject(rt);
-                    jsi::Value handleValue = fenceObject.getProperty(rt, "handle");
-                    jsi::Value signaledValue = fenceObject.getProperty(rt, "signaledValue");
-                    if (handleValue.isBigInt() && signaledValue.isBigInt()) {
-                        fenceHandle = handleValue.asBigInt(rt).getUint64(rt);
-                        fenceSignaledValue = signaledValue.asBigInt(rt).getUint64(rt);
-                    }
-                }
-
-                if (self->deliver_) {
-                    self->deliver_(trackId, bufferIndex, timestampNs, rotation, fenceHandle,
-                                   fenceSignaledValue);
-                }
-                return jsi::Value::undefined();
+                return self->getSink(rt, args[0].asString(rt).utf8(rt));
             });
-        rt.global().setProperty(rt, "__fishjamWebrtcPushCustomVideoFrame", pusher);
+        rt.global().setProperty(rt, "__fishjamWebrtcGetCustomVideoSink", getSink);
+
         self->installed_.store(true);
         if (onInstalled) {
             onInstalled();
