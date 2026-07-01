@@ -211,6 +211,8 @@ export interface CustomVideoTrack {
      * into your GPU device.
      */
     buffers: CustomVideoBuffer[];
+
+    trackId: string
 }
 
 /**
@@ -322,7 +324,7 @@ export async function createCustomVideoTrack(
         height: buffer.height,
     }));
 
-    return { stream, buffers: pool };
+    return { stream, buffers: pool, trackId: track.id };
 }
 
 /**
