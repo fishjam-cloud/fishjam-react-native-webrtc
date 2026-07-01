@@ -38,6 +38,8 @@
 
 namespace {
 
+constexpr EGLTimeKHR kFenceWaitTimeoutNs = 2'000'000'000ULL;
+
 // Lazily-resolved extension entry points. Resolved once on first use from the
 // GL thread (where an EGL display/context are current). They are process-global
 // function pointers, so a plain one-shot init is safe.
@@ -186,22 +188,22 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
 // MUST run on the shared-context GL thread (the same one that will sample the
 // texture). fenceFd < 0 means no fence supplied -> no-op (deliver immediately,
 // accepting the render may not be finished).
-JNIEXPORT void JNICALL
+JNIEXPORT jboolean JNICALL
 Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
         JNIEnv* /* env */, jclass /* clazz */, jint fenceFd) {
     if (fenceFd < 0) {
-        return;  // no-fence fallback
+        return JNI_TRUE;  // no-fence fallback
     }
     if (!resolveExtensions() || eglCreateSyncKHRFn == nullptr ||
             eglClientWaitSyncKHRFn == nullptr) {
         close(fenceFd);
-        return;
+        return JNI_FALSE;
     }
 
     EGLDisplay display = eglGetCurrentDisplay();
     if (display == EGL_NO_DISPLAY) {
         close(fenceFd);
-        return;
+        return JNI_FALSE;
     }
 
     // EGL takes ownership of the fd on success and closes it when the sync is
@@ -210,16 +212,18 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
     EGLSyncKHR sync = eglCreateSyncKHRFn(display, EGL_SYNC_NATIVE_FENCE_ANDROID, syncAttribs);
     if (sync == EGL_NO_SYNC_KHR) {
         close(fenceFd);
-        return;
+        return JNI_FALSE;
     }
 
     // Client (CPU) wait: blocks this delivery thread until the producer fence
-    // signals. EGL_SYNC_FLUSH_COMMANDS_BIT_KHR flushes this context's pending
-    // commands first so the wait cannot deadlock; EGL_FOREVER_KHR = no timeout.
-    eglClientWaitSyncKHRFn(display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, EGL_FOREVER_KHR);
+    // signals, but only up to kFenceWaitTimeoutNs so teardown cannot hang
+    // forever on a bad or never-signaled fence. Timed-out frames are dropped.
+    EGLint waitStatus =
+            eglClientWaitSyncKHRFn(display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, kFenceWaitTimeoutNs);
     if (eglDestroySyncKHRFn != nullptr) {
         eglDestroySyncKHRFn(display, sync);
     }
+    return waitStatus == EGL_CONDITION_SATISFIED_KHR ? JNI_TRUE : JNI_FALSE;
 }
 
 // Destroys one cached {EGLImage, texId} pair created by nativeImportAhbToOesTexture.

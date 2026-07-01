@@ -1,4 +1,4 @@
-#if !TARGET_OS_TV
+#if !TARGET_OS_TV && !TARGET_OS_OSX
 
 #import <Metal/Metal.h>
 
@@ -6,6 +6,8 @@
 #import <WebRTC/RTCVideoFrameBuffer.h>
 
 #import "CustomVideoCaptureController.h"
+
+static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
 
 @implementation CustomVideoCaptureController {
     RTCVideoSource *_videoSource;
@@ -24,17 +26,17 @@
     dispatch_queue_t _fenceCallbackQueue;
 
     // Lifecycle / drain bookkeeping. A single NSCondition, _drainCondition, is the
-    // one mutual-exclusion lock guarding _accepting, _inFlightCount and _tornDown,
-    // and it also provides the wait/signal channel stopCapture uses to drain the
-    // in-flight notify blocks before the pool is torn down. Keeping all three
-    // fields under the same lock is what makes the accepting-check + in-flight
-    // increment atomic against teardown (no use-after-free).
+    // one mutual-exclusion lock guarding _accepting, _inFlightCount, _generation
+    // and _tornDown. stopCapture pauses by bumping _generation; completion blocks
+    // from an older generation then drop their frames instead of delivering stale
+    // buffers after a pause/resume or final release.
     NSCondition *_drainCondition;
     BOOL _accepting;
     NSInteger _inFlightCount;
-    // Set (under _drainCondition) by stopCapture immediately before releaseBuffers.
-    // Any notify/no-fence completion that runs after this is set must NOT deliver,
-    // because the CVPixelBuffers it would ship have already been freed.
+    NSInteger _generation;
+    // Set only by releaseCaptureResources immediately before releaseBuffers. Any
+    // notify/no-fence completion that runs after this is set must not deliver,
+    // because the CVPixelBuffers it would ship have been released.
     BOOL _tornDown;
 }
 
@@ -67,6 +69,7 @@
     _drainCondition = [[NSCondition alloc] init];
     _accepting = NO;
     _inFlightCount = 0;
+    _generation = 0;
     _tornDown = NO;
 
     _fenceCallbackQueue =
@@ -174,34 +177,34 @@
 
 - (void)startCapture {
     [_drainCondition lock];
-    _accepting = YES;
+    if (!_tornDown) {
+        _generation++;
+        _accepting = YES;
+    }
     [_drainCondition unlock];
 }
 
 - (void)stopCapture {
     [_drainCondition lock];
-    // Stop accepting new pushes first so _inFlightCount can only decrease.
-    _accepting = NO;
-
-    // Wait for any armed fence-notify blocks to run and deliver their frame; they
-    // decrement _inFlightCount and signal the condition when done. The wait is
-    // BOUNDED: _inFlightCount only drops inside an MTLSharedEvent notify block, so
-    // a fence that the GPU never signals would otherwise deadlock teardown forever.
-    // After the deadline we abandon any stragglers and tear down anyway.
-    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:2.0];
-    while (_inFlightCount > 0) {
-        if (![_drainCondition waitUntilDate:deadline]) {
-            break;  // deadline elapsed — proceed even though stragglers remain
-        }
+    if (_tornDown) {
+        [_drainCondition unlock];
+        return;
     }
 
-    // Mark torn down under the same lock that the completion path checks, so any
-    // straggler notify block either already finished delivering (it held this lock)
-    // or will observe _tornDown and bail without touching the buffers we free below.
-    _tornDown = YES;
-    [_drainCondition unlock];
+    // Pause only: mediaStreamTrackSetEnabled(false) calls stopCapture(), and a
+    // later startCapture() must resume using the same IOSurface pool.
+    _accepting = NO;
+    _generation++;
 
-    [self releaseBuffers];
+    // Bound the drain so a never-signaled MTLSharedEvent cannot block the RN
+    // method queue forever. Late completions from older generations drop.
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:kCustomVideoDrainTimeoutSeconds];
+    while (_inFlightCount > 0) {
+        if (![_drainCondition waitUntilDate:deadline]) {
+            break;
+        }
+    }
+    [_drainCondition unlock];
 }
 
 - (NSDictionary *)getSettings {
@@ -220,25 +223,23 @@
              fenceSignaledValue:(uint64_t)fenceSignaledValue
                     timestampNs:(int64_t)timestampNs
                        rotation:(RTCVideoRotation)rotation {
+    CVPixelBufferRef buffer = NULL;
+    NSInteger frameGeneration = 0;
+
+    [_drainCondition lock];
     if (bufferIndex < 0 || bufferIndex >= (NSInteger)_pixelBuffers.count) {
+        [_drainCondition unlock];
         NSLog(@"[CustomVideoCaptureController] pushFrame: bufferIndex %ld out of range", (long)bufferIndex);
         return;
     }
-
-    // Atomically check we are still accepting AND reserve the in-flight slot under
-    // the single lock. This is the point stopCapture synchronises against: doing
-    // the check and the increment as one critical section means a push can never
-    // pass the accepting check, get preempted while stopCapture drains (sees count
-    // 0) and frees the buffers, then resume and deliver a freed buffer (UAF).
-    [_drainCondition lock];
-    if (!_accepting) {
+    if (!_accepting || _tornDown) {
         [_drainCondition unlock];
         return;
     }
+    frameGeneration = _generation;
+    buffer = (CVPixelBufferRef)[_pixelBuffers[bufferIndex] pointerValue];
     _inFlightCount++;
     [_drainCondition unlock];
-
-    CVPixelBufferRef buffer = (CVPixelBufferRef)[_pixelBuffers[bufferIndex] pointerValue];
 
     // Decide whether we have a usable fence to wait on. A handle of 0 means JS
     // supplied no fence (the JSI core passes 0/0 in that case); pre-iOS-13 has no
@@ -262,6 +263,7 @@
                 return;
             }
             [strongSelf completeInFlightDeliveringBuffer:buffer
+                                             generation:frameGeneration
                                              timestampNs:timestampNs
                                                 rotation:rotation];
         });
@@ -286,6 +288,7 @@
                     return;
                 }
                 [strongSelf completeInFlightDeliveringBuffer:buffer
+                                                 generation:frameGeneration
                                                  timestampNs:timestampNs
                                                     rotation:rotation];
             });
@@ -304,6 +307,7 @@
                             __typeof__(self) strongSelf = weakSelf;
                             if (strongSelf != nil) {
                                 [strongSelf completeInFlightDeliveringBuffer:buffer
+                                                                generation:frameGeneration
                                                                 timestampNs:timestampNs
                                                                    rotation:rotation];
                             }
@@ -331,24 +335,19 @@
 // no-fence routes. We decide-and-retain under _drainCondition, then deliver
 // OUTSIDE the lock — never holding it across the WebRTC delivery call (which can
 // apply back-pressure and would otherwise stall pushFrame on the JS thread).
-// Retaining the CVPixelBuffer under the lock keeps it alive through delivery even
-// if stopCapture's releaseBuffers (which only runs after _tornDown is set under
-// this same lock) drops the pool's reference concurrently — so there is no
-// use-after-free. A completion that starts after teardown observes _tornDown and
-// skips delivery. The in-flight slot reserved in pushFrame is released here,
-// signalling stopCapture once the count reaches zero.
+// A completion delivers only if its generation is still current and capture is
+// still accepting. Pause/resume/release all bump the generation, so stale
+// completions only decrement the in-flight count. Retaining the CVPixelBuffer
+// under the lock keeps it alive through delivery.
 - (void)completeInFlightDeliveringBuffer:(CVPixelBufferRef)buffer
+                              generation:(NSInteger)frameGeneration
                              timestampNs:(int64_t)timestampNs
                                 rotation:(RTCVideoRotation)rotation {
     CVPixelBufferRef bufferToDeliver = NULL;
     [_drainCondition lock];
-    if (!_tornDown && buffer != NULL) {
+    if (!_tornDown && _accepting && _generation == frameGeneration && buffer != NULL) {
         bufferToDeliver = buffer;
         CVPixelBufferRetain(bufferToDeliver);
-    }
-    _inFlightCount--;
-    if (_inFlightCount <= 0) {
-        [_drainCondition broadcast];
     }
     [_drainCondition unlock];
 
@@ -356,16 +355,46 @@
         [self deliverBuffer:bufferToDeliver timestampNs:timestampNs rotation:rotation];
         CVPixelBufferRelease(bufferToDeliver);
     }
+
+    [_drainCondition lock];
+    if (_inFlightCount > 0) {
+        _inFlightCount--;
+    }
+    if (_inFlightCount <= 0) {
+        [_drainCondition broadcast];
+    }
+    [_drainCondition unlock];
 }
 
 #pragma mark - Teardown
 
+- (void)releaseCaptureResources {
+    [_drainCondition lock];
+    if (_tornDown) {
+        [_drainCondition unlock];
+        return;
+    }
+
+    _accepting = NO;
+    _generation++;
+
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:kCustomVideoDrainTimeoutSeconds];
+    while (_inFlightCount > 0) {
+        if (![_drainCondition waitUntilDate:deadline]) {
+            break;
+        }
+    }
+
+    _tornDown = YES;
+    [_drainCondition unlock];
+
+    [self releaseBuffers];
+}
+
 // Safe to run while fence listeners are still armed or a delivery is in progress:
-// stopCapture sets _tornDown under _drainCondition before calling this, so a
-// completion starting afterwards observes _tornDown and skips delivery, and a
-// completion already in flight has retained its CVPixelBuffer under the lock — so
-// the CVPixelBufferRelease here only drops the pool's reference, never the last
-// one. An armed notify block still fires and balances its CFRetain.
+// releaseCaptureResources sets _tornDown under _drainCondition before calling
+// this, so a completion starting afterwards observes _tornDown and skips
+// delivery. An armed notify block still fires and balances its CFRetain.
 - (void)releaseBuffers {
     if (_pixelBuffers) {
         for (NSValue *boxed in _pixelBuffers) {
@@ -384,9 +413,7 @@
 }
 
 - (void)dealloc {
-    // stopCapture normally releases the buffers; releaseBuffers is idempotent so
-    // this is a safety net for paths that dealloc without an explicit stop.
-    [self releaseBuffers];
+    [self releaseCaptureResources];
 }
 
 @end

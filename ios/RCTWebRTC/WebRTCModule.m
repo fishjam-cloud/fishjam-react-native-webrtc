@@ -8,6 +8,8 @@
 #import <React/RCTUtils.h>
 
 #import "H264BackgroundSafeEncoderFactory.h"
+#import "CustomVideoCaptureController.h"
+#import "RTCMediaStreamTrack+React.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModule.h"
 #import "WebRTCModuleOptions.h"
@@ -21,6 +23,19 @@
 - (void)dealloc {
     [self removeAudioRouteObserver];
     [self removeLivestreamStatusObserver];
+
+#if !TARGET_OS_TV && !TARGET_OS_OSX
+    for (RTCMediaStreamTrack *track in [_localTracks allValues]) {
+        if ([track.captureController isKindOfClass:[CustomVideoCaptureController class]]) {
+            CustomVideoCaptureController *customController =
+                (CustomVideoCaptureController *)track.captureController;
+            [customController stopCapture];
+            [customController releaseCaptureResources];
+        } else {
+            [track.captureController stopCapture];
+        }
+    }
+#endif
 
     [_localTracks removeAllObjects];
     _localTracks = nil;

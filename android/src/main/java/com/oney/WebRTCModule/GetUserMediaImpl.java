@@ -513,20 +513,32 @@ class GetUserMediaImpl {
      */
     void createCustomVideoTrack(ReadableMap init, Promise promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            promise.reject("custom_video_track_unsupported",
+            promise.reject("E_UNSUPPORTED_API_LEVEL",
                     "Custom video tracks require Android 8.0 (API 26) or newer.");
             return;
         }
 
-        int width = init != null && init.hasKey("width") ? init.getInt("width") : 0;
-        int height = init != null && init.hasKey("height") ? init.getInt("height") : 0;
-        int poolSize = init != null && init.hasKey("poolSize") ? init.getInt("poolSize") : 0;
+        int width;
+        int height;
+        int poolSize;
+        try {
+            width = init != null && init.hasKey("width") ? init.getInt("width") : 0;
+            height = init != null && init.hasKey("height") ? init.getInt("height") : 0;
+            poolSize = init != null && init.hasKey("poolSize") ? init.getInt("poolSize") : 0;
+        } catch (Exception e) {
+            promise.reject("E_INVALID_CUSTOM_VIDEO_TRACK_INIT",
+                    "Custom video track width, height and poolSize must be positive integers.", e);
+            return;
+        }
 
         CustomVideoCaptureController captureController;
         try {
             captureController = new CustomVideoCaptureController(width, height, poolSize);
+        } catch (IllegalArgumentException e) {
+            promise.reject("E_INVALID_CUSTOM_VIDEO_TRACK_INIT", e.getMessage(), e);
+            return;
         } catch (Exception e) {
-            promise.reject("custom_video_track_failed", e.getMessage(), e);
+            promise.reject("E_CUSTOM_VIDEO_TRACK_FAILED", e.getMessage(), e);
             return;
         }
 

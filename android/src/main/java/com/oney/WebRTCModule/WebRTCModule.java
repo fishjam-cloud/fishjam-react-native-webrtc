@@ -1049,7 +1049,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         // guarantees the native AHB lib is never loaded on <26, keeping the
         // minSdk-24 package safe. This is the load-safety guarantee for the lib.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            promise.reject("E_API_LEVEL", "Custom video tracks require Android 8.0 (API 26).");
+            promise.reject("E_UNSUPPORTED_API_LEVEL", "Custom video tracks require Android 8.0 (API 26).");
             return;
         }
         FJVideoPushInstaller inst = getVideoPushInstaller();

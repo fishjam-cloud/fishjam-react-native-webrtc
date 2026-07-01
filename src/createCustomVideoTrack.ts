@@ -65,6 +65,27 @@ function normalizeInstallError(cause: unknown): Error {
     return new Error('Custom video tracks require the New Architecture.');
 }
 
+function invalidInitError(message: string): Error {
+    const error = new Error(message) as Error & { code: string };
+    error.code = 'E_INVALID_CUSTOM_VIDEO_TRACK_INIT';
+    return error;
+}
+
+function validateInit(init: CustomVideoTrackInit): void {
+    if (
+        !Number.isInteger(init?.width) ||
+        !Number.isInteger(init?.height) ||
+        !Number.isInteger(init?.poolSize) ||
+        init.width <= 0 ||
+        init.height <= 0 ||
+        init.poolSize <= 0
+    ) {
+        throw invalidInitError(
+            'Custom video track width, height, and poolSize must be positive integers.',
+        );
+    }
+}
+
 // Install the native JSI binding once. Re-runnable after a JS reload.
 function ensureInstalled(): Promise<void> {
     if (installPromise) {
@@ -274,6 +295,7 @@ export interface CustomVideoFramePush {
 export async function createCustomVideoTrack(
     init: CustomVideoTrackInit,
 ): Promise<CustomVideoTrack> {
+    validateInit(init);
     await ensureInstalled();
 
     let data: BridgeCustomVideoTrack;

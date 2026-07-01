@@ -149,9 +149,9 @@ export class ColorVideoTrack {
   }
 
   dispose(): void {
-    this.nativeTrack.stream.getTracks().forEach((track) => track.stop());
     this.slots.forEach((slot) => slot.texture.destroy());
     this.retainedFences.fill(undefined);
+    this.nativeTrack.stream.getTracks().forEach((track) => track.stop());
   }
 
   private retainFence(fence: GPUSharedFence): void {
@@ -221,6 +221,9 @@ entirely on the GPU, zero-copy, fenced.
   The ring buffer above (a few frames deep) is the fix — do not drop it.
 - **Round-robin over the pool.** Reusing one surface every frame tears, because the encoder may still
   be reading the previous frame from it. `poolSize: 3` gives comfortable slack at 30 fps.
+- **Dispose in order.** Stop your render loop first so no new frames are pushed, then release your
+  producer-side GPU textures/fences/imports, then stop the `MediaStreamTrack`. The track stop is what
+  releases the native IOSurface/AHardwareBuffer pool.
 - **Same-runtime import.** If you render inside a worklet (e.g. a VisionCamera frame processor),
   import the surfaces *in that worklet*, not on the JS thread — the GPU library requires
   `importSharedTextureMemory` and `beginAccess`/`endAccess` to run on the same runtime.

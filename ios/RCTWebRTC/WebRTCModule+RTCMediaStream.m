@@ -238,13 +238,19 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
                   : (NSDictionary *)init resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
-#if TARGET_OS_TV
-    reject(@"unsupported_platform", @"createCustomVideoTrack is not supported on tvOS", nil);
+#if TARGET_OS_TV || TARGET_OS_OSX
+    reject(@"E_UNSUPPORTED_PLATFORM", @"createCustomVideoTrack is only supported on iOS and Android.", nil);
     return;
 #else
     NSInteger width = [init[@"width"] integerValue];
     NSInteger height = [init[@"height"] integerValue];
     NSInteger poolSize = [init[@"poolSize"] integerValue];
+    if (width <= 0 || height <= 0 || poolSize <= 0) {
+        reject(@"E_INVALID_CUSTOM_VIDEO_TRACK_INIT",
+               @"Custom video track width, height and poolSize must be positive integers.",
+               nil);
+        return;
+    }
 
     RTCVideoSource *videoSource = [self.peerConnectionFactory videoSource];
 
@@ -259,7 +265,7 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
                                                         poolSize:poolSize
                                                            error:&error];
     if (captureController == nil) {
-        reject(@"custom_video_track_failed",
+        reject(@"E_CUSTOM_VIDEO_TRACK_FAILED",
                error.localizedDescription ?: @"Failed to create custom video capture controller",
                error);
         return;
@@ -703,7 +709,18 @@ RCT_EXPORT_METHOD(mediaStreamTrackRelease : (nonnull NSString *)trackID) {
     RTCMediaStreamTrack *track = self.localTracks[trackID];
     if (track) {
         track.isEnabled = NO;
+#if !TARGET_OS_OSX
+        if ([track.captureController isKindOfClass:[CustomVideoCaptureController class]]) {
+            CustomVideoCaptureController *customController =
+                (CustomVideoCaptureController *)track.captureController;
+            [customController stopCapture];
+            [customController releaseCaptureResources];
+        } else {
+            [track.captureController stopCapture];
+        }
+#else
         [track.captureController stopCapture];
+#endif
         [self.localTracks removeObjectForKey:trackID];
     }
 #endif

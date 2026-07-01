@@ -111,13 +111,13 @@
 RCT_REMAP_METHOD(installCustomVideoJSI,
                  installCustomVideoJSIWithResolver : (RCTPromiseResolveBlock)resolve
                  rejecter : (RCTPromiseRejectBlock)reject) {
+#if TARGET_OS_TV || TARGET_OS_OSX
+    reject(@"E_UNSUPPORTED_PLATFORM", @"Custom video tracks are only supported on iOS and Android.", nil);
+    return;
+#else
     FJVideoPushBox *box = [self fj_videoPushBox];
     if (box == nil) {
         reject(@"E_NO_JSI", @"Custom video frame push requires the New Architecture.", nil);
-        return;
-    }
-    if (box->push->isInstalled()) {
-        resolve(@YES);
         return;
     }
 
@@ -146,6 +146,7 @@ RCT_REMAP_METHOD(installCustomVideoJSI,
     });
 
     box->push->install([resolve]() { resolve(@YES); });
+#endif
 }
 
 @end

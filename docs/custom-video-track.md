@@ -89,11 +89,15 @@ camera import and the blur itself — are the hard parts, and they are entirely 
   (This is channel order only; the encoder does any YUV conversion itself.)
 - **New Architecture only.** The per-frame push is a JSI binding, so the feature requires the New
   Architecture. `createCustomVideoTrack` rejects with a clear error on the old architecture.
+- **iOS and Android only.** tvOS and macOS reject explicitly in this first version.
 - **Android API level.** The `AHardwareBuffer` path needs Android 8.0 (API 26). The package keeps
   `minSdk 24`, but `createCustomVideoTrack` rejects on older devices rather than crashing.
 - **Fence handles are platform GPU primitives** — an `MTLSharedEvent` on iOS, a `sync` file
   descriptor on Android — passed as `bigint`. `signaledValue` is used on iOS (the value the event
   reaches); on Android a sync fd carries no value, so pass `0n`.
+- **Teardown order.** Stop the producer loop first, release the producer's imported textures/fences,
+  then stop the returned `MediaStreamTrack`. Pausing/disabling the track only pauses delivery; track
+  stop is the final native pool release.
 
 ## A complete example
 

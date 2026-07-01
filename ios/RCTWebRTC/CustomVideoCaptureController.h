@@ -81,6 +81,15 @@ NS_ASSUME_NONNULL_BEGIN
                     timestampNs:(int64_t)timestampNs
                        rotation:(RTCVideoRotation)rotation;
 
+/**
+ * Permanently releases the IOSurface-backed pixel-buffer pool.
+ *
+ * `stopCapture` is only a pause hook because it is used by
+ * mediaStreamTrackSetEnabled(false). Call this from true track disposal paths
+ * after no more frames should be pushed.
+ */
+- (void)releaseCaptureResources;
+
 @end
 
 /**

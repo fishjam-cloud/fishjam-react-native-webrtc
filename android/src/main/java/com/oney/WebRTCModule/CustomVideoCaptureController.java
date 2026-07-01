@@ -184,11 +184,11 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
 
     @Override
     public boolean stopCapture() {
-        // Stop accepting and drain in-flight frames, then free the GL import
-        // resources (EGLImages/OES textures) and the GL thread. Report success so
-        // TrackPrivate proceeds to dispose().
+        // Pause delivery only. The existing mediaStreamTrackSetEnabled(false)
+        // path calls stopCapture(), so this must not free pooled AHBs or GL
+        // imports; startCapture() should be able to resume the same pool.
         if (frameDelivery != null) {
-            frameDelivery.release();
+            frameDelivery.drain();
         }
         return true;
     }
@@ -216,7 +216,7 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      */
     void releaseGpuResources() {
         if (frameDelivery != null) {
-            // release() = drain() (idempotent after stopAccepting) + free GL imports.
+            // release() = final drain (idempotent after stopAccepting) + free GL imports.
             frameDelivery.release();
             frameDelivery = null;
         }

@@ -2,6 +2,7 @@ package com.oney.WebRTCModule;
 
 import android.graphics.Matrix;
 import android.os.Handler;
+import android.os.SystemClock;
 import android.util.Log;
 
 import org.webrtc.EglBase;
@@ -41,6 +42,7 @@ final class CustomVideoFrameDelivery {
     }
 
     private static final String TAG = WebRTCModule.TAG;
+    private static final long DRAIN_TIMEOUT_MS = 2_000;
 
     private final VideoSource videoSource;
     private final int width;
@@ -63,8 +65,8 @@ final class CustomVideoFrameDelivery {
     private final Object stateLock = new Object();
     private boolean accepting = false;
     private int inFlightCount = 0;
-    /** Set by {@link #drain()}: stopped accepting and all in-flight deliveries ran. */
-    private boolean drained = false;
+    /** Incremented whenever delivery is paused, resumed, or released. */
+    private long generation = 0;
     /** Set by {@link #releaseGlResources()}: OES textures/EGLImages freed, STH disposed. */
     private boolean glResourcesReleased = false;
 
@@ -97,6 +99,10 @@ final class CustomVideoFrameDelivery {
     /** Begin accepting pushed frames. */
     void start() {
         synchronized (stateLock) {
+            if (glResourcesReleased) {
+                return;
+            }
+            generation++;
             accepting = true;
         }
     }
@@ -119,13 +125,16 @@ final class CustomVideoFrameDelivery {
             return;
         }
 
-        // Reserve an in-flight slot only while accepting. stopCapture() synchronises
-        // against this so the drain loop is guaranteed to converge.
+        // Reserve an in-flight slot only while accepting, and capture the current
+        // generation. A pause/resume/release bumps generation so this runnable can
+        // later tell whether it is stale and should drop instead of deliver.
+        final long frameGeneration;
         synchronized (stateLock) {
-            if (!accepting || drained) {
+            if (!accepting || glResourcesReleased) {
                 closeFd(fenceFd);
                 return;
             }
+            frameGeneration = generation;
             inFlightCount++;
         }
 
@@ -135,7 +144,7 @@ final class CustomVideoFrameDelivery {
             // it exactly once and never double-close after the hand-off.
             int[] ownedFd = {fenceFd};
             try {
-                deliverOnGlThread(bufferIndex, ownedFd, timestampNs, rotation);
+                deliverOnGlThread(bufferIndex, ownedFd, frameGeneration, timestampNs, rotation);
             } catch (Throwable t) {
                 Log.e(TAG, "pushFrame: delivery failed for index " + bufferIndex, t);
             } finally {
@@ -149,7 +158,12 @@ final class CustomVideoFrameDelivery {
     }
 
     /** Runs entirely on the GL thread (shared EGL context current). */
-    private void deliverOnGlThread(int bufferIndex, int[] ownedFd, long timestampNs, int rotation) {
+    private void deliverOnGlThread(
+            int bufferIndex, int[] ownedFd, long frameGeneration, long timestampNs, int rotation) {
+        if (!shouldDeliver(frameGeneration)) {
+            return;
+        }
+
         // 1. Import (once) the AHB at this index into an OES texture; reuse after.
         int textureId = cachedTextureIds[bufferIndex];
         if (textureId == 0) {
@@ -171,7 +185,14 @@ final class CustomVideoFrameDelivery {
         //    immediately to avoid a double-close on any later throw.
         int fenceFd = ownedFd[0];
         ownedFd[0] = -1;
-        nativeWaitSyncFd(fenceFd);
+        if (!nativeWaitSyncFd(fenceFd)) {
+            Log.w(TAG, "pushFrame: timed out or failed waiting for GPU fence");
+            return;
+        }
+
+        if (!shouldDeliver(frameGeneration)) {
+            return;
+        }
 
         // 3. Wrap the OES texture as a VideoFrame and deliver. The release callback
         //    is a no-op: the texture is pool-owned and reused across frames, NOT
@@ -194,6 +215,12 @@ final class CustomVideoFrameDelivery {
             if (inFlightCount <= 0) {
                 stateLock.notifyAll();
             }
+        }
+    }
+
+    private boolean shouldDeliver(long frameGeneration) {
+        synchronized (stateLock) {
+            return accepting && !glResourcesReleased && generation == frameGeneration;
         }
     }
 
@@ -220,15 +247,20 @@ final class CustomVideoFrameDelivery {
      */
     void drain() {
         synchronized (stateLock) {
-            if (drained) {
+            if (glResourcesReleased) {
                 return;
             }
             accepting = false;
-            drained = true;
-            // Wait for armed deliveries to run and decrement inFlightCount.
+            generation++;
+            long deadline = SystemClock.uptimeMillis() + DRAIN_TIMEOUT_MS;
             while (inFlightCount > 0) {
+                long remainingMs = deadline - SystemClock.uptimeMillis();
+                if (remainingMs <= 0) {
+                    Log.w(TAG, "Timed out waiting for custom video frame delivery to drain");
+                    break;
+                }
                 try {
-                    stateLock.wait();
+                    stateLock.wait(remainingMs);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
@@ -248,11 +280,14 @@ final class CustomVideoFrameDelivery {
             if (glResourcesReleased) {
                 return;
             }
+            accepting = false;
+            generation++;
             glResourcesReleased = true;
         }
 
         // Free GL resources on the GL thread (context current there), then dispose.
         final Object done = new Object();
+        final boolean[] finished = {false};
         synchronized (done) {
             glHandler.post(() -> {
                 for (int index = 0; index < cachedTextureIds.length; index++) {
@@ -267,14 +302,18 @@ final class CustomVideoFrameDelivery {
                     yuvConverter = null;
                 }
                 synchronized (done) {
+                    finished[0] = true;
                     done.notifyAll();
                 }
             });
             try {
-                done.wait();
+                done.wait(DRAIN_TIMEOUT_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+        if (!finished[0]) {
+            Log.w(TAG, "Timed out releasing custom video GL resources");
         }
 
         surfaceTextureHelper.dispose();
@@ -296,7 +335,7 @@ final class CustomVideoFrameDelivery {
 
     private static native long[] nativeImportAhbToOesTexture(long ahbHandle);
 
-    private static native void nativeWaitSyncFd(int fenceFd);
+    private static native boolean nativeWaitSyncFd(int fenceFd);
 
     private static native void nativeReleaseImportedTexture(long eglImageHandle, int texId);
 
