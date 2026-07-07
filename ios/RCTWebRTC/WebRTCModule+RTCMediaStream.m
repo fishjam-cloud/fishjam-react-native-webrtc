@@ -269,6 +269,9 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
         }
         pool.attached = YES;
         captureController = [[CustomVideoCaptureController alloc] initPooledWithVideoSource:videoSource pool:pool];
+        // Let releaseCustomVideoBufferPool refuse disposal while this track is
+        // still live (its in-flight deliveries reference the pool's buffers).
+        pool.attachedController = captureController;
     } else {
         // Forwarding: no pool; frames arrive as finished native buffers.
         captureController = [[CustomVideoCaptureController alloc] initForwardingWithVideoSource:videoSource];
@@ -297,6 +300,10 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
             @"readyState" : @"live",
             @"remote" : @(NO),
             @"enabled" : @(videoTrack.isEnabled),
+            // Same shape as the getUserMedia path, so track.getSettings() reports
+            // the real dimensions (pool size for pooled tracks; 0x0 for forwarding
+            // tracks, whose buffers carry their own size per frame).
+            @"settings" : [captureController getSettings],
         },
     });
 #endif

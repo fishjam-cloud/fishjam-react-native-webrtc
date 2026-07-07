@@ -28,15 +28,15 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++20"
-                arguments "-DANDROID_STL=c++_shared"
                 // The custom-video-track lib references AHardwareBuffer_* (__INTRODUCED_IN(26))
-                // while this package is minSdk 24. Load-safety is guaranteed by the API-26 gate
-                // in WebRTCModule.installCustomVideoJSI (and createCustomVideoTrack): the native
-                // lib is never loaded on API <26, so its strong AHB symbol references are never
-                // resolved by the dynamic linker on older devices. (Alternative for true weak
-                // linking, if ever loaded on <26: add "-DANDROID_WEAK_API_DEFS=ON" here so the
-                // __builtin_available guards become effective at runtime — left off as the
-                // install gate is sufficient and this keeps the verified build unchanged.)
+                // while this package is minSdk 24. ANDROID_WEAK_API_DEFS makes those symbols
+                // weak so the lib is loadable even on API 24-25, with the __builtin_available
+                // guards gating every call at runtime. The API-26 gate in
+                // WebRTCModule.installCustomVideoJSI (and createCustomVideoTrack) remains the
+                // primary guard; weak linking is insurance so any future code path that loads
+                // the lib on an older device degrades gracefully instead of throwing
+                // UnsatisfiedLinkError.
+                arguments "-DANDROID_STL=c++_shared", "-DANDROID_WEAK_API_DEFS=ON"
             }
         }
 

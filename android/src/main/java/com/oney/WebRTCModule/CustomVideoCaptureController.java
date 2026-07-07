@@ -50,9 +50,13 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      * Delivers pushed frames into WebRTC (AHB&nbsp;→&nbsp;OES texture&nbsp;→&nbsp;
      * {@code VideoFrame}). Created in {@link #attachVideoSource(VideoSource)} once
      * the capturer-less {@link VideoSource} exists, since delivery targets its
-     * {@code CapturerObserver}. Null until attached.
+     * {@code CapturerObserver}. Null until attached, and null again after
+     * {@link #releaseGpuResources()}. Volatile because it is written on the module
+     * executor but read by the per-frame push path on worklet threads; the push
+     * methods read it exactly once into a local so a concurrent teardown cannot
+     * null it between a check and a call.
      */
-    private CustomVideoFrameDelivery frameDelivery;
+    private volatile CustomVideoFrameDelivery frameDelivery;
 
     /**
      * Builds a <b>pooled</b> controller bound to an app-allocated buffer pool. The
@@ -115,11 +119,12 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      * @param rotation           frame rotation in degrees (0/90/180/270).
      */
     void pushFrame(int bufferIndex, long fenceHandle, long fenceSignaledValue, long timestampNs, int rotation) {
-        if (frameDelivery == null) {
-            Log.w(TAG, "pushFrame before attachVideoSource; dropping frame");
+        CustomVideoFrameDelivery delivery = frameDelivery;
+        if (delivery == null) {
+            Log.w(TAG, "pushFrame before attachVideoSource or after release; dropping frame");
             return;
         }
-        frameDelivery.pushFrame(bufferIndex, fenceFdFromHandle(fenceHandle), timestampNs, rotation);
+        delivery.pushFrame(bufferIndex, fenceFdFromHandle(fenceHandle), timestampNs, rotation);
     }
 
     /**
@@ -135,11 +140,21 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      * @param rotation    frame rotation in degrees (0/90/180/270).
      */
     void pushExternalBuffer(long ahbHandle, long timestampNs, int rotation) {
-        if (frameDelivery == null) {
-            Log.w(TAG, "pushExternalBuffer before attachVideoSource; dropping frame");
+        CustomVideoFrameDelivery delivery = frameDelivery;
+        if (delivery == null) {
+            Log.w(TAG, "pushExternalBuffer before attachVideoSource or after release; dropping frame");
             return;
         }
-        frameDelivery.pushExternalBuffer(ahbHandle, timestampNs, rotation);
+        delivery.pushExternalBuffer(ahbHandle, timestampNs, rotation);
+    }
+
+    /**
+     * Whether this controller has released its GPU resources (or was never wired to
+     * a source). Once true, no in-flight delivery can reference the pool's AHBs, so
+     * the pool may be disposed safely.
+     */
+    boolean isReleased() {
+        return frameDelivery == null;
     }
 
     /**

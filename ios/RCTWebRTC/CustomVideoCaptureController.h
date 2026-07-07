@@ -95,6 +95,14 @@ NS_ASSUME_NONNULL_BEGIN
                        rotation:(RTCVideoRotation)rotation;
 
 /**
+ * Whether releaseCaptureResources has completed. Once true, no in-flight
+ * delivery can reference the pool's CVPixelBuffers, so the pool may be disposed
+ * safely (releaseCustomVideoBufferPool consults this via the pool's
+ * attachedController).
+ */
+@property(nonatomic, readonly, getter=isTornDown) BOOL tornDown;
+
+/**
  * Drains any in-flight deliveries and marks the controller torn down so no more
  * frames are pushed. Does NOT release the buffer pool: in pooled mode the pool is
  * owned separately and freed via releaseCustomVideoBufferPool.

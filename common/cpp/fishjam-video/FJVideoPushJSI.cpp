@@ -27,7 +27,14 @@ jsi::Value CustomVideoSink::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
 
 void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId,
                                const jsi::Object &frame) {
-    if (!deliver_) {
+    // Cheap refcount copy under the lock; the callback itself runs outside it so
+    // a slow delivery never blocks setDeliver (and vice versa).
+    std::shared_ptr<const DeliverFn> deliver;
+    {
+        std::lock_guard<std::mutex> lock(deliverMutex_);
+        deliver = deliver_;
+    }
+    if (!deliver || !*deliver) {
         return;
     }
 
@@ -88,8 +95,8 @@ void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId,
         }
     }
 
-    deliver_(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle,
-             fenceSignaledValue);
+    (*deliver)(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle,
+               fenceSignaledValue);
 }
 
 jsi::Value FJVideoPush::getSink(jsi::Runtime &rt, const std::string &trackId) {
@@ -140,5 +147,7 @@ void FJVideoPush::install(std::function<void()> onInstalled) {
 }
 
 void FJVideoPush::setDeliver(DeliverFn deliver) {
-    deliver_ = std::move(deliver);
+    auto boxed = std::make_shared<const DeliverFn>(std::move(deliver));
+    std::lock_guard<std::mutex> lock(deliverMutex_);
+    deliver_ = std::move(boxed);
 }

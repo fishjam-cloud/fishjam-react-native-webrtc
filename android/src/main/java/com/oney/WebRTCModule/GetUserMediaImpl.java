@@ -528,7 +528,7 @@ class GetUserMediaImpl {
      * {@link #createCustomVideoTrack}.
      *
      * <p>Requires API level 26+ (the AHB pool uses {@code __INTRODUCED_IN(26)} APIs); rejects on
-     * older devices BEFORE referencing {@link CustomVideoBufferPool}/{@link AHardwareBufferPool},
+     * older devices BEFORE referencing {@link CustomVideoBufferPool}/{@link AHardwareBufferAllocator},
      * so the native AHB library is never loaded on unsupported systems.
      *
      * @param init    {@code { width, height, poolSize }} pool description.
@@ -583,17 +583,28 @@ class GetUserMediaImpl {
 
     /**
      * Releases a pool created by {@link #createCustomVideoBufferPool}, freeing its AHBs. Resolves
-     * null; a no-op (still resolves) when the poolId is null or already released.
+     * null; a no-op (still resolves) when the poolId is null or already released. Rejects
+     * {@code E_CUSTOM_VIDEO_POOL_IN_USE} while the pool's attached track is still live: in-flight
+     * frame deliveries may hold references to the pool's AHB handles, so disposing here would be a
+     * use-after-free. Stop the track first, then retry.
      */
     void releaseCustomVideoBufferPool(String poolId, Promise promise) {
         if (poolId == null) {
             promise.resolve(null);
             return;
         }
-        CustomVideoBufferPool pool = customVideoBufferPools.remove(poolId);
-        if (pool != null) {
-            pool.dispose();
+        CustomVideoBufferPool pool = customVideoBufferPools.get(poolId);
+        if (pool == null) {
+            promise.resolve(null);
+            return;
         }
+        if (pool.isAttachedToLiveTrack()) {
+            promise.reject("E_CUSTOM_VIDEO_POOL_IN_USE",
+                    "Cannot release a custom video buffer pool while its track is live. Stop the track first.");
+            return;
+        }
+        customVideoBufferPools.remove(poolId);
+        pool.dispose();
         promise.resolve(null);
     }
 
@@ -631,12 +642,12 @@ class GetUserMediaImpl {
                 promise.reject("E_CUSTOM_VIDEO_TRACK_FAILED", "No custom video buffer pool for id " + poolId);
                 return;
             }
-            if (!pool.tryAttach()) {
+            captureController = new CustomVideoCaptureController(pool);
+            if (!pool.tryAttach(captureController)) {
                 promise.reject(
                         "E_CUSTOM_VIDEO_POOL_IN_USE", "Custom video buffer pool is already attached to a track.");
                 return;
             }
-            captureController = new CustomVideoCaptureController(pool);
         } else {
             captureController = new CustomVideoCaptureController();
         }
@@ -677,6 +688,10 @@ class GetUserMediaImpl {
         trackInfo.putString("readyState", "live");
         trackInfo.putBoolean("remote", false);
         trackInfo.putBoolean("enabled", videoTrack.enabled());
+        // Same shape as the getUserMedia path, so track.getSettings() reports the
+        // real dimensions (pool size for pooled tracks; 0x0 for forwarding tracks,
+        // whose buffers carry their own size per frame).
+        trackInfo.putMap("settings", captureController.getSettings());
 
         WritableMap data = Arguments.createMap();
         data.putString("streamId", streamId);

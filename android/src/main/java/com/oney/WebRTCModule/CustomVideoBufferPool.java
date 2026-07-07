@@ -18,13 +18,13 @@ import com.facebook.react.bridge.WritableMap;
  *   <li>the index-stable AHB handles (JS imports each surface exactly once and
  *       addresses it by index forever after),</li>
  *   <li>the JS-facing {@code bufferDescriptors},</li>
- *   <li>an {@link #tryAttach() attached} flag enforcing the 1&lt;-&gt;1 pool/track
+ *   <li>an {@link #tryAttach attached} flag enforcing the 1&lt;-&gt;1 pool/track
  *       relationship.</li>
  * </ul>
  *
  * <p>Requires API level 26+ (the AHB APIs are {@code __INTRODUCED_IN(26)}); callers
  * reject on {@code SDK_INT < 26} before referencing this class, which would
- * otherwise trigger {@link AHardwareBufferPool}'s {@code System.loadLibrary}.
+ * otherwise trigger {@link AHardwareBufferAllocator}'s {@code System.loadLibrary}.
  */
 final class CustomVideoBufferPool {
     private final int width;
@@ -39,6 +39,13 @@ final class CustomVideoBufferPool {
 
     /** True once bound to a track; enforces the 1&lt;-&gt;1 pool/track relationship. */
     private boolean attached = false;
+    /**
+     * The controller of the track this pool is bound to; null until attached.
+     * Used by {@code releaseCustomVideoBufferPool} to refuse disposal while the
+     * track is still live (its delivery may hold in-flight references to these
+     * AHBs).
+     */
+    private CustomVideoCaptureController attachedController;
     private boolean disposed = false;
 
     /**
@@ -61,11 +68,11 @@ final class CustomVideoBufferPool {
 
         bufferHandles = new long[poolSize];
         for (int index = 0; index < poolSize; index++) {
-            long handle = AHardwareBufferPool.allocateFramebufferAHB(width, height);
+            long handle = AHardwareBufferAllocator.allocateFramebufferAHB(width, height);
             if (handle == 0) {
                 // Release whatever we already allocated before bailing out.
                 for (int released = 0; released < index; released++) {
-                    AHardwareBufferPool.releaseAHB(bufferHandles[released]);
+                    AHardwareBufferAllocator.releaseAHB(bufferHandles[released]);
                     bufferHandles[released] = 0;
                 }
                 throw new RuntimeException(
@@ -92,15 +99,26 @@ final class CustomVideoBufferPool {
     }
 
     /**
-     * Atomically binds this pool to a track. Returns {@code false} if it was already
-     * attached (a pool binds to exactly one track); {@code true} on the first attach.
+     * Atomically binds this pool to a track's controller. Returns {@code false} if
+     * it was already attached (a pool binds to exactly one track); {@code true} on
+     * the first attach.
      */
-    synchronized boolean tryAttach() {
+    synchronized boolean tryAttach(CustomVideoCaptureController controller) {
         if (attached) {
             return false;
         }
         attached = true;
+        attachedController = controller;
         return true;
+    }
+
+    /**
+     * Whether the track this pool is bound to is still live (its controller has not
+     * released its GPU resources). While true, disposing the pool would race
+     * in-flight frame deliveries reading these AHB handles.
+     */
+    synchronized boolean isAttachedToLiveTrack() {
+        return attachedController != null && !attachedController.isReleased();
     }
 
     /**
@@ -137,7 +155,7 @@ final class CustomVideoBufferPool {
         disposed = true;
         for (int index = 0; index < bufferHandles.length; index++) {
             if (bufferHandles[index] != 0) {
-                AHardwareBufferPool.releaseAHB(bufferHandles[index]);
+                AHardwareBufferAllocator.releaseAHB(bufferHandles[index]);
                 bufferHandles[index] = 0;
             }
         }

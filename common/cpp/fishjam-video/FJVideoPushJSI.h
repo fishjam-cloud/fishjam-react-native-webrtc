@@ -61,19 +61,21 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
 
     explicit FJVideoPush(std::shared_ptr<facebook::react::CallInvoker> jsInvoker) : jsInvoker_(std::move(jsInvoker)) {}
 
-    // Installs both JS-facing globals; invokes onInstalled on the JS thread once
-    // ready.
+    // Installs the `__fishjamWebrtcGetCustomVideoSink` global; invokes
+    // onInstalled on the JS thread once ready.
     void install(std::function<void()> onInstalled);
 
     bool isInstalled() const { return installed_.load(); }
 
     // Registers the platform delivery callback that each pushed frame is
-    // forwarded to. Set it before frames start arriving.
+    // forwarded to. Thread-safe: may be re-registered (e.g. on a JS reload)
+    // while pushes are in flight; concurrent deliverFrame calls see either the
+    // old or the new callback.
     void setDeliver(DeliverFn deliver);
 
     // Parses a JS frame object and forwards it to the delivery callback under
-    // `trackId`. Shared by the compat global and every CustomVideoSink. Malformed
-    // frames are dropped (never throws back into JS on the hot path).
+    // `trackId`. Shared by every CustomVideoSink. Malformed frames are dropped
+    // (never throws back into JS on the hot path).
     void deliverFrame(facebook::jsi::Runtime &rt, const std::string &trackId, const facebook::jsi::Object &frame);
 
    private:
@@ -82,7 +84,11 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
     facebook::jsi::Value getSink(facebook::jsi::Runtime &rt, const std::string &trackId);
 
     std::shared_ptr<facebook::react::CallInvoker> jsInvoker_;
-    DeliverFn deliver_;
+    // Swapped under deliverMutex_ (setDeliver may race in-flight worklet pushes
+    // on a reload); deliverFrame copies the shared_ptr under the lock and calls
+    // outside it.
+    std::mutex deliverMutex_;
+    std::shared_ptr<const DeliverFn> deliver_;
     std::atomic<bool> installed_{false};
 
     std::mutex sinksMutex_;

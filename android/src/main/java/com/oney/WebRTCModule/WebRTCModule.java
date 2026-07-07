@@ -1019,7 +1019,6 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         if (videoPushInstallerInitialized) {
             return videoPushInstaller;
         }
-        videoPushInstallerInitialized = true;
         try {
             ReactApplicationContext ctx = getReactApplicationContext();
             // Custom video tracks need a JSI CallInvoker; absent on the old architecture.
@@ -1034,6 +1033,10 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                                         timestampNs,
                                         rotation));
             }
+            // Latch only definitive outcomes: success, or old architecture (no
+            // CallInvoker will ever appear). A thrown failure may be transient, so
+            // the next install attempt retries instead of being permanently dead.
+            videoPushInstallerInitialized = true;
         } catch (Throwable t) {
             Log.w(TAG, "Custom video tracks unavailable: failed to build the JSI installer", t);
         }
@@ -1062,7 +1065,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         // recreated but this native module (and the cached installer) persist, so the
         // JSI global must be re-set on the new runtime. FJVideoPush::install owns
         // idempotency (it resets its installed flag and re-sets the global), so the
-        // Java side must NOT short-circuit on a cached "already installed" flag (m7).
+        // Java side must NOT short-circuit on a cached "already installed" flag.
         inst.install(promise);
     }
 

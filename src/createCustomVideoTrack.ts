@@ -53,13 +53,12 @@ const INSTALL_TIMEOUT_MS = 10_000;
 let installPromise: Promise<void> | null = null;
 
 function normalizeInstallError(cause: unknown): Error {
-    if (
-        cause instanceof Error &&
-        (cause as { code?: string }).code !== 'E_NO_JSI'
-    ) {
-        return cause;
+    if (cause instanceof Error) {
+        return (cause as { code?: string }).code === 'E_NO_JSI'
+            ? new Error('Custom video tracks require the New Architecture.')
+            : cause;
     }
-    return new Error('Custom video tracks require the New Architecture.');
+    return new Error(`Custom video track install failed: ${String(cause)}`);
 }
 
 function invalidInitError(message: string): Error {
@@ -194,9 +193,9 @@ export interface CustomVideoBufferPool {
     buffers: CustomVideoBuffer[];
     /**
      * Free the pool's native surfaces. Call it after the track bound to this pool
-     * has stopped ({@link https | track.stream} tracks stopped). Stopping the track
-     * does *not* free the pool — you own it. Safe to call once; a second call is a
-     * no-op.
+     * has stopped. Stopping the track does *not* free the pool — you own it.
+     * Rejects while the bound track is still live; safe to retry after stopping
+     * the track. After a successful dispose, further calls are no-ops.
      */
     dispose(): Promise<void>;
 }
@@ -241,7 +240,7 @@ export interface CustomVideoSink {
  */
 export interface PooledTrack {
     readonly kind: 'pooled';
-    /** Id of the underlying video track (`stream.getVideoTracks()[0].id`). */
+    /** Id of the underlying video track. */
     trackId: string;
     /** Native push channel; use {@link pushFrame} rather than calling it directly. */
     readonly sink: CustomVideoSink;
@@ -254,7 +253,7 @@ export interface PooledTrack {
  */
 export interface ForwardTrack {
     readonly kind: 'forward';
-    /** Id of the underlying video track (`stream.getVideoTracks()[0].id`). */
+    /** Id of the underlying video track. */
     trackId: string;
     /** Native push channel; use {@link forwardFrame} rather than calling it directly. */
     readonly sink: CustomVideoSink;
@@ -348,8 +347,10 @@ export async function createCustomVideoBufferPool(
             if (disposed) {
                 return;
             }
-            disposed = true;
+            // Latch only after the native release succeeds: a rejected release
+            // (e.g. the bound track is still live) must stay retryable.
             await WebRTCModule.releaseCustomVideoBufferPool(data.poolId);
+            disposed = true;
         },
     };
 }
@@ -376,6 +377,15 @@ export async function createCustomVideoTrack(): Promise<
 export async function createCustomVideoTrack(init?: {
     pool: CustomVideoBufferPool;
 }): Promise<CustomVideoTrackResult<PooledTrack | ForwardTrack>> {
+    // Pooled mode is selected by passing `init`; validate the pool eagerly so a
+    // malformed call fails with a clear error instead of a TypeError (or a
+    // forwarding track mislabeled as pooled).
+    if (init !== undefined && typeof init.pool?.poolId !== 'string') {
+        throw invalidInitError(
+            'createCustomVideoTrack: init.pool must be a pool returned by createCustomVideoBufferPool.',
+        );
+    }
+
     await ensureInstalled();
 
     let data: BridgeCustomVideoTrack;

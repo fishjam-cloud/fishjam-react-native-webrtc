@@ -1,10 +1,10 @@
 // fbjni HybridClass backing com.oney.WebRTCModule.FJVideoPushInstaller.
 //
-// Installs the JS global `__fishjamWebrtcPushCustomVideoFrame` on the JS thread
+// Installs the JS global `__fishjamWebrtcGetCustomVideoSink` on the JS thread
 // (via the CallInvoker), then notifies the Java peer so the install Promise
-// resolves only once the global actually exists. Each frame the JS global pushes
-// is forwarded back to the Java peer's deliverFrame(...), which routes it to the
-// matching CustomVideoFrameDelivery.
+// resolves only once the global actually exists. Each frame pushed through a
+// sink obtained from that global is forwarded back to the Java peer's
+// deliverFrame(...), which routes it to the matching CustomVideoFrameDelivery.
 #pragma once
 
 #include <ReactCommon/CallInvokerHolder.h>
@@ -29,8 +29,6 @@ class FJVideoPushInstaller : public facebook::jni::HybridClass<FJVideoPushInstal
     // Sets the JS global on the JS thread, then calls the Java peer's
     // onPushInstalled() once it is in place.
     void installPush();
-
-    bool isInstalled();
 
    private:
     friend HybridBase;

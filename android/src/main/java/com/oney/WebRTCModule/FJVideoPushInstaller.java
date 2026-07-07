@@ -10,8 +10,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Installs the JS global {@code __fishjamWebrtcPushCustomVideoFrame(frame)} that the
- * JS SDK calls to push custom video frames.
+ * Installs the JS global {@code __fishjamWebrtcGetCustomVideoSink(trackId)} through
+ * which the JS SDK obtains the per-track sink used to push custom video frames.
  *
  * <p>A JSI global must be set on the JS thread with the live runtime, which a
  * React method (running on the native-modules thread) can't do directly. So we
@@ -57,24 +57,22 @@ final class FJVideoPushInstaller {
      * Installs (or re-installs) the JSI global, resolving {@code promise} once it
      * is in place.
      *
-     * <p>Always (re)invokes the native install rather than short-circuiting on
-     * {@link #isInstalled()}: after a JS reload this installer (and the owning
-     * native module) persist while the JS runtime is recreated, so a cached
-     * "already installed" flag would leave the global unset on the new runtime.
-     * {@code FJVideoPush::install} owns idempotency — it resets its installed flag
-     * and re-sets the global — so a redundant call when nothing reloaded is
-     * harmless. Concurrent callers are still batched so only one
-     * {@link #installPush()} is in flight at a time.
+     * <p>Always (re)invokes the native install, never short-circuiting on any
+     * cached "already installed" state: after a JS reload this installer (and the
+     * owning native module) persist while the JS runtime is recreated, so caching
+     * would leave the global unset on the new runtime — and batching behind an
+     * earlier in-flight install would wedge permanently if that install's hop to
+     * the JS thread was dropped in a reload race (JS's timeout-retry could then
+     * never trigger another native install). {@code FJVideoPush::install} owns
+     * idempotency — it resets its installed flag and re-sets the global — so
+     * redundant calls are harmless: the first completion resolves every pending
+     * promise, later completions find the list empty.
      */
     void install(Promise promise) {
-        boolean alreadyInFlight;
         synchronized (this) {
-            alreadyInFlight = !pendingInstalls.isEmpty();
             pendingInstalls.add(promise);
         }
-        if (!alreadyInFlight) {
-            installPush();
-        }
+        installPush();
     }
 
     /** Invoked from C++ on the JS thread once the global has been set. */
@@ -111,7 +109,4 @@ final class FJVideoPushInstaller {
 
     @DoNotStrip
     private native void installPush();
-
-    @DoNotStrip
-    private native boolean isInstalled();
 }

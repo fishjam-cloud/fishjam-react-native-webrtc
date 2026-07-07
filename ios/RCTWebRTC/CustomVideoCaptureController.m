@@ -301,6 +301,13 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
 
 #pragma mark - Teardown
 
+- (BOOL)isTornDown {
+    [_drainCondition lock];
+    BOOL tornDown = _tornDown;
+    [_drainCondition unlock];
+    return tornDown;
+}
+
 - (void)releaseCaptureResources {
     [_drainCondition lock];
     if (_tornDown) {

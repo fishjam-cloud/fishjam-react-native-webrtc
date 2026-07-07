@@ -57,8 +57,8 @@ target_link_libraries(fishjam-webrtc-audio
 # --- Custom video track ----------------------------------------------------
 #
 # Loaded from Java via System.loadLibrary("webrtc-custom-video-track") by
-# AHardwareBufferPool, CustomVideoFrameDelivery and FJVideoPushInstaller.
-#   - ahardware_buffer_pool.cpp : allocate GPU_FRAMEBUFFER | GPU_SAMPLED_IMAGE AHBs
+# AHardwareBufferAllocator, CustomVideoFrameDelivery and FJVideoPushInstaller.
+#   - ahardware_buffer_alloc.cpp : allocate GPU_FRAMEBUFFER | GPU_SAMPLED_IMAGE AHBs
 #                                 that react-native-webgpu (Dawn) renders into.
 #   - custom_video_gl.cpp       : import each AHB as a GL_TEXTURE_EXTERNAL_OES
 #                                 texture (AHB -> EGLImage -> OES) and wait the
@@ -69,7 +69,7 @@ target_link_libraries(fishjam-webrtc-audio
 #                                 shared core and routing frames back to Java.
 add_library(webrtc-custom-video-track
     SHARED
-    "${CMAKE_CURRENT_SOURCE_DIR}/ahardware_buffer_pool.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ahardware_buffer_alloc.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/custom_video_gl.cpp"
     "${FJ_COMMON_CPP_DIR}/fishjam-video/FJVideoPushJSI.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/FJVideoPushInstaller.cpp"

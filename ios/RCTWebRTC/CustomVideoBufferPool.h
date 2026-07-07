@@ -1,6 +1,8 @@
 #import <CoreVideo/CoreVideo.h>
 #import <Foundation/Foundation.h>
 
+@class CustomVideoCaptureController;
+
 NS_ASSUME_NONNULL_BEGIN
 
 /**
@@ -58,6 +60,18 @@ NS_ASSUME_NONNULL_BEGIN
  * relationship: createCustomVideoTrack sets it and rejects a second attach.
  */
 @property(nonatomic, assign) BOOL attached;
+
+/**
+ * The capture controller of the track this pool is bound to; nil until attached
+ * (and again once the controller deallocates). `releaseCustomVideoBufferPool`
+ * consults it (together with its `tornDown` state) to refuse disposal while the
+ * track is still live — in-flight frame deliveries may hold this pool's
+ * CVPixelBuffers.
+ */
+@property(nonatomic, weak, nullable) CustomVideoCaptureController *attachedController;
+
+/** True once `dispose` has run; the buffers are gone. */
+@property(nonatomic, readonly) BOOL disposed;
 
 /** Returns the buffer at index, or NULL when the index is out of range. */
 - (CVPixelBufferRef)pixelBufferAtIndex:(NSInteger)index;

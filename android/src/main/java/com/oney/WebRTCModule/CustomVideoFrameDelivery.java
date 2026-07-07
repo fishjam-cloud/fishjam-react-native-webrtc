@@ -12,6 +12,8 @@ import org.webrtc.VideoFrame;
 import org.webrtc.VideoSource;
 import org.webrtc.YuvConverter;
 
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
  * Delivers app-rendered {@code AHardwareBuffer} (AHB) frames into a WebRTC
  * {@link VideoSource} for the Android custom-video-track.
@@ -42,7 +44,10 @@ final class CustomVideoFrameDelivery {
     }
 
     private static final String TAG = WebRTCModule.TAG;
-    private static final long DRAIN_TIMEOUT_MS = 2_000;
+    // Must exceed the native fence-wait timeout (2s in custom_video_gl.cpp) plus
+    // queue latency, so a single slow-but-legitimate fence wait does not trip the
+    // drain warning.
+    private static final long DRAIN_TIMEOUT_MS = 3_000;
 
     private final VideoSource videoSource;
     private final int width;
@@ -73,6 +78,18 @@ final class CustomVideoFrameDelivery {
     private long generation = 0;
     /** Set by {@link #releaseGlResources()}: OES textures/EGLImages freed, STH disposed. */
     private boolean glResourcesReleased = false;
+
+    /**
+     * Outstanding acquired references on forwarded AHBs, keyed by handle with a
+     * count (the same buffer pointer recurs when the producer recycles it).
+     * Incremented next to {@link #nativeAcquireAhb}; decremented by
+     * {@link #releaseForwardedAhbReference}. Whatever is left after the GL thread
+     * is gone (runnables discarded at looper quit can no longer balance their
+     * acquires) is force-released in {@link #releaseGlResources()}; the map is the
+     * source of truth, so a late release callback finding it empty releases
+     * nothing and cannot double-release.
+     */
+    private final ConcurrentHashMap<Long, Integer> outstandingForwardedAhbs = new ConcurrentHashMap<>();
 
     /** Identity transform: the WebGPU render already produced an upright RGBA image. */
     private static final Matrix IDENTITY_MATRIX = new Matrix();
@@ -150,7 +167,7 @@ final class CustomVideoFrameDelivery {
             inFlightCount++;
         }
 
-        glHandler.post(() -> {
+        boolean posted = glHandler.post(() -> {
             // The fd is owned by this Runnable until handed to nativeWaitSyncFd
             // (which transfers ownership to EGL). Track it so the error paths close
             // it exactly once and never double-close after the hand-off.
@@ -167,6 +184,12 @@ final class CustomVideoFrameDelivery {
                 finishInFlight();
             }
         });
+        if (!posted) {
+            // GL thread already gone (a teardown raced this push): the runnable
+            // will never run, so balance its bookkeeping here.
+            closeFd(fenceFd);
+            finishInFlight();
+        }
     }
 
     /** Runs entirely on the GL thread (shared EGL context current). */
@@ -259,11 +282,13 @@ final class CustomVideoFrameDelivery {
         }
 
         // Take the owning ref NOW, on the caller's thread, before it releases its
-        // own reference. The GL runnable (or the frame's release callback) balances
-        // this with exactly one nativeReleaseAhb.
+        // own reference, and record it in the outstanding map. The GL runnable (or
+        // the frame's release callback) balances it with exactly one
+        // releaseForwardedAhbReference.
         nativeAcquireAhb(ahbHandle);
+        outstandingForwardedAhbs.merge(ahbHandle, 1, Integer::sum);
 
-        glHandler.post(() -> {
+        boolean posted = glHandler.post(() -> {
             // The AHB is owned by this Runnable until ownership passes to the
             // delivered frame's release callback; ownedAhb[0] is zeroed on that
             // hand-off so the finally does not double-release.
@@ -274,11 +299,17 @@ final class CustomVideoFrameDelivery {
                 Log.e(TAG, "pushExternalBuffer: delivery failed", t);
             } finally {
                 if (ownedAhb[0] != 0) {
-                    nativeReleaseAhb(ownedAhb[0]);
+                    releaseForwardedAhbReference(ownedAhb[0]);
                 }
                 finishInFlight();
             }
         });
+        if (!posted) {
+            // GL thread already gone (a teardown raced this push): the runnable
+            // will never run, so balance its bookkeeping here.
+            releaseForwardedAhbReference(ahbHandle);
+            finishInFlight();
+        }
     }
 
     /** Runs entirely on the GL thread (shared EGL context current). */
@@ -343,9 +374,26 @@ final class CustomVideoFrameDelivery {
     private void releaseForwardedFrame(long eglImage, int textureId, long ahbHandle) {
         boolean posted = glHandler.post(() -> {
             nativeReleaseImportedTexture(eglImage, textureId);
-            nativeReleaseAhb(ahbHandle);
+            releaseForwardedAhbReference(ahbHandle);
         });
         if (!posted) {
+            releaseForwardedAhbReference(ahbHandle);
+        }
+    }
+
+    /**
+     * Balances one {@link #nativeAcquireAhb(long)}, but only if the outstanding map
+     * still records it — {@link #releaseGlResources()} may have already
+     * force-released leftovers, and releasing past that would drop a reference we
+     * no longer own. Thread-safe; the map is the single source of truth.
+     */
+    private void releaseForwardedAhbReference(long ahbHandle) {
+        boolean[] owned = {false};
+        outstandingForwardedAhbs.computeIfPresent(ahbHandle, (handle, count) -> {
+            owned[0] = true;
+            return count == 1 ? null : count - 1;
+        });
+        if (owned[0]) {
             nativeReleaseAhb(ahbHandle);
         }
     }
@@ -458,6 +506,19 @@ final class CustomVideoFrameDelivery {
         }
 
         surfaceTextureHelper.dispose();
+
+        // The looper is gone: any release runnable still queued was discarded and
+        // can no longer balance its forwarded-AHB acquire. Force-release whatever
+        // the outstanding map still records; late release callbacks then find the
+        // map empty and release nothing (no double-release).
+        for (Long handle : outstandingForwardedAhbs.keySet()) {
+            Integer count = outstandingForwardedAhbs.remove(handle);
+            if (count != null) {
+                for (int i = 0; i < count; i++) {
+                    nativeReleaseAhb(handle);
+                }
+            }
+        }
     }
 
     /**

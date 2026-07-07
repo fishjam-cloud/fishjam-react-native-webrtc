@@ -207,11 +207,27 @@ RCT_EXPORT_METHOD(releaseCustomVideoBufferPool
     CustomVideoBufferPool *pool = nil;
     @synchronized(registry) {
         pool = registry[poolId];
-        if (pool != nil) {
-            [registry removeObjectForKey:poolId];
-        }
     }
-    // Dispose outside the lock. No-op if absent (never registered / already released).
+    if (pool == nil) {
+        // Never registered / already released.
+        resolve(nil);
+        return;
+    }
+    // Refuse to free buffers a live track may still be delivering: in-flight
+    // pushes hold CVPixelBufferRefs from this pool, so disposing here would be a
+    // use-after-free. The controller reference is weak and tornDown flips after
+    // the final drain, so this clears once the track is properly stopped.
+    CustomVideoCaptureController *attachedController = pool.attachedController;
+    if (attachedController != nil && !attachedController.isTornDown) {
+        reject(@"E_CUSTOM_VIDEO_POOL_IN_USE",
+               @"Cannot release a custom video buffer pool while its track is live. Stop the track first.",
+               nil);
+        return;
+    }
+    @synchronized(registry) {
+        [registry removeObjectForKey:poolId];
+    }
+    // Dispose outside the lock.
     [pool dispose];
     resolve(nil);
 }

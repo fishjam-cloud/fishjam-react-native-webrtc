@@ -111,6 +111,21 @@
     for (NSInteger index = 0; index < poolSize; index++) {
         CVPixelBufferRef buffer = (CVPixelBufferRef)[_pixelBuffers[index] pointerValue];
         IOSurfaceRef surface = CVPixelBufferGetIOSurface(buffer);
+        if (surface == NULL) {
+            // Should be impossible with kCVPixelBufferIOSurfacePropertiesKey set,
+            // but fail here with a clear error rather than handing JS a "0" handle
+            // that only blows up later, deep inside the GPU import.
+            if (outError) {
+                *outError =
+                    [NSError errorWithDomain:@"react-native-webrtc"
+                                        code:0
+                                    userInfo:@{
+                                        NSLocalizedDescriptionKey : [NSString
+                                            stringWithFormat:@"Pixel buffer at index %ld has no IOSurface", (long)index]
+                                    }];
+            }
+            return NO;
+        }
         // Emit the handle exactly the way react-native-webgpu interprets it on
         // import: the raw (uintptr_t)IOSurfaceRef, as a decimal string (a 64-bit
         // pointer would lose precision through a JS double).
@@ -143,6 +158,7 @@
 #pragma mark - Teardown
 
 - (void)dispose {
+    _disposed = YES;
     if (_pixelBuffers) {
         for (NSValue *boxed in _pixelBuffers) {
             CVPixelBufferRef buffer = (CVPixelBufferRef)boxed.pointerValue;

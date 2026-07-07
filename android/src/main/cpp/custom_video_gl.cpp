@@ -27,6 +27,7 @@
 // required here even when compiling against minSdk 24.
 
 #include <android/hardware_buffer.h>
+#include <android/log.h>
 #include <jni.h>
 
 #include <EGL/egl.h>
@@ -126,14 +127,20 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
         return nullptr;
     }
 
-    // EGL_IMAGE_PRESERVED_KHR=TRUE keeps the AHB's existing contents (the WebGPU
-    // render output) when the EGLImage is created, rather than leaving them
-    // undefined.
-    const EGLint imageAttribs[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
+    // No attribs: an AHB-backed EGLImage aliases the buffer's memory directly, so
+    // there are no separate contents to preserve (EGL_IMAGE_PRESERVED_KHR buys
+    // nothing here, and strict drivers can fail creation over unsupported attribs).
+    const EGLint imageAttribs[] = {EGL_NONE};
     EGLImageKHR eglImage = eglCreateImageKHRFn(display, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID,
                                                clientBuffer, imageAttribs);
     if (eglImage == EGL_NO_IMAGE_KHR) {
         return nullptr;
+    }
+
+    // GL error state is sticky and shared per context: drain anything a previous
+    // user of this thread's context left behind, so the check below reflects only
+    // this import.
+    while (glGetError() != GL_NO_ERROR) {
     }
 
     GLuint texId = 0;
@@ -232,6 +239,15 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
 JNIEXPORT void JNICALL
 Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeReleaseImportedTexture(
         JNIEnv* /* env */, jclass /* clazz */, jlong eglImageHandle, jint texId) {
+    // Same precondition as the import: without a current context glDeleteTextures
+    // is a silent no-op and the texture would leak in the share group. Make a
+    // mis-threaded (or post-teardown) call visible instead of silent.
+    if (eglGetCurrentContext() == EGL_NO_CONTEXT) {
+        __android_log_print(ANDROID_LOG_WARN, "WebRTCModule",
+                            "nativeReleaseImportedTexture called without a current EGL context; leaking texture %d",
+                            texId);
+        return;
+    }
     EGLDisplay display = eglGetCurrentDisplay();
     if (texId != 0) {
         GLuint id = static_cast<GLuint>(texId);

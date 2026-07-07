@@ -61,15 +61,10 @@ void FJVideoPushInstaller::installPush() {
     });
 }
 
-bool FJVideoPushInstaller::isInstalled() {
-    return push_->isInstalled();
-}
-
 void FJVideoPushInstaller::registerNatives() {
     registerHybrid({
         makeNativeMethod("initHybrid", FJVideoPushInstaller::initHybrid),
         makeNativeMethod("installPush", FJVideoPushInstaller::installPush),
-        makeNativeMethod("isInstalled", FJVideoPushInstaller::isInstalled),
     });
 }
 
