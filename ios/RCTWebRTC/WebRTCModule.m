@@ -146,7 +146,8 @@ RCT_EXPORT_MODULE();
         kEventPeerConnectionOnTrack,
         kEventCallKitActionPerformed,
         kEventAudioOutputChanged,
-        kEventLivestreamStatusChanged
+        kEventLivestreamStatusChanged,
+        kEventVoipPush
     ];
 }
 
