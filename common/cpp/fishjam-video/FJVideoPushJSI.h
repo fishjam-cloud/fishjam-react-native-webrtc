@@ -34,8 +34,7 @@ class CustomVideoSink : public facebook::jsi::HostObject {
     CustomVideoSink(std::weak_ptr<FJVideoPush> owner, std::string trackId)
         : owner_(std::move(owner)), trackId_(std::move(trackId)) {}
 
-    facebook::jsi::Value get(facebook::jsi::Runtime &rt,
-                             const facebook::jsi::PropNameID &name) override;
+    facebook::jsi::Value get(facebook::jsi::Runtime &rt, const facebook::jsi::PropNameID &name) override;
 
    private:
     std::weak_ptr<FJVideoPush> owner_;
@@ -60,8 +59,7 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
                                          uint64_t fenceHandle,
                                          uint64_t fenceSignaledValue)>;
 
-    explicit FJVideoPush(std::shared_ptr<facebook::react::CallInvoker> jsInvoker)
-        : jsInvoker_(std::move(jsInvoker)) {}
+    explicit FJVideoPush(std::shared_ptr<facebook::react::CallInvoker> jsInvoker) : jsInvoker_(std::move(jsInvoker)) {}
 
     // Installs both JS-facing globals; invokes onInstalled on the JS thread once
     // ready.
@@ -76,8 +74,7 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
     // Parses a JS frame object and forwards it to the delivery callback under
     // `trackId`. Shared by the compat global and every CustomVideoSink. Malformed
     // frames are dropped (never throws back into JS on the hot path).
-    void deliverFrame(facebook::jsi::Runtime &rt, const std::string &trackId,
-                      const facebook::jsi::Object &frame);
+    void deliverFrame(facebook::jsi::Runtime &rt, const std::string &trackId, const facebook::jsi::Object &frame);
 
    private:
     // Returns the (cached) sink host object for `trackId`, creating it on first

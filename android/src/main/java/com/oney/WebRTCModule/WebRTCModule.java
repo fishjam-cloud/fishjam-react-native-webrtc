@@ -1025,8 +1025,13 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
                 videoPushInstaller = new FJVideoPushInstaller(ctx,
                         (trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue)
-                                -> getUserMediaImpl.pushCustomVideoFrame(trackId, bufferIndex, nativeBuffer,
-                                        fenceHandle, fenceSignaledValue, timestampNs, rotation));
+                                -> getUserMediaImpl.pushCustomVideoFrame(trackId,
+                                        bufferIndex,
+                                        nativeBuffer,
+                                        fenceHandle,
+                                        fenceSignaledValue,
+                                        timestampNs,
+                                        rotation));
             }
         } catch (Throwable t) {
             Log.w(TAG, "Custom video tracks unavailable: failed to build the JSI installer", t);

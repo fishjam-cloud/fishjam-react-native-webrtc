@@ -38,13 +38,7 @@ final class FJVideoPushInstaller {
      * to forward; zero means pooled delivery of {@code bufferIndex}.
      */
     interface FrameRouter {
-        void route(
-                String trackId,
-                int bufferIndex,
-                long nativeBuffer,
-                long timestampNs,
-                int rotation,
-                long fenceHandle,
+        void route(String trackId, int bufferIndex, long nativeBuffer, long timestampNs, int rotation, long fenceHandle,
                 long fenceSignaledValue);
     }
 
@@ -107,14 +101,8 @@ final class FJVideoPushInstaller {
      * ({@code 0} = no fence); {@code fenceSignaledValue} is unused on Android.
      */
     @DoNotStrip
-    private void deliverFrame(
-            String trackId,
-            int bufferIndex,
-            long nativeBuffer,
-            long timestampNs,
-            int rotation,
-            long fenceHandle,
-            long fenceSignaledValue) {
+    private void deliverFrame(String trackId, int bufferIndex, long nativeBuffer, long timestampNs, int rotation,
+            long fenceHandle, long fenceSignaledValue) {
         frameRouter.route(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue);
     }
 

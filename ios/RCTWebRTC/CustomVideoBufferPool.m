@@ -21,12 +21,10 @@
 
     if (width <= 0 || height <= 0 || poolSize <= 0) {
         if (outError) {
-            *outError = [NSError errorWithDomain:@"react-native-webrtc"
-                                            code:0
-                                        userInfo:@{
-                                            NSLocalizedDescriptionKey :
-                                                @"width, height and poolSize must all be positive"
-                                        }];
+            *outError = [NSError
+                errorWithDomain:@"react-native-webrtc"
+                           code:0
+                       userInfo:@{NSLocalizedDescriptionKey : @"width, height and poolSize must all be positive"}];
         }
         return nil;
     }
@@ -82,8 +80,7 @@
     NSMutableArray *buffers = [NSMutableArray arrayWithCapacity:poolSize];
     for (NSInteger index = 0; index < poolSize; index++) {
         CVPixelBufferRef buffer = NULL;
-        CVReturn bufferStatus =
-            CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, _pixelBufferPool, &buffer);
+        CVReturn bufferStatus = CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, _pixelBufferPool, &buffer);
         if (bufferStatus != kCVReturnSuccess || buffer == NULL) {
             if (outError) {
                 *outError = [NSError

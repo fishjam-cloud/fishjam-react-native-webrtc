@@ -182,7 +182,7 @@ final class CustomVideoFrameDelivery {
             long[] imported = nativeImportAhbToOesTexture(bufferHandles[bufferIndex]);
             if (imported == null || imported.length != 2 || imported[1] == 0) {
                 Log.e(TAG, "AHB import failed for index " + bufferIndex);
-                return;  // outer catch/finally closes ownedFd[0]
+                return; // outer catch/finally closes ownedFd[0]
             }
             cachedEglImages[bufferIndex] = imported[0];
             cachedTextureIds[bufferIndex] = (int) imported[1];
@@ -210,14 +210,19 @@ final class CustomVideoFrameDelivery {
         //    is a no-op: the texture is pool-owned and reused across frames, NOT
         //    freed per frame (freed in release() on teardown). TextureBufferImpl
         //    needs the GL-thread handler + a YuvConverter on it for toI420().
-        TextureBufferImpl buffer = new TextureBufferImpl(width, height,
-                VideoFrame.TextureBuffer.Type.OES, textureId, IDENTITY_MATRIX, glHandler, yuvConverter,
+        TextureBufferImpl buffer = new TextureBufferImpl(width,
+                height,
+                VideoFrame.TextureBuffer.Type.OES,
+                textureId,
+                IDENTITY_MATRIX,
+                glHandler,
+                yuvConverter,
                 /* releaseCallback */ () -> {});
         VideoFrame frame = new VideoFrame(buffer, rotation, timestampNs);
         try {
             videoSource.getCapturerObserver().onFrameCaptured(frame);
         } finally {
-            frame.release();  // balances TextureBufferImpl's initial +1 ref
+            frame.release(); // balances TextureBufferImpl's initial +1 ref
         }
     }
 
@@ -280,7 +285,7 @@ final class CustomVideoFrameDelivery {
     private void deliverExternalOnGlThread(long[] ownedAhb, long frameGeneration, long timestampNs, int rotation) {
         long ahbHandle = ownedAhb[0];
         if (!shouldDeliver(frameGeneration)) {
-            return;  // outer finally releases the AHB
+            return; // outer finally releases the AHB
         }
 
         // External buffers carry their own dimensions (no pool geometry to reuse).
@@ -300,7 +305,7 @@ final class CustomVideoFrameDelivery {
         int textureId = (int) imported[1];
 
         if (!shouldDeliver(frameGeneration)) {
-            nativeReleaseImportedTexture(eglImage, textureId);  // AHB released by finally
+            nativeReleaseImportedTexture(eglImage, textureId); // AHB released by finally
             return;
         }
 
@@ -311,14 +316,19 @@ final class CustomVideoFrameDelivery {
         // Ownership of {AHB, EGLImage, OES texture} now transfers to the frame's
         // release callback, fired when the encoder drops its last reference.
         ownedAhb[0] = 0;
-        TextureBufferImpl buffer = new TextureBufferImpl(dimensions[0], dimensions[1],
-                VideoFrame.TextureBuffer.Type.OES, textureId, IDENTITY_MATRIX, glHandler, yuvConverter,
+        TextureBufferImpl buffer = new TextureBufferImpl(dimensions[0],
+                dimensions[1],
+                VideoFrame.TextureBuffer.Type.OES,
+                textureId,
+                IDENTITY_MATRIX,
+                glHandler,
+                yuvConverter,
                 () -> releaseForwardedFrame(eglImage, textureId, ahbHandle));
         VideoFrame frame = new VideoFrame(buffer, rotation, stampNs);
         try {
             videoSource.getCapturerObserver().onFrameCaptured(frame);
         } finally {
-            frame.release();  // balances TextureBufferImpl's initial +1 ref
+            frame.release(); // balances TextureBufferImpl's initial +1 ref
         }
     }
 

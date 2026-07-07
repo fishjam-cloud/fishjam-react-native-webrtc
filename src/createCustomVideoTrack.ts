@@ -261,7 +261,9 @@ export interface ForwardTrack {
 }
 
 /** Result of {@link createCustomVideoTrack}: the stream to publish + the push handle. */
-export interface CustomVideoTrackResult<Track extends PooledTrack | ForwardTrack> {
+export interface CustomVideoTrackResult<
+    Track extends PooledTrack | ForwardTrack,
+> {
     /**
      * A {@link MediaStream} containing the single custom video track. Use it as any
      * other stream — publish it (for example via `useCustomSource`), render it
@@ -423,7 +425,10 @@ export function pushFrame(track: PooledTrack, frame: PushFrameArgs): void {
  * SDK retains the buffer before returning, so you may release/dispose your own
  * reference immediately after.
  */
-export function forwardFrame(track: ForwardTrack, frame: ForwardFrameArgs): void {
+export function forwardFrame(
+    track: ForwardTrack,
+    frame: ForwardFrameArgs,
+): void {
     'worklet';
     track.sink.push(frame);
 }

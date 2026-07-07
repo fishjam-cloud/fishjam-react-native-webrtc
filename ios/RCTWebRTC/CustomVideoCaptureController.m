@@ -36,8 +36,7 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
     BOOL _tornDown;
 }
 
-- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource
-                                     pool:(CustomVideoBufferPool *)pool {
+- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource pool:(CustomVideoBufferPool *)pool {
     self = [super init];
     if (!self) {
         return nil;
@@ -50,8 +49,7 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
 
     // Pooled frames may be guarded by a Metal shared-event fence, so arm a
     // listener + dedicated serial queue for all fence callbacks.
-    _fenceCallbackQueue =
-        dispatch_queue_create("com.fishjam.webrtc.customVideoTrack.fence", DISPATCH_QUEUE_SERIAL);
+    _fenceCallbackQueue = dispatch_queue_create("com.fishjam.webrtc.customVideoTrack.fence", DISPATCH_QUEUE_SERIAL);
     if (@available(iOS 13.0, *)) {
         _sharedEventListener = [[MTLSharedEventListener alloc] initWithDispatchQueue:_fenceCallbackQueue];
     }
@@ -175,7 +173,7 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
                 return;
             }
             [strongSelf completeInFlightDeliveringBuffer:buffer
-                                             generation:frameGeneration
+                                              generation:frameGeneration
                                              timestampNs:timestampNs
                                                 rotation:rotation];
         });
@@ -200,7 +198,7 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
                     return;
                 }
                 [strongSelf completeInFlightDeliveringBuffer:buffer
-                                                 generation:frameGeneration
+                                                  generation:frameGeneration
                                                  timestampNs:timestampNs
                                                     rotation:rotation];
             });
@@ -219,9 +217,9 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
                             __typeof__(self) strongSelf = weakSelf;
                             if (strongSelf != nil) {
                                 [strongSelf completeInFlightDeliveringBuffer:buffer
-                                                                generation:frameGeneration
-                                                                timestampNs:timestampNs
-                                                                   rotation:rotation];
+                                                                  generation:frameGeneration
+                                                                 timestampNs:timestampNs
+                                                                    rotation:rotation];
                             }
                             CFRelease((__bridge CFTypeRef)event);
                         }];

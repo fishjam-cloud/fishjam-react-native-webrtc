@@ -38,8 +38,7 @@ class FJVideoPushInstaller : public facebook::jni::HybridClass<FJVideoPushInstal
     facebook::jni::global_ref<javaobject> javaPart_;
     std::shared_ptr<FJVideoPush> push_;
 
-    FJVideoPushInstaller(facebook::jni::alias_ref<jhybridobject> javaThis,
-                         std::shared_ptr<FJVideoPush> push);
+    FJVideoPushInstaller(facebook::jni::alias_ref<jhybridobject> javaThis, std::shared_ptr<FJVideoPush> push);
 };
 
 }  // namespace fishjam

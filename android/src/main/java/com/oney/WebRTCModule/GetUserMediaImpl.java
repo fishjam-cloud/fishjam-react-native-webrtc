@@ -536,8 +536,7 @@ class GetUserMediaImpl {
      */
     void createCustomVideoBufferPool(ReadableMap init, Promise promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            promise.reject("E_UNSUPPORTED_API_LEVEL",
-                    "Custom video tracks require Android 8.0 (API 26) or newer.");
+            promise.reject("E_UNSUPPORTED_API_LEVEL", "Custom video tracks require Android 8.0 (API 26) or newer.");
             return;
         }
 
@@ -550,7 +549,8 @@ class GetUserMediaImpl {
             poolSize = init != null && init.hasKey("poolSize") ? init.getInt("poolSize") : 0;
         } catch (Exception e) {
             promise.reject("E_INVALID_CUSTOM_VIDEO_BUFFER_POOL_INIT",
-                    "Custom video buffer pool width, height and poolSize must be positive integers.", e);
+                    "Custom video buffer pool width, height and poolSize must be positive integers.",
+                    e);
             return;
         }
         if (width <= 0 || height <= 0 || poolSize <= 0) {
@@ -618,8 +618,7 @@ class GetUserMediaImpl {
      */
     void createCustomVideoTrack(ReadableMap init, Promise promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            promise.reject("E_UNSUPPORTED_API_LEVEL",
-                    "Custom video tracks require Android 8.0 (API 26) or newer.");
+            promise.reject("E_UNSUPPORTED_API_LEVEL", "Custom video tracks require Android 8.0 (API 26) or newer.");
             return;
         }
 
@@ -633,8 +632,8 @@ class GetUserMediaImpl {
                 return;
             }
             if (!pool.tryAttach()) {
-                promise.reject("E_CUSTOM_VIDEO_POOL_IN_USE",
-                        "Custom video buffer pool is already attached to a track.");
+                promise.reject(
+                        "E_CUSTOM_VIDEO_POOL_IN_USE", "Custom video buffer pool is already attached to a track.");
                 return;
             }
             captureController = new CustomVideoCaptureController(pool);
@@ -662,8 +661,8 @@ class GetUserMediaImpl {
 
         // Register so the existing disposeTrack -> TrackPrivate.dispose path tears down the GL
         // imports (CustomVideoCaptureController.dispose) and disposes the source/track.
-        tracks.put(trackId,
-                new TrackPrivate(videoTrack, videoSource, captureController, /* surfaceTextureHelper */ null));
+        tracks.put(
+                trackId, new TrackPrivate(videoTrack, videoSource, captureController, /* surfaceTextureHelper */ null));
         // Thread-safe registry read by the per-frame push path (worklet thread).
         customVideoControllers.put(trackId, captureController);
 
@@ -683,8 +682,9 @@ class GetUserMediaImpl {
         data.putString("streamId", streamId);
         data.putMap("track", trackInfo);
 
-        Log.d(TAG, "createCustomVideoTrack streamId=" + streamId + " trackId=" + trackId
-                + (poolId != null ? " pooled" : " forwarding"));
+        Log.d(TAG,
+                "createCustomVideoTrack streamId=" + streamId + " trackId=" + trackId
+                        + (poolId != null ? " pooled" : " forwarding"));
         promise.resolve(data);
     }
 

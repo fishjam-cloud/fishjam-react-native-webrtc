@@ -258,15 +258,13 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
         // Pooled: bind to the app-allocated buffer pool (1<->1 with a track).
         CustomVideoBufferPool *pool = [self registeredCustomVideoBufferPoolForPoolId:poolId];
         if (pool == nil) {
-            reject(@"E_CUSTOM_VIDEO_TRACK_FAILED",
-                   @"No custom video buffer pool registered for the given poolId.",
-                   nil);
+            reject(
+                @"E_CUSTOM_VIDEO_TRACK_FAILED", @"No custom video buffer pool registered for the given poolId.", nil);
             return;
         }
         if (pool.attached) {
-            reject(@"E_CUSTOM_VIDEO_POOL_IN_USE",
-                   @"This custom video buffer pool is already attached to a track.",
-                   nil);
+            reject(
+                @"E_CUSTOM_VIDEO_POOL_IN_USE", @"This custom video buffer pool is already attached to a track.", nil);
             return;
         }
         pool.attached = YES;
@@ -715,8 +713,7 @@ RCT_EXPORT_METHOD(mediaStreamTrackRelease : (nonnull NSString *)trackID) {
         track.isEnabled = NO;
 #if !TARGET_OS_OSX
         if ([track.captureController isKindOfClass:[CustomVideoCaptureController class]]) {
-            CustomVideoCaptureController *customController =
-                (CustomVideoCaptureController *)track.captureController;
+            CustomVideoCaptureController *customController = (CustomVideoCaptureController *)track.captureController;
             [customController stopCapture];
             [customController releaseCaptureResources];
         } else {

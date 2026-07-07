@@ -48,8 +48,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param videoSource the source that frames are delivered to.
  * @param pool        the buffer pool this track renders into and pushes by index.
  */
-- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource
-                                     pool:(CustomVideoBufferPool *)pool;
+- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource pool:(CustomVideoBufferPool *)pool;
 
 /**
  * Builds a forwarding controller with no pool. Frames arrive as finished native
@@ -121,8 +120,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface WebRTCModule (CustomVideoRegistry)
 
 /** Registers (or replaces) the controller for trackId. */
-- (void)registerCustomVideoController:(CustomVideoCaptureController *)controller
-                           forTrackId:(NSString *)trackId;
+- (void)registerCustomVideoController:(CustomVideoCaptureController *)controller forTrackId:(NSString *)trackId;
 
 /** Looks up the live controller for trackId, or nil if none/already released. */
 - (nullable CustomVideoCaptureController *)registeredCustomVideoControllerForTrackId:(NSString *)trackId;
