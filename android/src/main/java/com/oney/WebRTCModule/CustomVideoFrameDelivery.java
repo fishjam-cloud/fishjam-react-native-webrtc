@@ -533,6 +533,20 @@ final class CustomVideoFrameDelivery {
         }
     }
 
+    /**
+     * Closes a stray fence sync-fd carried on a <em>forwarding</em> push. Forwarding
+     * never uses a fence and the typed {@code forwardFrame} wrapper forbids one, but
+     * the JSI layer parses {@code fence} unconditionally, so a raw-sink caller can
+     * still attach one. Its fd ownership transferred to native on push (same
+     * contract as the pooled path), so drop it here rather than leak an fd per frame.
+     * No-op for the no-fence sentinel ({@code 0} or beyond the {@code int} fd range).
+     */
+    static void closeFenceHandle(long fenceHandle) {
+        if (fenceHandle > 0 && fenceHandle <= Integer.MAX_VALUE) {
+            nativeCloseFd((int) fenceHandle);
+        }
+    }
+
     // --- Native (custom_video_gl.cpp); GL ones MUST be called on the GL thread. ---
 
     private static native long[] nativeImportAhbToOesTexture(long ahbHandle);

@@ -17,7 +17,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <unordered_map>
 
 #include <ReactCommon/CallInvoker.h>
 #include <jsi/jsi.h>
@@ -79,8 +78,10 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
     void deliverFrame(facebook::jsi::Runtime &rt, const std::string &trackId, const facebook::jsi::Object &frame);
 
    private:
-    // Returns the (cached) sink host object for `trackId`, creating it on first
-    // request. Called on the JS runtime inside the get-sink global.
+    // Returns a fresh sink host object bound to `trackId`. Called on the JS runtime
+    // inside the get-sink global. Not retained natively: JS fetches a track's sink
+    // exactly once and owns its lifetime (the host object is freed when the last
+    // runtime referencing it drops it), so there is nothing to cache or leak.
     facebook::jsi::Value getSink(facebook::jsi::Runtime &rt, const std::string &trackId);
 
     std::shared_ptr<facebook::react::CallInvoker> jsInvoker_;
@@ -90,7 +91,4 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
     std::mutex deliverMutex_;
     std::shared_ptr<const DeliverFn> deliver_;
     std::atomic<bool> installed_{false};
-
-    std::mutex sinksMutex_;
-    std::unordered_map<std::string, std::shared_ptr<CustomVideoSink>> sinks_;
 };

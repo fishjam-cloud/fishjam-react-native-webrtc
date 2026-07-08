@@ -233,20 +233,33 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
         return;
     }
 
-    // Cheap accept/teardown gate under the drain lock; read it, then deliver
-    // OUTSIDE the lock (never hold it across the WebRTC delivery call). Forwarding
-    // has no pool retain and no fence: the buffer is app-owned and delivered
-    // synchronously on the calling (worklet) thread. RTCCVPixelBuffer retains the
-    // buffer during initWithPixelBuffer:, so the caller may release its own
-    // reference immediately after this returns.
+    // Reserve an in-flight slot under the drain lock, then deliver OUTSIDE the lock
+    // (never hold it across the WebRTC delivery call). Counting forwarding
+    // deliveries in-flight — like the pooled path, and like Android — means
+    // stopCapture/releaseCaptureResources actually drain a synchronous forward that
+    // is mid-flight on the worklet thread instead of tearing down underneath it.
+    // Forwarding has no pool retain and no fence: the buffer is app-owned and
+    // delivered synchronously on the calling (worklet) thread. RTCCVPixelBuffer
+    // retains the buffer during initWithPixelBuffer:, so the caller may release its
+    // own reference immediately after this returns.
     [_drainCondition lock];
-    BOOL accepting = _accepting && !_tornDown;
-    [_drainCondition unlock];
-    if (!accepting) {
+    if (!_accepting || _tornDown) {
+        [_drainCondition unlock];
         return;
     }
+    _inFlightCount++;
+    [_drainCondition unlock];
 
     [self deliverBuffer:pixelBuffer timestampNs:timestampNs rotation:rotation];
+
+    [_drainCondition lock];
+    if (_inFlightCount > 0) {
+        _inFlightCount--;
+    }
+    if (_inFlightCount <= 0) {
+        [_drainCondition broadcast];
+    }
+    [_drainCondition unlock];
 }
 
 - (void)deliverBuffer:(CVPixelBufferRef)buffer timestampNs:(int64_t)timestampNs rotation:(RTCVideoRotation)rotation {

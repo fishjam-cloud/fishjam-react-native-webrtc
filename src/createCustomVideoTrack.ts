@@ -30,6 +30,10 @@
  * New Architecture only: {@link createCustomVideoTrack} rejects with a clear error
  * on the old architecture, where the per-frame JSI channel is unavailable.
  *
+ * Pooled mode needs GPU-shareable native surfaces and should be exercised on a
+ * physical device — the iOS Simulator's GPU stack does not reliably back the
+ * shared `IOSurface` import path.
+ *
  * @module createCustomVideoTrack
  */
 import { NativeModules } from 'react-native';
@@ -172,6 +176,11 @@ export interface CustomVideoBuffer {
      * example react-native-webgpu:
      * `device.importSharedTextureMemory({ handle: surfaceHandle })`). Import each
      * surface once and reuse it for every frame you draw into that slot.
+     *
+     * **Render into the platform's native surface format**, or the frame comes out
+     * garbled (red/blue swapped) or is rejected at import:
+     * - **iOS** — `BGRA8` (`bgra8unorm`; the surface is `kCVPixelFormatType_32BGRA`).
+     * - **Android** — `RGBA8` (`rgba8unorm`).
      */
     surfaceHandle: bigint;
     /** Width of this surface in pixels; matches {@link CustomVideoBufferPoolInit.width}. */
@@ -228,6 +237,11 @@ export interface CustomVideoFrameFence {
  * worklet thread with no hop. You normally don't call this directly; use
  * {@link pushFrame} / {@link forwardFrame}. It is exposed so it can be captured
  * into a worklet setup where the wrappers aren't processed.
+ *
+ * Push from the *same* worklet runtime the sink was captured into: `push` binds
+ * lazily to whichever runtime first resolves it, so importing one sink into two
+ * runtimes and pushing from both is unsupported. `push` is stable per runtime, so
+ * a hot loop may hoist it once (`const push = track.sink.push`) and reuse it.
  */
 export interface CustomVideoSink {
     push(frame: object): void;

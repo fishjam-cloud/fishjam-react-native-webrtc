@@ -724,6 +724,9 @@ class GetUserMediaImpl {
             return;
         }
         if (nativeBuffer != 0) {
+            // Forwarding ignores any fence; if a raw-sink caller attached one, its fd
+            // ownership transferred to native on push, so close it rather than leak it.
+            CustomVideoFrameDelivery.closeFenceHandle(fenceHandle);
             controller.pushExternalBuffer(nativeBuffer, timestampNs, rotation);
         } else {
             controller.pushFrame(bufferIndex, fenceHandle, fenceSignaledValue, timestampNs, rotation);

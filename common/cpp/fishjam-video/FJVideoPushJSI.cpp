@@ -12,9 +12,10 @@ jsi::Value CustomVideoSink::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
     std::weak_ptr<FJVideoPush> owner = owner_;
     std::string trackId = trackId_;
     return jsi::Function::createFromHostFunction(
-        rt, jsi::PropNameID::forAscii(rt, "push"), 1,
-        [owner, trackId](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args,
-                         size_t count) -> jsi::Value {
+        rt,
+        jsi::PropNameID::forAscii(rt, "push"),
+        1,
+        [owner, trackId](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args, size_t count) -> jsi::Value {
             auto push = owner.lock();
             if (!push || count == 0 || !args[0].isObject()) {
                 return jsi::Value::undefined();
@@ -25,8 +26,7 @@ jsi::Value CustomVideoSink::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
         });
 }
 
-void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId,
-                               const jsi::Object &frame) {
+void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId, const jsi::Object &frame) {
     // Cheap refcount copy under the lock; the callback itself runs outside it so
     // a slow delivery never blocks setDeliver (and vice versa).
     std::shared_ptr<const DeliverFn> deliver;
@@ -95,22 +95,15 @@ void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId,
         }
     }
 
-    (*deliver)(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle,
-               fenceSignaledValue);
+    (*deliver)(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue);
 }
 
 jsi::Value FJVideoPush::getSink(jsi::Runtime &rt, const std::string &trackId) {
-    std::shared_ptr<CustomVideoSink> sink;
-    {
-        std::lock_guard<std::mutex> lock(sinksMutex_);
-        auto it = sinks_.find(trackId);
-        if (it != sinks_.end()) {
-            sink = it->second;
-        } else {
-            sink = std::make_shared<CustomVideoSink>(weak_from_this(), trackId);
-            sinks_[trackId] = sink;
-        }
-    }
+    // Fresh sink per request: JS fetches a track's sink once and holds it, so the
+    // runtime owns the host object's lifetime. Keeping a native map keyed by
+    // trackId only pins a shared_ptr per track ever created (an unbounded leak) and
+    // buys nothing — the sink carries only its trackId + a weak owner.
+    auto sink = std::make_shared<CustomVideoSink>(weak_from_this(), trackId);
     return jsi::Object::createFromHostObject(rt, sink);
 }
 
@@ -128,9 +121,10 @@ void FJVideoPush::install(std::function<void()> onInstalled) {
         // Per-track sink accessor: returns a CustomVideoSink host object bound to
         // the given trackId. Shared by reference into worklets for hop-free push.
         auto getSink = jsi::Function::createFromHostFunction(
-            rt, jsi::PropNameID::forAscii(rt, "__fishjamWebrtcGetCustomVideoSink"), 1,
-            [weakSelf](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args,
-                       size_t count) -> jsi::Value {
+            rt,
+            jsi::PropNameID::forAscii(rt, "__fishjamWebrtcGetCustomVideoSink"),
+            1,
+            [weakSelf](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args, size_t count) -> jsi::Value {
                 auto self = weakSelf.lock();
                 if (!self || count == 0 || !args[0].isString()) {
                     return jsi::Value::undefined();
