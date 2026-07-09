@@ -230,20 +230,20 @@ RCT_EXPORT_METHOD(getDisplayMedia
  * getDisplayMedia in that it resolves a {streamId, track} pair. Two modes,
  * selected by the presence of a poolId:
  *
- *   * Pooled — init[@"poolId"] names a CustomVideoBufferPool previously allocated
- *     via createCustomVideoBufferPool. The app renders into that pool's IOSurfaces
+ *   * Pooled — init[@"poolId"] names a CustomVideoRenderTargetPool previously allocated
+ *     via createCustomVideoRenderTargetPool. The app renders into that pool's IOSurfaces
  *     and pushes frames by index (per frame, via the JSI channel installed by
  *     installCustomVideoJSI). A pool binds to exactly one track.
  *   * Forwarding — no poolId. The app forwards finished native CVPixelBufferRefs.
  *
  * @param init dictionary with an optional {poolId}.
  */
-RCT_EXPORT_METHOD(createCustomVideoTrack
+RCT_EXPORT_METHOD(createCustomVideoSource
                   : (NSDictionary *)init resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
 #if TARGET_OS_TV || TARGET_OS_OSX
-    reject(@"E_UNSUPPORTED_PLATFORM", @"createCustomVideoTrack is only supported on iOS and Android.", nil);
+    reject(@"E_UNSUPPORTED_PLATFORM", @"createCustomVideoSource is only supported on iOS and Android.", nil);
     return;
 #else
     NSString *poolId = init[@"poolId"];
@@ -256,7 +256,7 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
     CustomVideoCaptureController *captureController = nil;
     if (poolId != nil && poolId.length > 0) {
         // Pooled: bind to the app-allocated buffer pool (1<->1 with a track).
-        CustomVideoBufferPool *pool = [self registeredCustomVideoBufferPoolForPoolId:poolId];
+        CustomVideoRenderTargetPool *pool = [self registeredCustomVideoRenderTargetPoolForPoolId:poolId];
         if (pool == nil) {
             reject(
                 @"E_CUSTOM_VIDEO_TRACK_FAILED", @"No custom video buffer pool registered for the given poolId.", nil);
@@ -269,7 +269,7 @@ RCT_EXPORT_METHOD(createCustomVideoTrack
         }
         pool.attached = YES;
         captureController = [[CustomVideoCaptureController alloc] initPooledWithVideoSource:videoSource pool:pool];
-        // Let releaseCustomVideoBufferPool refuse disposal while this track is
+        // Let releaseCustomVideoRenderTargetPool refuse disposal while this track is
         // still live (its in-flight deliveries reference the pool's buffers).
         pool.attachedController = captureController;
     } else {

@@ -2,13 +2,13 @@
 
 namespace jsi = facebook::jsi;
 
-jsi::Value CustomVideoSink::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
+jsi::Value CustomVideoPushChannel::get(jsi::Runtime &rt, const jsi::PropNameID &name) {
     if (name.utf8(rt) != "push") {
         return jsi::Value::undefined();
     }
     // Capture the bound trackId + owner by value so the returned push function is
     // self-contained and safe to call on whatever runtime `get` ran on (worklet
-    // or main JS). `get` is invoked lazily by the runtime that captured the sink.
+    // or main JS). `get` is invoked lazily by the runtime that captured the channel.
     std::weak_ptr<FJVideoPush> owner = owner_;
     std::string trackId = trackId_;
     return jsi::Function::createFromHostFunction(
@@ -49,15 +49,15 @@ void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId, con
         nativeBuffer = nativeBufferValue.asBigInt(rt).getUint64(rt);
     }
 
-    // bufferIndex identifies the pooled surface; required when not forwarding.
-    int bufferIndex = 0;
-    jsi::Value bufferIndexValue = frame.getProperty(rt, "bufferIndex");
-    bool hasBufferIndex = bufferIndexValue.isNumber();
-    if (hasBufferIndex) {
-        bufferIndex = static_cast<int>(bufferIndexValue.asNumber());
+    // renderTargetIndex identifies the render target; required when not forwarding.
+    int renderTargetIndex = 0;
+    jsi::Value renderTargetIndexValue = frame.getProperty(rt, "renderTargetIndex");
+    bool hasRenderTargetIndex = renderTargetIndexValue.isNumber();
+    if (hasRenderTargetIndex) {
+        renderTargetIndex = static_cast<int>(renderTargetIndexValue.asNumber());
     }
-    if (nativeBuffer == 0 && !hasBufferIndex) {
-        // Neither a forward buffer nor a pool index -> nothing to deliver.
+    if (nativeBuffer == 0 && !hasRenderTargetIndex) {
+        // Neither a forward buffer nor a render-target index -> nothing to deliver.
         return;
     }
 
@@ -80,7 +80,7 @@ void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId, con
         }
     }
 
-    // fence is optional (pooled only); absent/null/malformed means no fence ->
+    // fence is optional (render-target only); absent/null/malformed means no fence ->
     // 0/0 (immediate delivery). Only read handle/value when both are bigints.
     uint64_t fenceHandle = 0;
     uint64_t fenceSignaledValue = 0;
@@ -95,16 +95,16 @@ void FJVideoPush::deliverFrame(jsi::Runtime &rt, const std::string &trackId, con
         }
     }
 
-    (*deliver)(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue);
+    (*deliver)(trackId, renderTargetIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue);
 }
 
-jsi::Value FJVideoPush::getSink(jsi::Runtime &rt, const std::string &trackId) {
-    // Fresh sink per request: JS fetches a track's sink once and holds it, so the
-    // runtime owns the host object's lifetime. Keeping a native map keyed by
-    // trackId only pins a shared_ptr per track ever created (an unbounded leak) and
-    // buys nothing — the sink carries only its trackId + a weak owner.
-    auto sink = std::make_shared<CustomVideoSink>(weak_from_this(), trackId);
-    return jsi::Object::createFromHostObject(rt, sink);
+jsi::Value FJVideoPush::getPushChannel(jsi::Runtime &rt, const std::string &trackId) {
+    // Fresh channel per request: JS fetches a track's push channel once and holds
+    // it, so the runtime owns the host object's lifetime. Keeping a native map keyed
+    // by trackId only pins a shared_ptr per track ever created (an unbounded leak)
+    // and buys nothing — the channel carries only its trackId + a weak owner.
+    auto pushChannel = std::make_shared<CustomVideoPushChannel>(weak_from_this(), trackId);
+    return jsi::Object::createFromHostObject(rt, pushChannel);
 }
 
 void FJVideoPush::install(std::function<void()> onInstalled) {
@@ -118,20 +118,20 @@ void FJVideoPush::install(std::function<void()> onInstalled) {
             return;
         }
 
-        // Per-track sink accessor: returns a CustomVideoSink host object bound to
+        // Per-track sink accessor: returns a CustomVideoPushChannel host object bound to
         // the given trackId. Shared by reference into worklets for hop-free push.
-        auto getSink = jsi::Function::createFromHostFunction(
+        auto getPushChannel = jsi::Function::createFromHostFunction(
             rt,
-            jsi::PropNameID::forAscii(rt, "__fishjamWebrtcGetCustomVideoSink"),
+            jsi::PropNameID::forAscii(rt, "__fishjamWebrtcGetCustomVideoPushChannel"),
             1,
             [weakSelf](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args, size_t count) -> jsi::Value {
                 auto self = weakSelf.lock();
                 if (!self || count == 0 || !args[0].isString()) {
                     return jsi::Value::undefined();
                 }
-                return self->getSink(rt, args[0].asString(rt).utf8(rt));
+                return self->getPushChannel(rt, args[0].asString(rt).utf8(rt));
             });
-        rt.global().setProperty(rt, "__fishjamWebrtcGetCustomVideoSink", getSink);
+        rt.global().setProperty(rt, "__fishjamWebrtcGetCustomVideoPushChannel", getPushChannel);
 
         self->installed_.store(true);
         if (onInstalled) {

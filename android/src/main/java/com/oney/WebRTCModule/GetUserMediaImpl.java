@@ -61,20 +61,20 @@ class GetUserMediaImpl {
     private final Map<String, TrackPrivate> tracks = new HashMap<>();
 
     /**
-     * poolId -> {@link CustomVideoBufferPool} registry for custom-video pooled
+     * poolId -> {@link CustomVideoRenderTargetPool} registry for custom-video pooled
      * buffers. Pools are owned by JS: an entry is added by
-     * {@link #createCustomVideoBufferPool} and removed by
-     * {@link #releaseCustomVideoBufferPool}. Mutated only on the module executor,
+     * {@link #createCustomVideoRenderTargetPool} and removed by
+     * {@link #releaseCustomVideoRenderTargetPool}. Mutated only on the module executor,
      * but concurrent for parity with {@link #customVideoControllers}.
      */
-    private final Map<String, CustomVideoBufferPool> customVideoBufferPools = new ConcurrentHashMap<>();
+    private final Map<String, CustomVideoRenderTargetPool> customVideoBufferPools = new ConcurrentHashMap<>();
 
     /**
      * trackId -> {@link CustomVideoCaptureController} registry, resolved by the
      * per-frame push path. That push runs synchronously on the caller's (worklet)
      * thread, which races the executor mutating {@link #tracks} (an unsynchronised
      * HashMap); this concurrent registry decouples delivery from {@code tracks}.
-     * Entries are added by {@link #createCustomVideoTrack} and removed by
+     * Entries are added by {@link #createCustomVideoSource} and removed by
      * {@link #disposeTrack}.
      */
     private final Map<String, CustomVideoCaptureController> customVideoControllers = new ConcurrentHashMap<>();
@@ -523,18 +523,18 @@ class GetUserMediaImpl {
      * Allocates a pool of AHardwareBuffer (AHB) backed surfaces the app renders into on the GPU
      * (pooled mode). Resolves the cross-platform shape
      * {@code { poolId, buffers:[{ index, surfaceHandle, width, height }] }} which
-     * {@code src/createCustomVideoTrack.ts} consumes unchanged. The pool is owned by JS and freed
-     * via {@link #releaseCustomVideoBufferPool}; attach it to a track with
-     * {@link #createCustomVideoTrack}.
+     * {@code src/createCustomVideoSource.ts} consumes unchanged. The pool is owned by JS and freed
+     * via {@link #releaseCustomVideoRenderTargetPool}; attach it to a track with
+     * {@link #createCustomVideoSource}.
      *
      * <p>Requires API level 26+ (the AHB pool uses {@code __INTRODUCED_IN(26)} APIs); rejects on
-     * older devices BEFORE referencing {@link CustomVideoBufferPool}/{@link AHardwareBufferAllocator},
+     * older devices BEFORE referencing {@link CustomVideoRenderTargetPool}/{@link AHardwareBufferAllocator},
      * so the native AHB library is never loaded on unsupported systems.
      *
      * @param init    {@code { width, height, poolSize }} pool description.
      * @param promise resolves with {@code { poolId, buffers }} or rejects on failure.
      */
-    void createCustomVideoBufferPool(ReadableMap init, Promise promise) {
+    void createCustomVideoRenderTargetPool(ReadableMap init, Promise promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             promise.reject("E_UNSUPPORTED_API_LEVEL", "Custom video tracks require Android 8.0 (API 26) or newer.");
             return;
@@ -559,9 +559,9 @@ class GetUserMediaImpl {
             return;
         }
 
-        CustomVideoBufferPool pool;
+        CustomVideoRenderTargetPool pool;
         try {
-            pool = new CustomVideoBufferPool(width, height, poolSize);
+            pool = new CustomVideoRenderTargetPool(width, height, poolSize);
         } catch (IllegalArgumentException e) {
             promise.reject("E_INVALID_CUSTOM_VIDEO_BUFFER_POOL_INIT", e.getMessage(), e);
             return;
@@ -575,25 +575,25 @@ class GetUserMediaImpl {
 
         WritableMap data = Arguments.createMap();
         data.putString("poolId", poolId);
-        data.putArray("buffers", pool.getBufferDescriptors());
+        data.putArray("renderTargets", pool.getRenderTargetDescriptors());
 
-        Log.d(TAG, "createCustomVideoBufferPool poolId=" + poolId + " " + width + "x" + height + " x" + poolSize);
+        Log.d(TAG, "createCustomVideoRenderTargetPool poolId=" + poolId + " " + width + "x" + height + " x" + poolSize);
         promise.resolve(data);
     }
 
     /**
-     * Releases a pool created by {@link #createCustomVideoBufferPool}, freeing its AHBs. Resolves
+     * Releases a pool created by {@link #createCustomVideoRenderTargetPool}, freeing its AHBs. Resolves
      * null; a no-op (still resolves) when the poolId is null or already released. Rejects
      * {@code E_CUSTOM_VIDEO_POOL_IN_USE} while the pool's attached track is still live: in-flight
      * frame deliveries may hold references to the pool's AHB handles, so disposing here would be a
      * use-after-free. Stop the track first, then retry.
      */
-    void releaseCustomVideoBufferPool(String poolId, Promise promise) {
+    void releaseCustomVideoRenderTargetPool(String poolId, Promise promise) {
         if (poolId == null) {
             promise.resolve(null);
             return;
         }
-        CustomVideoBufferPool pool = customVideoBufferPools.get(poolId);
+        CustomVideoRenderTargetPool pool = customVideoBufferPools.get(poolId);
         if (pool == null) {
             promise.resolve(null);
             return;
@@ -610,11 +610,11 @@ class GetUserMediaImpl {
 
     /**
      * Creates a custom video track. Resolves the cross-platform shape
-     * {@code { streamId, track }} which {@code src/createCustomVideoTrack.ts} consumes unchanged.
+     * {@code { streamId, track }} which {@code src/createCustomVideoSource.ts} consumes unchanged.
      *
      * <ul>
      *   <li>{@code poolId} present -> <b>pooled</b>: bind to the named
-     *       {@link CustomVideoBufferPool} (the app renders into it and pushes by index). A pool binds
+     *       {@link CustomVideoRenderTargetPool} (the app renders into it and pushes by index). A pool binds
      *       to exactly one track; a missing pool rejects {@code E_CUSTOM_VIDEO_TRACK_FAILED}, an
      *       already-attached pool rejects {@code E_CUSTOM_VIDEO_POOL_IN_USE}.</li>
      *   <li>{@code poolId} absent -> <b>forwarding</b>: no pool; the app forwards finished
@@ -627,7 +627,7 @@ class GetUserMediaImpl {
      * @param init    {@code { poolId? }}.
      * @param promise resolves with {@code { streamId, track }} or rejects on failure.
      */
-    void createCustomVideoTrack(ReadableMap init, Promise promise) {
+    void createCustomVideoSource(ReadableMap init, Promise promise) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             promise.reject("E_UNSUPPORTED_API_LEVEL", "Custom video tracks require Android 8.0 (API 26) or newer.");
             return;
@@ -637,7 +637,7 @@ class GetUserMediaImpl {
 
         CustomVideoCaptureController captureController;
         if (poolId != null) {
-            CustomVideoBufferPool pool = customVideoBufferPools.get(poolId);
+            CustomVideoRenderTargetPool pool = customVideoBufferPools.get(poolId);
             if (pool == null) {
                 promise.reject("E_CUSTOM_VIDEO_TRACK_FAILED", "No custom video buffer pool for id " + poolId);
                 return;
@@ -698,7 +698,7 @@ class GetUserMediaImpl {
         data.putMap("track", trackInfo);
 
         Log.d(TAG,
-                "createCustomVideoTrack streamId=" + streamId + " trackId=" + trackId
+                "createCustomVideoSource streamId=" + streamId + " trackId=" + trackId
                         + (poolId != null ? " pooled" : " forwarding"));
         promise.resolve(data);
     }
@@ -711,12 +711,12 @@ class GetUserMediaImpl {
      * <ul>
      *   <li>{@code nativeBuffer != 0} -> forwarding: {@code pushExternalBuffer} takes an owning ref
      *       on the AHB before returning, then imports/delivers it on the GL thread.</li>
-     *   <li>otherwise -> pooled: {@code pushFrame} imports the AHB at {@code bufferIndex}, waits the
+     *   <li>otherwise -> pooled: {@code pushFrame} imports the AHB at {@code renderTargetIndex}, waits the
      *       sync-fd fence in {@code fenceHandle}, and delivers.</li>
      * </ul>
      * {@code fenceSignaledValue} is unused on Android. Fire-and-forget.
      */
-    void pushCustomVideoFrame(String trackId, int bufferIndex, long nativeBuffer, long fenceHandle,
+    void pushCustomVideoFrame(String trackId, int renderTargetIndex, long nativeBuffer, long fenceHandle,
             long fenceSignaledValue, long timestampNs, int rotation) {
         CustomVideoCaptureController controller = customVideoControllers.get(trackId);
         if (controller == null) {
@@ -729,7 +729,7 @@ class GetUserMediaImpl {
             CustomVideoFrameDelivery.closeFenceHandle(fenceHandle);
             controller.pushExternalBuffer(nativeBuffer, timestampNs, rotation);
         } else {
-            controller.pushFrame(bufferIndex, fenceHandle, fenceSignaledValue, timestampNs, rotation);
+            controller.pushFrame(renderTargetIndex, fenceHandle, fenceSignaledValue, timestampNs, rotation);
         }
     }
 
@@ -835,8 +835,8 @@ class GetUserMediaImpl {
                  *     -> dispose VideoSource/VideoTrack (quiesce encoder)
                  *     -> free GL imports.
                  * releaseGpuResources() no longer frees the AHBs: in pooled mode
-                 * they are owned by the CustomVideoBufferPool and freed by JS via
-                 * releaseCustomVideoBufferPool (after this, once the OES textures
+                 * they are owned by the CustomVideoRenderTargetPool and freed by JS via
+                 * releaseCustomVideoRenderTargetPool (after this, once the OES textures
                  * aliasing them are gone); forwarding buffers are freed per frame by
                  * their VideoFrame release callback. The generic path below frees
                  * capturer resources before mediaSource/track, which is unsafe for
@@ -902,7 +902,7 @@ class GetUserMediaImpl {
 
         // Dispose any buffer pools JS never released (defensive; JS owns pool lifetime). Their
         // tracks were disposed above, so the GL imports aliasing these AHBs are already freed.
-        for (CustomVideoBufferPool pool : customVideoBufferPools.values()) {
+        for (CustomVideoRenderTargetPool pool : customVideoBufferPools.values()) {
             pool.dispose();
         }
         customVideoBufferPools.clear();

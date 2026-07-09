@@ -829,32 +829,32 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     /**
      * Allocates a pool of AHardwareBuffer-backed surfaces the app renders into on the GPU (pooled
      * mode). Resolves the {@code { poolId, buffers }} shape consumed by
-     * {@code src/createCustomVideoTrack.ts}. See
-     * {@link GetUserMediaImpl#createCustomVideoBufferPool(ReadableMap, Promise)}.
+     * {@code src/createCustomVideoSource.ts}. See
+     * {@link GetUserMediaImpl#createCustomVideoRenderTargetPool(ReadableMap, Promise)}.
      */
     @ReactMethod
-    public void createCustomVideoBufferPool(ReadableMap init, Promise promise) {
-        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createCustomVideoBufferPool(init, promise));
+    public void createCustomVideoRenderTargetPool(ReadableMap init, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createCustomVideoRenderTargetPool(init, promise));
     }
 
     /**
-     * Releases a pool created by {@link #createCustomVideoBufferPool(ReadableMap, Promise)}. See
-     * {@link GetUserMediaImpl#releaseCustomVideoBufferPool(String, Promise)}.
+     * Releases a pool created by {@link #createCustomVideoRenderTargetPool(ReadableMap, Promise)}. See
+     * {@link GetUserMediaImpl#releaseCustomVideoRenderTargetPool(String, Promise)}.
      */
     @ReactMethod
-    public void releaseCustomVideoBufferPool(String poolId, Promise promise) {
-        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.releaseCustomVideoBufferPool(poolId, promise));
+    public void releaseCustomVideoRenderTargetPool(String poolId, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.releaseCustomVideoRenderTargetPool(poolId, promise));
     }
 
     /**
      * Creates a custom video track ({@code { poolId? }}; pooled when present, forwarding when
      * absent). Resolves the {@code { streamId, track }} shape consumed by
-     * {@code src/createCustomVideoTrack.ts}. See
-     * {@link GetUserMediaImpl#createCustomVideoTrack(ReadableMap, Promise)}.
+     * {@code src/createCustomVideoSource.ts}. See
+     * {@link GetUserMediaImpl#createCustomVideoSource(ReadableMap, Promise)}.
      */
     @ReactMethod
-    public void createCustomVideoTrack(ReadableMap init, Promise promise) {
-        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createCustomVideoTrack(init, promise));
+    public void createCustomVideoSource(ReadableMap init, Promise promise) {
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createCustomVideoSource(init, promise));
     }
 
     @ReactMethod
@@ -1024,9 +1024,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             // Custom video tracks need a JSI CallInvoker; absent on the old architecture.
             if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
                 videoPushInstaller = new FJVideoPushInstaller(ctx,
-                        (trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue)
+                        (trackId, renderTargetIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue)
                                 -> getUserMediaImpl.pushCustomVideoFrame(trackId,
-                                        bufferIndex,
+                                        renderTargetIndex,
                                         nativeBuffer,
                                         fenceHandle,
                                         fenceSignaledValue,

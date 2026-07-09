@@ -11,15 +11,15 @@ NS_ASSUME_NONNULL_BEGIN
  * pushes them back by index.
  *
  * The pool is owned independently of any capture controller (it maps 1:1 to a
- * track, but its lifetime is managed by the JS `CustomVideoBufferPool.dispose`
- * path via `releaseCustomVideoBufferPool`, not by track teardown). It holds:
+ * track, but its lifetime is managed by the JS `CustomVideoRenderTargetPool.dispose`
+ * path via `releaseCustomVideoRenderTargetPool`, not by track teardown). It holds:
  *   - the buffer dimensions,
  *   - the CVPixelBufferPoolRef,
  *   - the index-stable buffers (JS imports each IOSurface exactly once and
  *     addresses them by index forever after),
- *   - the JS-facing `bufferDescriptors`.
+ *   - the JS-facing `renderTargetDescriptors`.
  */
-@interface CustomVideoBufferPool : NSObject
+@interface CustomVideoRenderTargetPool : NSObject
 
 /**
  * Allocates the pool and all its buffers (kCVPixelFormatType_32BGRA,
@@ -44,7 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
  * The handle is emitted as a decimal string to avoid losing precision through a
  * JS double (a 64-bit pointer does not fit exactly in a double).
  */
-@property(nonatomic, readonly) NSArray<NSDictionary *> *bufferDescriptors;
+@property(nonatomic, readonly) NSArray<NSDictionary *> *renderTargetDescriptors;
 
 /** Number of buffers in the pool. */
 @property(nonatomic, readonly) NSInteger count;
@@ -57,13 +57,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Whether this pool is already bound to a track. Enforces the 1<->1 pool/track
- * relationship: createCustomVideoTrack sets it and rejects a second attach.
+ * relationship: createCustomVideoSource sets it and rejects a second attach.
  */
 @property(nonatomic, assign) BOOL attached;
 
 /**
  * The capture controller of the track this pool is bound to; nil until attached
- * (and again once the controller deallocates). `releaseCustomVideoBufferPool`
+ * (and again once the controller deallocates). `releaseCustomVideoRenderTargetPool`
  * consults it (together with its `tornDown` state) to refuse disposal while the
  * track is still live — in-flight frame deliveries may hold this pool's
  * CVPixelBuffers.

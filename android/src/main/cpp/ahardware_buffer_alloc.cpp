@@ -5,7 +5,7 @@
 // releases it later. JS/WebGPU imports that pointer via react-native-webgpu's
 // importSharedTextureMemory({handle}) and renders into it; the rendered AHB is
 // then delivered to WebRTC by custom_video_gl.cpp. Pooling (N buffers at stable
-// indices) lives one layer up, in CustomVideoBufferPool.java.
+// indices) lives one layer up, in CustomVideoRenderTargetPool.java.
 //
 // The AHardwareBuffer_* APIs are __INTRODUCED_IN(26), so every call is wrapped in
 // __builtin_available(android 26, *) to compile against minSdk 24. Callers

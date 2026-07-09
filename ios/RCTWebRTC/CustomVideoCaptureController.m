@@ -13,8 +13,8 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
     RTCVideoSource *_videoSource;
 
     // The buffer pool for pooled mode; nil in forwarding mode. Held strongly, but
-    // owned by the JS dispose path (releaseCustomVideoBufferPool), not by us.
-    CustomVideoBufferPool *_pool;
+    // owned by the JS dispose path (releaseCustomVideoRenderTargetPool), not by us.
+    CustomVideoRenderTargetPool *_pool;
 
     // Single listener + dedicated serial queue for all fence callbacks. Created
     // only in pooled mode; nil in forwarding mode (no fence to wait on).
@@ -36,7 +36,7 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
     BOOL _tornDown;
 }
 
-- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource pool:(CustomVideoBufferPool *)pool {
+- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource pool:(CustomVideoRenderTargetPool *)pool {
     self = [super init];
     if (!self) {
         return nil;
@@ -128,7 +128,7 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
 
 #pragma mark - Frame push
 
-- (void)pushFrameForBufferIndex:(NSInteger)bufferIndex
+- (void)pushFrameForRenderTargetIndex:(NSInteger)renderTargetIndex
                     fenceHandle:(uint64_t)fenceHandle
              fenceSignaledValue:(uint64_t)fenceSignaledValue
                     timestampNs:(int64_t)timestampNs
@@ -137,9 +137,9 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
     NSInteger frameGeneration = 0;
 
     [_drainCondition lock];
-    if (bufferIndex < 0 || bufferIndex >= _pool.count) {
+    if (renderTargetIndex < 0 || renderTargetIndex >= _pool.count) {
         [_drainCondition unlock];
-        NSLog(@"[CustomVideoCaptureController] pushFrame: bufferIndex %ld out of range", (long)bufferIndex);
+        NSLog(@"[CustomVideoCaptureController] pushFrame: renderTargetIndex %ld out of range", (long)renderTargetIndex);
         return;
     }
     if (!_accepting || _tornDown) {
@@ -147,7 +147,7 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
         return;
     }
     frameGeneration = _generation;
-    buffer = [_pool pixelBufferAtIndex:bufferIndex];
+    buffer = [_pool pixelBufferAtIndex:renderTargetIndex];
     _inFlightCount++;
     [_drainCondition unlock];
 
@@ -341,8 +341,8 @@ static NSTimeInterval const kCustomVideoDrainTimeoutSeconds = 2.0;
     _tornDown = YES;
     [_drainCondition unlock];
 
-    // The buffer pool is owned separately (CustomVideoBufferPool) and released via
-    // releaseCustomVideoBufferPool; nothing to free here. A completion starting
+    // The buffer pool is owned separately (CustomVideoRenderTargetPool) and released via
+    // releaseCustomVideoRenderTargetPool; nothing to free here. A completion starting
     // after _tornDown is set observes it and skips delivery; an armed notify block
     // still fires and balances its CFRetain.
 }

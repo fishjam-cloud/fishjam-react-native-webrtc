@@ -11,13 +11,13 @@ import com.facebook.react.bridge.WritableMap;
  * pushes them back by index.
  *
  * <p>The pool is owned independently of any capture controller (it maps 1:1 to a
- * track, but its lifetime is managed by the JS {@code CustomVideoBufferPool.dispose}
- * path via {@code releaseCustomVideoBufferPool}, not by track teardown). It holds:
+ * track, but its lifetime is managed by the JS {@code CustomVideoRenderTargetPool.dispose}
+ * path via {@code releaseCustomVideoRenderTargetPool}, not by track teardown). It holds:
  * <ul>
  *   <li>the buffer dimensions,</li>
  *   <li>the index-stable AHB handles (JS imports each surface exactly once and
  *       addresses it by index forever after),</li>
- *   <li>the JS-facing {@code bufferDescriptors},</li>
+ *   <li>the JS-facing {@code renderTargetDescriptors},</li>
  *   <li>an {@link #tryAttach attached} flag enforcing the 1&lt;-&gt;1 pool/track
  *       relationship.</li>
  * </ul>
@@ -26,7 +26,7 @@ import com.facebook.react.bridge.WritableMap;
  * reject on {@code SDK_INT < 26} before referencing this class, which would
  * otherwise trigger {@link AHardwareBufferAllocator}'s {@code System.loadLibrary}.
  */
-final class CustomVideoBufferPool {
+final class CustomVideoRenderTargetPool {
     private final int width;
     private final int height;
 
@@ -41,7 +41,7 @@ final class CustomVideoBufferPool {
     private boolean attached = false;
     /**
      * The controller of the track this pool is bound to; null until attached.
-     * Used by {@code releaseCustomVideoBufferPool} to refuse disposal while the
+     * Used by {@code releaseCustomVideoRenderTargetPool} to refuse disposal while the
      * track is still live (its delivery may hold in-flight references to these
      * AHBs).
      */
@@ -59,7 +59,7 @@ final class CustomVideoBufferPool {
      * @throws IllegalArgumentException if width/height/poolSize are not positive.
      * @throws RuntimeException         if any AHB allocation fails.
      */
-    CustomVideoBufferPool(int width, int height, int poolSize) {
+    CustomVideoRenderTargetPool(int width, int height, int poolSize) {
         if (width <= 0 || height <= 0 || poolSize <= 0) {
             throw new IllegalArgumentException("width, height and poolSize must all be positive");
         }
@@ -123,13 +123,13 @@ final class CustomVideoBufferPool {
 
     /**
      * Builds the JS-facing buffer descriptors, one per AHB, in index order. Shape
-     * matches iOS and the {@code createCustomVideoTrack.ts} contract:
+     * matches iOS and the {@code createCustomVideoSource.ts} contract:
      * {@code { index, surfaceHandle: String(handle), width, height }}. The handle is
      * a decimal string of the {@code AHardwareBuffer*} so a 64-bit pointer survives
      * JS; convert with {@code BigInt(surfaceHandle)} before
      * {@code device.importSharedTextureMemory({ handle })}.
      */
-    WritableArray getBufferDescriptors() {
+    WritableArray getRenderTargetDescriptors() {
         WritableArray descriptors = Arguments.createArray();
         for (int index = 0; index < bufferHandles.length; index++) {
             WritableMap descriptor = Arguments.createMap();

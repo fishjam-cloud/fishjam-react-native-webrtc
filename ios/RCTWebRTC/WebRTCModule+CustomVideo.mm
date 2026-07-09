@@ -9,7 +9,7 @@
 #define FJ_HAS_CALL_INVOKER 1
 #endif
 
-#import "CustomVideoBufferPool.h"
+#import "CustomVideoRenderTargetPool.h"
 #import "CustomVideoCaptureController.h"
 #import "FJVideoPushJSI.h"
 #import "RTCMediaStreamTrack+React.h"
@@ -124,13 +124,13 @@ static int64_t FJMonotonicTimeNs(void) {
     return [self registeredCustomVideoControllerForTrackId:trackId];
 }
 
-#pragma mark - CustomVideoBufferPool registry
+#pragma mark - CustomVideoRenderTargetPool registry
 
-// Lazily-created poolId -> CustomVideoBufferPool registry, stored as an associated
+// Lazily-created poolId -> CustomVideoRenderTargetPool registry, stored as an associated
 // object on the module. Strong values (the pool must outlive the JS handle until
 // disposed), lock-guarded on the registry object. Pools are owned by JS: an entry
-// is added by createCustomVideoBufferPool and removed by releaseCustomVideoBufferPool.
-- (NSMutableDictionary<NSString *, CustomVideoBufferPool *> *)customVideoBufferPoolRegistry {
+// is added by createCustomVideoRenderTargetPool and removed by releaseCustomVideoRenderTargetPool.
+- (NSMutableDictionary<NSString *, CustomVideoRenderTargetPool *> *)customVideoBufferPoolRegistry {
     static const void *key = &key;
     @synchronized(self) {
         NSMutableDictionary *registry = objc_getAssociatedObject(self, key);
@@ -142,7 +142,7 @@ static int64_t FJMonotonicTimeNs(void) {
     }
 }
 
-- (CustomVideoBufferPool *)registeredCustomVideoBufferPoolForPoolId:(NSString *)poolId {
+- (CustomVideoRenderTargetPool *)registeredCustomVideoRenderTargetPoolForPoolId:(NSString *)poolId {
     if (poolId == nil) {
         return nil;
     }
@@ -152,7 +152,7 @@ static int64_t FJMonotonicTimeNs(void) {
     }
 }
 
-RCT_EXPORT_METHOD(createCustomVideoBufferPool
+RCT_EXPORT_METHOD(createCustomVideoRenderTargetPool
                   : (NSDictionary *)init resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
@@ -171,7 +171,7 @@ RCT_EXPORT_METHOD(createCustomVideoBufferPool
     }
 
     NSError *error = nil;
-    CustomVideoBufferPool *pool = [[CustomVideoBufferPool alloc] initWithWidth:width
+    CustomVideoRenderTargetPool *pool = [[CustomVideoRenderTargetPool alloc] initWithWidth:width
                                                                        height:height
                                                                      poolSize:poolSize
                                                                         error:&error];
@@ -190,12 +190,12 @@ RCT_EXPORT_METHOD(createCustomVideoBufferPool
 
     resolve(@{
         @"poolId" : poolId,
-        @"buffers" : pool.bufferDescriptors,
+        @"renderTargets" : pool.renderTargetDescriptors,
     });
 #endif
 }
 
-RCT_EXPORT_METHOD(releaseCustomVideoBufferPool
+RCT_EXPORT_METHOD(releaseCustomVideoRenderTargetPool
                   : (NSString *)poolId resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
@@ -204,7 +204,7 @@ RCT_EXPORT_METHOD(releaseCustomVideoBufferPool
         return;
     }
     NSMutableDictionary *registry = [self customVideoBufferPoolRegistry];
-    CustomVideoBufferPool *pool = nil;
+    CustomVideoRenderTargetPool *pool = nil;
     @synchronized(registry) {
         pool = registry[poolId];
     }
@@ -250,7 +250,7 @@ RCT_REMAP_METHOD(installCustomVideoJSI,
     // the resolved uint64 fence. __weak self avoids a retain cycle through the
     // associated-object box (self -> box -> push -> deliver_ -> self).
     __weak WebRTCModule *weakSelf = self;
-    box->push->setDeliver([weakSelf](const std::string &trackId, int bufferIndex, uint64_t nativeBuffer,
+    box->push->setDeliver([weakSelf](const std::string &trackId, int renderTargetIndex, uint64_t nativeBuffer,
                                      uint64_t timestampNs, int rotation, uint64_t fenceHandle,
                                      uint64_t fenceSignaledValue) {
         WebRTCModule *strongSelf = weakSelf;
@@ -275,8 +275,8 @@ RCT_REMAP_METHOD(installCustomVideoJSI,
                                            timestampNs:stampNs
                                               rotation:(RTCVideoRotation)rotation];
         } else {
-            // Pooled: deliver bufferIndex with the resolved fence, as before.
-            [captureController pushFrameForBufferIndex:bufferIndex
+            // Pooled: deliver renderTargetIndex with the resolved fence, as before.
+            [captureController pushFrameForRenderTargetIndex:renderTargetIndex
                                            fenceHandle:fenceHandle
                                     fenceSignaledValue:fenceSignaledValue
                                            timestampNs:(int64_t)timestampNs

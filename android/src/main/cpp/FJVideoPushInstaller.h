@@ -1,6 +1,6 @@
 // fbjni HybridClass backing com.oney.WebRTCModule.FJVideoPushInstaller.
 //
-// Installs the JS global `__fishjamWebrtcGetCustomVideoSink` on the JS thread
+// Installs the JS global `__fishjamWebrtcGetCustomVideoPushChannel` on the JS thread
 // (via the CallInvoker), then notifies the Java peer so the install Promise
 // resolves only once the global actually exists. Each frame pushed through a
 // sink obtained from that global is forwarded back to the Java peer's

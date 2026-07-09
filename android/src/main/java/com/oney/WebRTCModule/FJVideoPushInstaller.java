@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Installs the JS global {@code __fishjamWebrtcGetCustomVideoSink(trackId)} through
+ * Installs the JS global {@code __fishjamWebrtcGetCustomVideoPushChannel(trackId)} through
  * which the JS SDK obtains the per-track sink used to push custom video frames.
  *
  * <p>A JSI global must be set on the JS thread with the live runtime, which a
@@ -35,10 +35,10 @@ final class FJVideoPushInstaller {
     /**
      * Routes one JS-pushed frame to its track's delivery engine. {@code nativeBuffer}
      * is the forwarding discriminator: non-zero is a finished {@code AHardwareBuffer*}
-     * to forward; zero means pooled delivery of {@code bufferIndex}.
+     * to forward; zero means pooled delivery of {@code renderTargetIndex}.
      */
     interface FrameRouter {
-        void route(String trackId, int bufferIndex, long nativeBuffer, long timestampNs, int rotation, long fenceHandle,
+        void route(String trackId, int renderTargetIndex, long nativeBuffer, long timestampNs, int rotation, long fenceHandle,
                 long fenceSignaledValue);
     }
 
@@ -95,13 +95,13 @@ final class FJVideoPushInstaller {
      * so the router must be thread-safe and dispatch synchronously (the forwarding
      * path must retain {@code nativeBuffer} before this returns). {@code nativeBuffer}
      * non-zero is a finished {@code AHardwareBuffer*} to forward; zero means pooled
-     * delivery of {@code bufferIndex}. {@code fenceHandle} is a sync-fd
+     * delivery of {@code renderTargetIndex}. {@code fenceHandle} is a sync-fd
      * ({@code 0} = no fence); {@code fenceSignaledValue} is unused on Android.
      */
     @DoNotStrip
-    private void deliverFrame(String trackId, int bufferIndex, long nativeBuffer, long timestampNs, int rotation,
+    private void deliverFrame(String trackId, int renderTargetIndex, long nativeBuffer, long timestampNs, int rotation,
             long fenceHandle, long fenceSignaledValue) {
-        frameRouter.route(trackId, bufferIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue);
+        frameRouter.route(trackId, renderTargetIndex, nativeBuffer, timestampNs, rotation, fenceHandle, fenceSignaledValue);
     }
 
     @DoNotStrip

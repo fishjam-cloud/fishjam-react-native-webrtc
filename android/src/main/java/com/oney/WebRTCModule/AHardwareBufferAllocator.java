@@ -3,7 +3,7 @@ package com.oney.WebRTCModule;
 /**
  * Thin Java front for the native AHardwareBuffer (AHB) allocation primitives
  * used by the Android custom-video-track. Pooling (N buffers at stable indices)
- * lives in {@link CustomVideoBufferPool}; this class only allocates and releases
+ * lives in {@link CustomVideoRenderTargetPool}; this class only allocates and releases
  * single buffers.
  *
  * <p>Allocates and releases AHBs that are both GPU-renderable

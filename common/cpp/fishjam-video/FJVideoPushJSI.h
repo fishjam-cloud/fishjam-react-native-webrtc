@@ -1,8 +1,8 @@
 // JSI channel for pushing custom video frames from JS to native.
 //
-// Installs `__fishjamWebrtcGetCustomVideoSink(trackId)` on the JS runtime, which
-// returns a per-track `CustomVideoSink` host object with a `push(frame)` method.
-// Because react-native-worklets serializes host objects *by reference*, this sink
+// Installs `__fishjamWebrtcGetCustomVideoPushChannel(trackId)` on the JS runtime, which
+// returns a per-track `CustomVideoPushChannel` host object with a `push(frame)` method.
+// Because react-native-worklets serializes host objects *by reference*, this channel
 // can be captured into a frame-processor worklet and its `push` dispatches
 // synchronously on the worklet thread to the same native instance — no hop. Each
 // push is routed to a platform-registered delivery callback that resolves the
@@ -23,14 +23,14 @@
 
 class FJVideoPush;
 
-// Per-track push handle handed to JS on `track.sink`. Holds only the bound
-// `trackId` and a weak reference to the owning FJVideoPush; every `push` forwards
-// to the shared platform delivery callback with this sink's `trackId`. Shared by
+// Per-track push handle handed to JS on the sink's `pushChannel`. Holds only the
+// bound `trackId` and a weak reference to the owning FJVideoPush; every `push` forwards
+// to the shared platform delivery callback with this channel's `trackId`. Shared by
 // reference into worklet runtimes, so `push` runs synchronously wherever it is
 // called (worklet or main JS).
-class CustomVideoSink : public facebook::jsi::HostObject {
+class CustomVideoPushChannel : public facebook::jsi::HostObject {
    public:
-    CustomVideoSink(std::weak_ptr<FJVideoPush> owner, std::string trackId)
+    CustomVideoPushChannel(std::weak_ptr<FJVideoPush> owner, std::string trackId)
         : owner_(std::move(owner)), trackId_(std::move(trackId)) {}
 
     facebook::jsi::Value get(facebook::jsi::Runtime &rt, const facebook::jsi::PropNameID &name) override;
@@ -47,11 +47,11 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
    public:
     // Called for every frame pushed from JS, resolved to primitive values.
     //   * `nativeBuffer` non-zero  -> forwarding: a retainable CVPixelBufferRef /
-    //     AHardwareBuffer* to wrap and deliver (bufferIndex/fence unused).
-    //   * `nativeBuffer` zero      -> pooled: deliver `bufferIndex` with the
+    //     AHardwareBuffer* to wrap and deliver (renderTargetIndex/fence unused).
+    //   * `nativeBuffer` zero      -> render-target: deliver `renderTargetIndex` with the
     //     resolved fence (`0`/`0` when no fence was supplied).
     using DeliverFn = std::function<void(const std::string &trackId,
-                                         int bufferIndex,
+                                         int renderTargetIndex,
                                          uint64_t nativeBuffer,
                                          uint64_t timestampNs,
                                          int rotation,
@@ -60,7 +60,7 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
 
     explicit FJVideoPush(std::shared_ptr<facebook::react::CallInvoker> jsInvoker) : jsInvoker_(std::move(jsInvoker)) {}
 
-    // Installs the `__fishjamWebrtcGetCustomVideoSink` global; invokes
+    // Installs the `__fishjamWebrtcGetCustomVideoPushChannel` global; invokes
     // onInstalled on the JS thread once ready.
     void install(std::function<void()> onInstalled);
 
@@ -73,16 +73,16 @@ class FJVideoPush : public std::enable_shared_from_this<FJVideoPush> {
     void setDeliver(DeliverFn deliver);
 
     // Parses a JS frame object and forwards it to the delivery callback under
-    // `trackId`. Shared by every CustomVideoSink. Malformed frames are dropped
+    // `trackId`. Shared by every CustomVideoPushChannel. Malformed frames are dropped
     // (never throws back into JS on the hot path).
     void deliverFrame(facebook::jsi::Runtime &rt, const std::string &trackId, const facebook::jsi::Object &frame);
 
    private:
-    // Returns a fresh sink host object bound to `trackId`. Called on the JS runtime
-    // inside the get-sink global. Not retained natively: JS fetches a track's sink
-    // exactly once and owns its lifetime (the host object is freed when the last
+    // Returns a fresh push-channel host object bound to `trackId`. Called on the JS
+    // runtime inside the get-push-channel global. Not retained natively: JS fetches a
+    // track's channel exactly once and owns its lifetime (the host object is freed when the last
     // runtime referencing it drops it), so there is nothing to cache or leak.
-    facebook::jsi::Value getSink(facebook::jsi::Runtime &rt, const std::string &trackId);
+    facebook::jsi::Value getPushChannel(facebook::jsi::Runtime &rt, const std::string &trackId);
 
     std::shared_ptr<facebook::react::CallInvoker> jsInvoker_;
     // Swapped under deliverMutex_ (setDeliver may race in-flight worklet pushes

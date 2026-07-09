@@ -13,7 +13,7 @@ FJVideoPushInstaller::FJVideoPushInstaller(jni::alias_ref<jhybridobject> javaThi
     // Route every JS-pushed frame back to the Java peer, which forwards it to the
     // matching CustomVideoFrameDelivery. `nativeBuffer` is the forwarding
     // discriminator: non-zero => a finished AHardwareBuffer* to forward
-    // (bufferIndex/fence unused); zero => pooled delivery of `bufferIndex` with the
+    // (renderTargetIndex/fence unused); zero => pooled delivery of `renderTargetIndex` with the
     // sync-fd carried in fenceHandle (fenceSignaledValue unused on Android — the fd
     // already encodes the signal — but forwarded for parity with the shared
     // DeliverFn contract).
@@ -25,7 +25,7 @@ FJVideoPushInstaller::FJVideoPushInstaller(jni::alias_ref<jhybridobject> javaThi
     // already attached (e.g. the RN JS thread), so the pooled path pays nothing.
     // Capturing the global_ref keeps the Java peer alive for the callback lifetime.
     auto javaPart = javaPart_;
-    push_->setDeliver([javaPart](const std::string &trackId, int bufferIndex, uint64_t nativeBuffer,
+    push_->setDeliver([javaPart](const std::string &trackId, int renderTargetIndex, uint64_t nativeBuffer,
                                  uint64_t timestampNs, int rotation, uint64_t fenceHandle,
                                  uint64_t fenceSignaledValue) {
         facebook::jni::ThreadScope threadScope;
@@ -33,7 +33,7 @@ FJVideoPushInstaller::FJVideoPushInstaller(jni::alias_ref<jhybridobject> javaThi
             javaPart->getClass()
                 ->getMethod<void(jni::alias_ref<jstring>, jint, jlong, jlong, jint, jlong, jlong)>(
                     "deliverFrame");
-        deliverFrame(javaPart, jni::make_jstring(trackId), static_cast<jint>(bufferIndex),
+        deliverFrame(javaPart, jni::make_jstring(trackId), static_cast<jint>(renderTargetIndex),
                      static_cast<jlong>(nativeBuffer), static_cast<jlong>(timestampNs),
                      static_cast<jint>(rotation), static_cast<jlong>(fenceHandle),
                      static_cast<jlong>(fenceSignaledValue));

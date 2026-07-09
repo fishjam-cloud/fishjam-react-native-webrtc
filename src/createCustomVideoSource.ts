@@ -45,10 +45,9 @@ import type { MediaStreamTrackInfo } from './MediaStreamTrack';
 const { WebRTCModule } = NativeModules;
 
 // Installed natively once the JSI binding is in place (see installCustomVideoJSI).
-// Returns the per-track push channel used for hop-free pushes. The binding name is
-// part of the native contract and is intentionally left unchanged.
+// Returns the per-track push channel used for hop-free pushes.
 declare const global: {
-    __fishjamWebrtcGetCustomVideoSink?: (trackId: string) => CustomVideoPushChannel;
+    __fishjamWebrtcGetCustomVideoPushChannel?: (trackId: string) => CustomVideoPushChannel;
 };
 
 // The old architecture has no JSI-capable invoker, so the install may never
@@ -100,7 +99,7 @@ function ensureInstalled(): Promise<void> {
         );
     });
     const install = WebRTCModule.installCustomVideoJSI().then(() => {
-        if (typeof global.__fishjamWebrtcGetCustomVideoSink !== 'function') {
+        if (typeof global.__fishjamWebrtcGetCustomVideoPushChannel !== 'function') {
             throw new Error('Custom video source binding was not installed.');
         }
     });
@@ -125,7 +124,7 @@ type BridgeRenderTarget = {
 
 type BridgeRenderTargetPool = {
     poolId: string;
-    buffers: BridgeRenderTarget[];
+    renderTargets: BridgeRenderTarget[];
 };
 
 type BridgeCustomVideoTrack = {
@@ -341,19 +340,18 @@ export async function createCustomVideoRenderTargetPool(
 
     let data: BridgeRenderTargetPool;
     try {
-        // Native method name is part of the contract; only the JS API is renamed.
-        data = await WebRTCModule.createCustomVideoBufferPool(init);
+        data = await WebRTCModule.createCustomVideoRenderTargetPool(init);
     } catch (error) {
         throw new MediaStreamError(error);
     }
 
     // The bridge carries each surface handle as a decimal string; expose it as a
     // bigint, the public type the GPU import path consumes.
-    const renderTargets: CustomVideoRenderTarget[] = data.buffers.map((buffer) => ({
-        index: buffer.index,
-        surfaceHandle: BigInt(buffer.surfaceHandle),
-        width: buffer.width,
-        height: buffer.height,
+    const renderTargets: CustomVideoRenderTarget[] = data.renderTargets.map((renderTarget) => ({
+        index: renderTarget.index,
+        surfaceHandle: BigInt(renderTarget.surfaceHandle),
+        width: renderTarget.width,
+        height: renderTarget.height,
     }));
 
     let disposed = false;
@@ -366,7 +364,7 @@ export async function createCustomVideoRenderTargetPool(
             }
             // Latch only after the native release succeeds: a rejected release
             // (e.g. the bound source is still live) must stay retryable.
-            await WebRTCModule.releaseCustomVideoBufferPool(data.poolId);
+            await WebRTCModule.releaseCustomVideoRenderTargetPool(data.poolId);
             disposed = true;
         },
     };
@@ -381,8 +379,7 @@ async function createBackingTrack(
 
     let data: BridgeCustomVideoTrack;
     try {
-        // Native method name is part of the contract; only the JS API is renamed.
-        data = await WebRTCModule.createCustomVideoTrack({ poolId });
+        data = await WebRTCModule.createCustomVideoSource({ poolId });
     } catch (error) {
         throw new MediaStreamError(error);
     }
@@ -394,7 +391,7 @@ async function createBackingTrack(
         tracks: [track],
     });
 
-    const pushChannel = global.__fishjamWebrtcGetCustomVideoSink!(track.id);
+    const pushChannel = global.__fishjamWebrtcGetCustomVideoPushChannel!(track.id);
     return { stream, trackId: track.id, pushChannel };
 }
 
@@ -453,14 +450,7 @@ export async function createRenderTargetSource(init: {
  */
 export function renderFrame(sink: RenderSink, frame: RenderFrameArgs): void {
     'worklet';
-    // The native push channel reads `bufferIndex`; map the public render-target index
-    // onto it (the native field name is part of the contract).
-    sink.pushChannel.push({
-        bufferIndex: frame.renderTargetIndex,
-        timestampNs: frame.timestampNs,
-        rotation: frame.rotation,
-        fence: frame.fence,
-    });
+    sink.pushChannel.push(frame);
 }
 
 /**

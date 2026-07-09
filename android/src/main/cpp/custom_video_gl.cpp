@@ -272,7 +272,7 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeCloseFd(
 
 // --- Forwarding-mode AHardwareBuffer ref-counting / describe ---
 //
-// Unlike the pooled path (whose AHBs are owned by CustomVideoBufferPool), a
+// Unlike the pooled path (whose AHBs are owned by CustomVideoRenderTargetPool), a
 // forwarded frame hands us an app-owned AHardwareBuffer* that the caller releases
 // right after the push returns. We take an owning reference before returning and
 // balance it once the delivered VideoFrame is released. These three functions

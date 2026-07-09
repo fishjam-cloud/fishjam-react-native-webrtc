@@ -4,7 +4,7 @@
 #import <WebRTC/RTCVideoSource.h>
 
 #import "CaptureController.h"
-#import "CustomVideoBufferPool.h"
+#import "CustomVideoRenderTargetPool.h"
 #import "WebRTCModule.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -15,24 +15,24 @@ NS_ASSUME_NONNULL_BEGIN
  * and this controller pushes them into the WebRTC pipeline. Two modes:
  *
  *   * Pooled — the app renders GPU frames into the IOSurface-backed
- *     CVPixelBuffers of a CustomVideoBufferPool and pushes them back by index,
+ *     CVPixelBuffers of a CustomVideoRenderTargetPool and pushes them back by index,
  *     optionally guarded by a Metal shared-event fence. The controller holds a
  *     strong reference to the pool but does not own it; the pool is disposed
- *     separately via releaseCustomVideoBufferPool.
+ *     separately via releaseCustomVideoRenderTargetPool.
  *   * Forwarding — the frames are already produced natively (a camera,
  *     VisionCamera, a native ML pipeline) and the app forwards a finished
  *     CVPixelBufferRef; no pool and no fence are involved.
  *
  * Pooled data flow:
- *   1. createCustomVideoBufferPool({width, height, poolSize}) allocates a pool
+ *   1. createCustomVideoRenderTargetPool({width, height, poolSize}) allocates a pool
  *      of CVPixelBuffers (kCVPixelFormatType_32BGRA, IOSurface-backed) and hands
  *      each IOSurface handle to JS, which imports each one once
  *      (react-native-webgpu importSharedTextureMemory).
- *   2. createCustomVideoTrack({poolId}) builds this controller bound to that
+ *   2. createCustomVideoSource({poolId}) builds this controller bound to that
  *      pool together with an RTCVideoSource.
  *   3. Per frame, JS renders into buffer[index], submits, and exports a Metal
  *      shared-event fence; it then pushes the frame through the JSI channel,
- *      which resolves the fence bigints and calls pushFrameForBufferIndex:...
+ *      which resolves the fence bigints and calls pushFrameForRenderTargetIndex:...
  *      with the shared-event handle and the value the GPU will signal once the
  *      render is complete.
  *   4. This controller arms an MTLSharedEventListener on that value; when the
@@ -48,7 +48,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param videoSource the source that frames are delivered to.
  * @param pool        the buffer pool this track renders into and pushes by index.
  */
-- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource pool:(CustomVideoBufferPool *)pool;
+- (instancetype)initPooledWithVideoSource:(RTCVideoSource *)videoSource pool:(CustomVideoRenderTargetPool *)pool;
 
 /**
  * Builds a forwarding controller with no pool. Frames arrive as finished native
@@ -73,14 +73,14 @@ NS_ASSUME_NONNULL_BEGIN
                        rotation:(RTCVideoRotation)rotation;
 
 /**
- * Pushes the frame currently rendered into buffer[bufferIndex] once the GPU
+ * Pushes the frame currently rendered into buffer[renderTargetIndex] once the GPU
  * signals the fence. Fire-and-forget: there is no completion callback because
  * this is called once per frame and must stay cheap.
  *
  * The fence is delivered as a raw 64-bit handle plus a signaled value: the JSI
  * channel has already parsed the JS bigints, so no string parsing happens here.
  *
- * @param bufferIndex        pool index that JS rendered into.
+ * @param renderTargetIndex        pool index that JS rendered into.
  * @param fenceHandle        the exported MTLSharedEvent handle reinterpreted as
  *                          uint64_t. A handle of 0 means no fence was supplied
  *                          and the frame is delivered immediately.
@@ -88,7 +88,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @param timestampNs        frame timestamp in nanoseconds.
  * @param rotation           frame rotation.
  */
-- (void)pushFrameForBufferIndex:(NSInteger)bufferIndex
+- (void)pushFrameForRenderTargetIndex:(NSInteger)renderTargetIndex
                     fenceHandle:(uint64_t)fenceHandle
              fenceSignaledValue:(uint64_t)fenceSignaledValue
                     timestampNs:(int64_t)timestampNs
@@ -97,7 +97,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Whether releaseCaptureResources has completed. Once true, no in-flight
  * delivery can reference the pool's CVPixelBuffers, so the pool may be disposed
- * safely (releaseCustomVideoBufferPool consults this via the pool's
+ * safely (releaseCustomVideoRenderTargetPool consults this via the pool's
  * attachedController).
  */
 @property(nonatomic, readonly, getter=isTornDown) BOOL tornDown;
@@ -105,7 +105,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Drains any in-flight deliveries and marks the controller torn down so no more
  * frames are pushed. Does NOT release the buffer pool: in pooled mode the pool is
- * owned separately and freed via releaseCustomVideoBufferPool.
+ * owned separately and freed via releaseCustomVideoRenderTargetPool.
  *
  * `stopCapture` is only a pause hook because it is used by
  * mediaStreamTrackSetEnabled(false). Call this from true track disposal paths
@@ -135,10 +135,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 /**
  * Looks up the buffer pool registered under poolId, or nil if none. The pool
- * registry holds strong references; entries are added by createCustomVideoBufferPool
- * and removed by releaseCustomVideoBufferPool.
+ * registry holds strong references; entries are added by createCustomVideoRenderTargetPool
+ * and removed by releaseCustomVideoRenderTargetPool.
  */
-- (nullable CustomVideoBufferPool *)registeredCustomVideoBufferPoolForPoolId:(NSString *)poolId;
+- (nullable CustomVideoRenderTargetPool *)registeredCustomVideoRenderTargetPoolForPoolId:(NSString *)poolId;
 
 @end
 

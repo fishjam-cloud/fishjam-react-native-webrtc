@@ -1,8 +1,8 @@
 #if !TARGET_OS_TV && !TARGET_OS_OSX
 
-#import "CustomVideoBufferPool.h"
+#import "CustomVideoRenderTargetPool.h"
 
-@implementation CustomVideoBufferPool {
+@implementation CustomVideoRenderTargetPool {
     // Pool and its pre-allocated, index-stable buffers. The buffers are retained
     // for the whole lifetime of the pool because JS imports each IOSurface exactly
     // once and addresses them by index forever after.
@@ -137,7 +137,7 @@
             @"height" : @(_height),
         }];
     }
-    _bufferDescriptors = [descriptors copy];
+    _renderTargetDescriptors = [descriptors copy];
 
     return YES;
 }
@@ -172,7 +172,7 @@
         CVPixelBufferPoolRelease(_pixelBufferPool);
         _pixelBufferPool = NULL;
     }
-    _bufferDescriptors = nil;
+    _renderTargetDescriptors = nil;
 }
 
 - (void)dealloc {

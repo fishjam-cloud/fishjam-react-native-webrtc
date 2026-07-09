@@ -15,10 +15,10 @@ import org.webrtc.VideoSource;
  *
  * <ul>
  *   <li><b>Pooled</b> — the app renders GPU frames into the AHB-backed surfaces of
- *       a {@link CustomVideoBufferPool} and pushes them back by index via
+ *       a {@link CustomVideoRenderTargetPool} and pushes them back by index via
  *       {@link #pushFrame}, optionally guarded by a sync-fd GPU fence. The
  *       controller holds a reference to the pool but does not own it; the pool is
- *       disposed separately via {@code releaseCustomVideoBufferPool}.</li>
+ *       disposed separately via {@code releaseCustomVideoRenderTargetPool}.</li>
  *   <li><b>Forwarding</b> — the frames are already produced natively (a camera,
  *       VisionCamera, a native ML pipeline) and the app forwards a finished
  *       {@code AHardwareBuffer*} via {@link #pushExternalBuffer}; no pool and no
@@ -40,10 +40,10 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
 
     /**
      * The buffer pool this pooled track renders into; {@code null} in forwarding
-     * mode. Owned by JS (freed via {@code releaseCustomVideoBufferPool}), so this
+     * mode. Owned by JS (freed via {@code releaseCustomVideoRenderTargetPool}), so this
      * controller never disposes it.
      */
-    private final CustomVideoBufferPool pool;
+    private final CustomVideoRenderTargetPool pool;
     private boolean disposed = false;
 
     /**
@@ -64,7 +64,7 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      *
      * @param pool the buffer pool this track renders into and pushes by index.
      */
-    CustomVideoCaptureController(CustomVideoBufferPool pool) {
+    CustomVideoCaptureController(CustomVideoRenderTargetPool pool) {
         // fps is irrelevant for an app-pushed track; reuse width/height as the
         // target/actual dimensions so getSettings() reports the real size.
         super(pool.getWidth(), pool.getHeight(), /* fps */ 0);
@@ -83,7 +83,7 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
 
     /**
      * Wires this controller to the capturer-less {@link VideoSource} created by
-     * {@link GetUserMediaImpl#createCustomVideoTrack}. Builds the
+     * {@link GetUserMediaImpl#createCustomVideoSource}. Builds the
      * {@link CustomVideoFrameDelivery} that imports the AHBs and ships frames into
      * the source. In pooled mode the delivery caches an OES texture per pool index;
      * in forwarding mode ({@code null} handles) it imports each external buffer per
@@ -105,7 +105,7 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      * Pushes one app-rendered <b>pooled</b> frame for delivery into WebRTC.
      * Fire-and-forget.
      *
-     * @param bufferIndex        pool index of the AHB the app rendered into.
+     * @param renderTargetIndex        pool index of the AHB the app rendered into.
      * @param fenceHandle        the exported GPU fence handle. On Android this is a
      *                           {@code sync-fd} file descriptor
      *                           ({@code GPUSharedFence.export()} →
@@ -118,13 +118,13 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      * @param timestampNs        frame presentation timestamp in nanoseconds.
      * @param rotation           frame rotation in degrees (0/90/180/270).
      */
-    void pushFrame(int bufferIndex, long fenceHandle, long fenceSignaledValue, long timestampNs, int rotation) {
+    void pushFrame(int renderTargetIndex, long fenceHandle, long fenceSignaledValue, long timestampNs, int rotation) {
         CustomVideoFrameDelivery delivery = frameDelivery;
         if (delivery == null) {
             Log.w(TAG, "pushFrame before attachVideoSource or after release; dropping frame");
             return;
         }
-        delivery.pushFrame(bufferIndex, fenceFdFromHandle(fenceHandle), timestampNs, rotation);
+        delivery.pushFrame(renderTargetIndex, fenceFdFromHandle(fenceHandle), timestampNs, rotation);
     }
 
     /**
@@ -233,7 +233,7 @@ class CustomVideoCaptureController extends AbstractVideoCaptureController {
      * have been disposed so the encoder is quiesced and no longer references the
      * textures; freeing earlier is a use-after-free (the encoder samples a deleted
      * texture). Does NOT free the AHBs: in pooled mode they are owned by the
-     * {@link CustomVideoBufferPool} and freed via {@code releaseCustomVideoBufferPool};
+     * {@link CustomVideoRenderTargetPool} and freed via {@code releaseCustomVideoRenderTargetPool};
      * forwarding buffers are freed per frame by their release callback. Idempotent.
      */
     void releaseGpuResources() {

@@ -134,22 +134,22 @@ final class CustomVideoFrameDelivery {
      * Pushes one app-rendered frame. Fire-and-forget: schedules the import +
      * fence wait + delivery on the GL thread and returns immediately.
      *
-     * @param bufferIndex pool index of the AHB the app rendered into.
+     * @param renderTargetIndex pool index of the AHB the app rendered into.
      * @param fenceFd     dup'd sync-fd of the GPU render-complete fence, or -1 for
      *                    the no-fence fallback (deliver immediately). EGL takes
      *                    ownership of the fd on the GL thread.
      * @param timestampNs frame presentation timestamp in nanoseconds.
      * @param rotation    frame rotation in degrees (0/90/180/270).
      */
-    void pushFrame(int bufferIndex, int fenceFd, long timestampNs, int rotation) {
+    void pushFrame(int renderTargetIndex, int fenceFd, long timestampNs, int rotation) {
         if (bufferHandles == null) {
             // Forwarding-mode delivery received a pooled push (JS misuse); drop it.
             Log.w(TAG, "pushFrame on a forwarding track; dropping frame");
             closeFd(fenceFd);
             return;
         }
-        if (bufferIndex < 0 || bufferIndex >= bufferHandles.length) {
-            Log.w(TAG, "pushFrame: bufferIndex " + bufferIndex + " out of range");
+        if (renderTargetIndex < 0 || renderTargetIndex >= bufferHandles.length) {
+            Log.w(TAG, "pushFrame: renderTargetIndex " + renderTargetIndex + " out of range");
             closeFd(fenceFd);
             return;
         }
@@ -173,9 +173,9 @@ final class CustomVideoFrameDelivery {
             // it exactly once and never double-close after the hand-off.
             int[] ownedFd = {fenceFd};
             try {
-                deliverOnGlThread(bufferIndex, ownedFd, frameGeneration, timestampNs, rotation);
+                deliverOnGlThread(renderTargetIndex, ownedFd, frameGeneration, timestampNs, rotation);
             } catch (Throwable t) {
-                Log.e(TAG, "pushFrame: delivery failed for index " + bufferIndex, t);
+                Log.e(TAG, "pushFrame: delivery failed for index " + renderTargetIndex, t);
             } finally {
                 // Close the fence fd iff it was never handed to native (import
                 // failure or a throw before nativeWaitSyncFd). After hand-off
@@ -194,22 +194,22 @@ final class CustomVideoFrameDelivery {
 
     /** Runs entirely on the GL thread (shared EGL context current). */
     private void deliverOnGlThread(
-            int bufferIndex, int[] ownedFd, long frameGeneration, long timestampNs, int rotation) {
+            int renderTargetIndex, int[] ownedFd, long frameGeneration, long timestampNs, int rotation) {
         if (!shouldDeliver(frameGeneration)) {
             return;
         }
 
         // 1. Import (once) the AHB at this index into an OES texture; reuse after.
-        int textureId = cachedTextureIds[bufferIndex];
+        int textureId = cachedTextureIds[renderTargetIndex];
         if (textureId == 0) {
-            long[] imported = nativeImportAhbToOesTexture(bufferHandles[bufferIndex]);
+            long[] imported = nativeImportAhbToOesTexture(bufferHandles[renderTargetIndex]);
             if (imported == null || imported.length != 2 || imported[1] == 0) {
-                Log.e(TAG, "AHB import failed for index " + bufferIndex);
+                Log.e(TAG, "AHB import failed for index " + renderTargetIndex);
                 return; // outer catch/finally closes ownedFd[0]
             }
-            cachedEglImages[bufferIndex] = imported[0];
-            cachedTextureIds[bufferIndex] = (int) imported[1];
-            textureId = cachedTextureIds[bufferIndex];
+            cachedEglImages[renderTargetIndex] = imported[0];
+            cachedTextureIds[renderTargetIndex] = (int) imported[1];
+            textureId = cachedTextureIds[renderTargetIndex];
         }
 
         // 2. Wait the GPU fence BEFORE the encoder samples this texture. This is a
