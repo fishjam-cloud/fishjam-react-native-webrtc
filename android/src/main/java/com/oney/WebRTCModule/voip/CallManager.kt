@@ -440,7 +440,7 @@ object CallManager {
                 channel.close()
                 audioOutputManager?.setTelecomOwnsRouting(false)
                 LockScreenController.onCallEnded()
-                ForegroundServiceController.getInstance().onCallEnded(appContext)
+                VoipForegroundServiceController.onCallEnded()
                 callNotificationManager.cancel(ctx.applicationContext)
                 VoipPushRegistry.clearPending()
                 // Dismiss IncomingCallActivity if the call ended before the
@@ -535,7 +535,7 @@ object CallManager {
     }
 
     private fun showOngoingNotification() {
-        ForegroundServiceController.getInstance().onCallStarted(appContext, displayName, videoCall)
+        VoipForegroundServiceController.onCallConnected(displayName, videoCall)
     }
 
     private fun CallEndpointCompat.toWritableMap(): WritableMap = Arguments.createMap().apply {
