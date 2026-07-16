@@ -31,14 +31,17 @@ function useCallKitIos(): UseCallKitResult {
         }
     }, []);
 
-    const endCallKitSessionCb = useCallback(async (reason?: CallEndedReason) => {
-        try {
-            await endCallKitSession(reason);
-        } catch (error) {
-            console.error('Failed to end CallKit session:', error);
-            throw error;
-        }
-    }, []);
+    const endCallKitSessionCb = useCallback(
+        async (reason?: CallEndedReason) => {
+            try {
+                await endCallKitSession(reason);
+            } catch (error) {
+                console.error('Failed to end CallKit session:', error);
+                throw error;
+            }
+        },
+        [],
+    );
 
     const getCallKitSessionStatus = useCallback(async () => {
         return hasActiveCallKitSession();

@@ -90,8 +90,8 @@
     dict[@"handle"] = handle;
 
     IncomingCallSlot slot = [[CallKitManager shared] reportIncomingCallWithDisplayName:displayName
-                                                                                       handle:handle
-                                                                                      isVideo:isVideo];
+                                                                                handle:handle
+                                                                               isVideo:isVideo];
 
     switch (slot) {
         case IncomingCallSlotRejected:

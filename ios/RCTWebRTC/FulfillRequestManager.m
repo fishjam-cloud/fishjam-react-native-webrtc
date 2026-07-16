@@ -25,8 +25,7 @@
     return self;
 }
 
-- (NSString *)createRequestWithTimeout:(NSTimeInterval)timeout
-                            completion:(void (^)(FulfillResult result))completion {
+- (NSString *)createRequestWithTimeout:(NSTimeInterval)timeout completion:(void (^)(FulfillResult result))completion {
     NSString *requestId = [NSUUID UUID].UUIDString;
     dispatch_sync(self.queue, ^{
         self.requests[requestId] = [completion copy];

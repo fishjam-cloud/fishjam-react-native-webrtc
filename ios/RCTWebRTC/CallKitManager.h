@@ -37,8 +37,8 @@ typedef NS_ENUM(NSInteger, IncomingCallSlot) {
 
 - (void)startCallWithDisplayName:(NSString *)displayName handle:(NSString *)handle isVideo:(BOOL)isVideo;
 - (IncomingCallSlot)reportIncomingCallWithDisplayName:(NSString *)displayName
-                                                      handle:(NSString *)handle
-                                                     isVideo:(BOOL)isVideo;
+                                               handle:(NSString *)handle
+                                              isVideo:(BOOL)isVideo;
 - (void)endCallWithReason:(NSString *_Nullable)reason;
 - (BOOL)fulfillIncomingCallConnected:(NSString *)requestId;
 - (void)failIncomingCallConnected:(NSString *)requestId;

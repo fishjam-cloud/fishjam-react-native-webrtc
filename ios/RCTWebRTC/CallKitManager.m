@@ -131,8 +131,8 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (IncomingCallSlot)reportIncomingCallWithDisplayName:(NSString *)displayName
-                                                      handle:(NSString *)handle
-                                                     isVideo:(BOOL)isVideo {
+                                               handle:(NSString *)handle
+                                              isVideo:(BOOL)isVideo {
     if (self.currentCallUUID != nil) {
         if (!self.isCallAnswered || self.waitingCallUUID != nil) {
             [self reportTransientIncomingCallAndEndWithDisplayName:displayName handle:handle isVideo:isVideo];
@@ -203,8 +203,8 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
  * is already ringing.
  */
 - (void)reportTransientIncomingCallAndEndWithDisplayName:(NSString *)displayName
-                                                    handle:(NSString *)handle
-                                                   isVideo:(BOOL)isVideo {
+                                                  handle:(NSString *)handle
+                                                 isVideo:(BOOL)isVideo {
     NSUUID *uuid = [NSUUID UUID];
 
     CXCallUpdate *update = [[CXCallUpdate alloc] init];
@@ -217,22 +217,21 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     update.supportsDTMF = NO;
 
     __weak typeof(self) weakSelf = self;
-    [self.provider
-        reportNewIncomingCallWithUUID:uuid
-                               update:update
-                           completion:^(NSError *_Nullable error) {
-                               typeof(self) strongSelf = weakSelf;
-                               if (strongSelf == nil) {
-                                   return;
-                               }
-                               if (error) {
-                                   NSLog(@"[CallKitManager] Failed to report transient incoming call: %@",
-                                         error.localizedDescription);
-                               }
-                               [strongSelf.provider reportCallWithUUID:uuid
-                                                             endedAtDate:[NSDate date]
-                                                                reason:CXCallEndedReasonFailed];
-                           }];
+    [self.provider reportNewIncomingCallWithUUID:uuid
+                                          update:update
+                                      completion:^(NSError *_Nullable error) {
+                                          typeof(self) strongSelf = weakSelf;
+                                          if (strongSelf == nil) {
+                                              return;
+                                          }
+                                          if (error) {
+                                              NSLog(@"[CallKitManager] Failed to report transient incoming call: %@",
+                                                    error.localizedDescription);
+                                          }
+                                          [strongSelf.provider reportCallWithUUID:uuid
+                                                                      endedAtDate:[NSDate date]
+                                                                           reason:CXCallEndedReasonFailed];
+                                      }];
 }
 
 /**
@@ -525,9 +524,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)provider:(CXProvider *)provider performSetHeldCallAction:(CXSetHeldCallAction *)action {
-    if (self.waitingCallUUID != nil &&
-        [action.callUUID isEqual:self.currentCallUUID] &&
-        action.isOnHold) {
+    if (self.waitingCallUUID != nil && [action.callUUID isEqual:self.currentCallUUID] && action.isOnHold) {
         [action fail];
         return;
     }

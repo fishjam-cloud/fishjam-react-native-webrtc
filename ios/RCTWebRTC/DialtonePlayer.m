@@ -29,9 +29,9 @@
         const double sr = 16000.0;
         const double f1 = 440.0, f2 = 480.0;
         const double amp = 0.28;
-        const int onN = (int)(sr * 2.0);   // 2 s ring
-        const int offN = (int)(sr * 4.0);  // 4 s silence
-        const int fade = (int)(sr * 0.008); // 8 ms edge fades (avoid loop clicks)
+        const int onN = (int)(sr * 2.0);     // 2 s ring
+        const int offN = (int)(sr * 4.0);    // 4 s silence
+        const int fade = (int)(sr * 0.008);  // 8 ms edge fades (avoid loop clicks)
         const int total = onN + offN;
 
         NSMutableData *pcm = [NSMutableData dataWithCapacity:total * 2];
@@ -40,8 +40,10 @@
             if (i < onN) {
                 double t = i / sr;
                 s = amp * (sin(2.0 * M_PI * f1 * t) + sin(2.0 * M_PI * f2 * t)) / 2.0;
-                if (i < fade) s *= (double)i / fade;
-                if (i > onN - fade) s *= (double)(onN - i) / fade;
+                if (i < fade)
+                    s *= (double)i / fade;
+                if (i > onN - fade)
+                    s *= (double)(onN - i) / fade;
             }
             double clamped = fmax(-1.0, fmin(1.0, s));
             int16_t v = (int16_t)(clamped * 32767.0);
@@ -54,7 +56,7 @@
         uint16_t channels = 1, bitsPerSample = 16;
         uint32_t byteRate = sampleRate * channels * bitsPerSample / 8;
         uint16_t blockAlign = channels * bitsPerSample / 8;
-        uint16_t audioFormat = 1; // PCM
+        uint16_t audioFormat = 1;  // PCM
         uint32_t fmtChunkLen = 16;
         uint32_t riffLen = 36 + dataLen;
 
@@ -92,7 +94,7 @@
             return;
         }
 
-        p.numberOfLoops = -1; // loop until stopped
+        p.numberOfLoops = -1;  // loop until stopped
         p.volume = 1.0;
         self.player = p;
         [p prepareToPlay];

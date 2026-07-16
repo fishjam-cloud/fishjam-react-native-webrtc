@@ -12,8 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (instancetype)shared;
 
-- (NSString *)createRequestWithTimeout:(NSTimeInterval)timeout
-                            completion:(void (^)(FulfillResult result))completion;
+- (NSString *)createRequestWithTimeout:(NSTimeInterval)timeout completion:(void (^)(FulfillResult result))completion;
 - (BOOL)fulfill:(NSString *)requestId;
 - (BOOL)cancel:(NSString *)requestId;
 - (void)cancelAll;

@@ -52,8 +52,7 @@ final class TelecomController implements CallEventsListener {
     }
 
     boolean fulfillAnswered(String requestId) {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                && CallManager.INSTANCE.fulfillAnswered(requestId);
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && CallManager.INSTANCE.fulfillAnswered(requestId);
     }
 
     void failAnswered(String requestId) {
@@ -87,9 +86,7 @@ final class TelecomController implements CallEventsListener {
     }
 
     String pendingAnswerRequestId() {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? CallManager.INSTANCE.pendingAnswerRequestId()
-                : null;
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? CallManager.INSTANCE.pendingAnswerRequestId() : null;
     }
 
     @Override
