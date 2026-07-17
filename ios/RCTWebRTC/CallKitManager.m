@@ -322,6 +322,23 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
                                  }];
 }
 
+- (void)setMuted:(BOOL)muted {
+    NSUUID *uuid = self.currentCallUUID;
+    if (uuid == nil) {
+        NSLog(@"[CallKitManager] No active call to set muted");
+        return;
+    }
+
+    CXSetMutedCallAction *action = [[CXSetMutedCallAction alloc] initWithCallUUID:uuid muted:muted];
+    CXTransaction *transaction = [[CXTransaction alloc] initWithAction:action];
+    [self.callController requestTransaction:transaction
+                                 completion:^(NSError *error) {
+                                     if (error) {
+                                         NSLog(@"[CallKitManager] Failed to set muted: %@", error.localizedDescription);
+                                     }
+                                 }];
+}
+
 - (void)reportAnswerFailureForCall:(NSUUID *)uuid {
     if (uuid == nil || ![uuid isEqual:self.currentCallUUID]) {
         return;
