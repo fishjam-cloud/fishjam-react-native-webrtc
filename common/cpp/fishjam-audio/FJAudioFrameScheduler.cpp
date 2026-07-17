@@ -14,10 +14,7 @@ int16_t floatSampleToInt16(float sample) {
 }
 }  // namespace
 
-FJAudioFrameScheduler::FJAudioFrameScheduler(int sampleRateHz,
-                                             int channelCount,
-                                             int maxBufferedDurationMs,
-                                             EmitFn emit)
+FJAudioFrameScheduler::FJAudioFrameScheduler(int sampleRateHz, int channelCount, int maxBufferedDurationMs, EmitFn emit)
     : sampleRateHz_(sampleRateHz),
       channelCount_(channelCount),
       samplesPerEmit_(static_cast<size_t>(sampleRateHz / kEmitsPerSecond) * static_cast<size_t>(channelCount)),
@@ -47,6 +44,10 @@ void FJAudioFrameScheduler::stop() {
 }
 
 void FJAudioFrameScheduler::enqueueInt16(const int16_t *interleavedSamples, size_t sampleCount) {
+    // Keep the FIFO frame-aligned: drop a trailing partial frame. On stereo, an
+    // odd sample would otherwise swap L/R for the rest of the track's life
+    // (every consumer removes exact multiples of channelCount).
+    sampleCount -= sampleCount % static_cast<size_t>(channelCount_);
     if (interleavedSamples == nullptr || sampleCount == 0) {
         return;
     }
@@ -56,13 +57,20 @@ void FJAudioFrameScheduler::enqueueInt16(const int16_t *interleavedSamples, size
 }
 
 void FJAudioFrameScheduler::enqueueFloat32(const float *samples, size_t sampleCount) {
+    // Frame-align before converting; see enqueueInt16.
+    sampleCount -= sampleCount % static_cast<size_t>(channelCount_);
     if (samples == nullptr || sampleCount == 0) {
         return;
     }
-    std::lock_guard<std::mutex> lock(fifoMutex_);
+    // Convert outside the FIFO lock: a large push (up to maxBufferedDurationMs
+    // of audio in one call) converted under the mutex would stall the feeder's
+    // 10 ms tick and glitch the stream.
+    std::vector<int16_t> converted(sampleCount);
     for (size_t i = 0; i < sampleCount; i++) {
-        fifo_.push_back(floatSampleToInt16(samples[i]));
+        converted[i] = floatSampleToInt16(samples[i]);
     }
+    std::lock_guard<std::mutex> lock(fifoMutex_);
+    fifo_.insert(fifo_.end(), converted.begin(), converted.end());
     dropOldestBeyondCapacityLocked();
 }
 
@@ -83,8 +91,7 @@ void FJAudioFrameScheduler::feederLoop() {
         {
             std::lock_guard<std::mutex> lock(fifoMutex_);
             if (fifo_.size() >= samplesPerEmit_) {
-                std::copy(fifo_.begin(), fifo_.begin() + static_cast<ptrdiff_t>(samplesPerEmit_),
-                          emitScratch_.begin());
+                std::copy(fifo_.begin(), fifo_.begin() + static_cast<ptrdiff_t>(samplesPerEmit_), emitScratch_.begin());
                 fifo_.erase(fifo_.begin(), fifo_.begin() + static_cast<ptrdiff_t>(samplesPerEmit_));
             } else {
                 // Less than a whole frame buffered: emit silence and leave the

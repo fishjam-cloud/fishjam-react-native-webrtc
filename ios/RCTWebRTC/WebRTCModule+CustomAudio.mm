@@ -70,7 +70,7 @@ RCT_REMAP_METHOD(installCustomAudioJSI,
 #else
     FJAudioPushBox *box = [self fj_audioPushBox];
     if (box == nil) {
-        reject(@"E_NO_JSI", @"Custom audio sample push requires the New Architecture.", nil);
+        reject(@"E_NO_JSI", @"Custom audio tracks require the New Architecture.", nil);
         return;
     }
     // Unlike custom video there is no deliver callback to wire up: pushes are
@@ -90,7 +90,7 @@ RCT_EXPORT_METHOD(createCustomAudioTrack
 #else
     FJAudioPushBox *box = [self fj_audioPushBox];
     if (box == nil) {
-        reject(@"E_NO_JSI", @"Custom audio sample push requires the New Architecture.", nil);
+        reject(@"E_NO_JSI", @"Custom audio tracks require the New Architecture.", nil);
         return;
     }
 

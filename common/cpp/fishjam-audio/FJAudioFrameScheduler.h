@@ -12,7 +12,6 @@
 #pragma once
 
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -37,9 +36,12 @@ class FJAudioFrameScheduler {
     void stop();
 
     // Append interleaved int16 samples (sampleCount = frames * channels). May be
-    // called from any thread; the FIFO mutex is the only lock taken.
+    // called from any thread; the FIFO mutex is the only lock taken. A trailing
+    // partial frame (sampleCount % channelCount samples) is dropped to keep the
+    // interleaved FIFO frame-aligned.
     void enqueueInt16(const int16_t *interleavedSamples, size_t sampleCount);
-    // Append Float32 samples in [-1, 1]; converted (with clamping) to int16.
+    // Append Float32 samples in [-1, 1]; converted (with clamping) to int16
+    // outside the FIFO lock. Same trailing-partial-frame truncation.
     void enqueueFloat32(const float *samples, size_t sampleCount);
 
     int sampleRateHz() const { return sampleRateHz_; }

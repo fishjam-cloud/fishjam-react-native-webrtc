@@ -9,8 +9,7 @@ namespace jni = facebook::jni;
 
 namespace fishjam {
 
-FJAudioPushInstaller::FJAudioPushInstaller(jni::alias_ref<jhybridobject> javaThis,
-                                           std::shared_ptr<FJAudioPush> push)
+FJAudioPushInstaller::FJAudioPushInstaller(jni::alias_ref<jhybridobject> javaThis, std::shared_ptr<FJAudioPush> push)
     : javaPart_(jni::make_global(javaThis)), push_(std::move(push)) {}
 
 jni::local_ref<FJAudioPushInstaller::jhybriddata> FJAudioPushInstaller::initHybrid(
@@ -39,26 +38,31 @@ void FJAudioPushInstaller::nativeRegisterTrack(jni::alias_ref<jstring> trackId,
                                                jint maxBufferedDurationMs) {
     auto javaPart = javaPart_;
     std::string trackIdString = trackId->toStdString();
+    // Hoisted out of the emit lambda: the track id never changes, so allocating
+    // a jstring per 10 ms frame is pure waste. Global ref, valid on any thread.
+    auto jTrackId = jni::make_global(jni::make_jstring(trackIdString));
     int channels = channelCount;
     // The scheduler feeder thread runs this emit callback with one 10 ms frame
-    // per call. It is NOT attached to the JVM, so establish a ThreadScope before
-    // touching any JNIEnv. The direct ByteBuffer wraps the scheduler's scratch
-    // (no copy); the Java peer's emitAudioFrame consumes it synchronously (the
-    // external audio source copies the samples), so reusing the scratch next
-    // tick is safe.
+    // per call. It is NOT attached to the JVM; the thread_local ThreadScope
+    // attaches it once on the first emit and detaches at thread exit (its
+    // destructor), instead of an attach/detach cycle per frame. The direct
+    // ByteBuffer wraps the scheduler's scratch (no copy); the Java peer's
+    // emitAudioFrame consumes it synchronously (the external audio source
+    // copies the samples), so reusing the scratch next tick is safe.
     push_->registerTrack(
-        trackIdString, sampleRateHz, channels, maxBufferedDurationMs,
-        [javaPart, trackIdString, channels](const int16_t *interleavedSamples, size_t numberOfFrames) {
-            facebook::jni::ThreadScope threadScope;
+        trackIdString,
+        sampleRateHz,
+        channels,
+        maxBufferedDurationMs,
+        [javaPart, jTrackId = std::move(jTrackId), channels](const int16_t *interleavedSamples, size_t numberOfFrames) {
+            static thread_local facebook::jni::ThreadScope threadScope;
             size_t byteLength = numberOfFrames * static_cast<size_t>(channels) * sizeof(int16_t);
             auto directBuffer = jni::JByteBuffer::wrapBytes(
                 reinterpret_cast<uint8_t *>(const_cast<int16_t *>(interleavedSamples)), byteLength);
             static const auto emitAudioFrame =
-                javaPart->getClass()
-                    ->getMethod<void(jni::alias_ref<jstring>, jni::alias_ref<jni::JByteBuffer>, jint)>(
-                        "emitAudioFrame");
-            emitAudioFrame(javaPart, jni::make_jstring(trackIdString), directBuffer,
-                           static_cast<jint>(numberOfFrames));
+                javaPart->getClass()->getMethod<void(jni::alias_ref<jstring>, jni::alias_ref<jni::JByteBuffer>, jint)>(
+                    "emitAudioFrame");
+            emitAudioFrame(javaPart, jTrackId, directBuffer, static_cast<jint>(numberOfFrames));
         });
 }
 
