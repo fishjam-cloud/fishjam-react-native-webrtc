@@ -77,6 +77,9 @@ function ensureInstalled(): Promise<void> {
             throw new Error('Custom audio track binding was not installed.');
         }
     });
+    // If the timeout wins the race, `install` may still reject later; absorb
+    // that so it doesn't surface as an unhandled rejection.
+    install.catch(() => {});
     installPromise = Promise.race([install, timeout])
         .finally(() => clearTimeout(timeoutId))
         .catch((cause: unknown) => {
@@ -123,8 +126,10 @@ export interface CustomAudioTrackInit {
  * hop. You normally don't call this directly; use {@link pushAudioSamples}.
  *
  * Push from the *same* worklet runtime the sink was captured into: `push` binds
- * lazily to whichever runtime first resolves it. `push` is stable per runtime,
- * so a hot loop may hoist it once (`const push = track.sink.push`) and reuse it.
+ * lazily to whichever runtime first resolves it. Each access to `sink.push`
+ * returns a fresh (functionally identical) function, so a hot loop should hoist
+ * it once (`const push = track.sink.push`) and reuse it, which also skips a
+ * small per-access allocation.
  */
 export interface CustomAudioSink {
     push(samples: Float32Array | Int16Array): void;

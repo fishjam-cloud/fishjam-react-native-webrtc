@@ -103,6 +103,9 @@ function ensureInstalled(): Promise<void> {
             throw new Error('Custom video track binding was not installed.');
         }
     });
+    // If the timeout wins the race, `install` may still reject later; absorb
+    // that so it doesn't surface as an unhandled rejection.
+    install.catch(() => {});
     installPromise = Promise.race([install, timeout])
         .finally(() => clearTimeout(timeoutId))
         .catch((cause: unknown) => {
@@ -240,8 +243,10 @@ export interface CustomVideoFrameFence {
  *
  * Push from the *same* worklet runtime the sink was captured into: `push` binds
  * lazily to whichever runtime first resolves it, so importing one sink into two
- * runtimes and pushing from both is unsupported. `push` is stable per runtime, so
- * a hot loop may hoist it once (`const push = track.sink.push`) and reuse it.
+ * runtimes and pushing from both is unsupported. Each access to `sink.push`
+ * returns a fresh (functionally identical) function, so a hot loop should hoist
+ * it once (`const push = track.sink.push`) and reuse it, which also skips a
+ * small per-access allocation.
  */
 export interface CustomVideoSink {
     push(frame: object): void;
