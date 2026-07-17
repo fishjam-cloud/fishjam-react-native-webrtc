@@ -62,7 +62,7 @@ android {
 
 dependencies {
     implementation "com.facebook.react:react-android:+"
-    api 'com.github.fishjam-cloud:webrtc:v124.0.2.2'
+    api 'com.github.fishjam-cloud:webrtc:v124.0.2.3'
     implementation "androidx.core:core:1.7.0"
     implementation 'com.facebook.fbjni:fbjni:0.6.0'
 }
