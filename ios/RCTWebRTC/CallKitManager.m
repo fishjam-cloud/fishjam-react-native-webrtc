@@ -190,7 +190,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
                                    [strongSelf startWaitingRingTimeoutForCall:uuid
                                                                       timeout:strongSelf.incomingCallTimeout];
                                } else {
-                                   [strongSelf startRingTimeoutForCall:uuid timeout:strongSelf.incomingCallTimeout];
+                                    [strongSelf startRingTimeoutForCall:uuid timeout:strongSelf.incomingCallTimeout];
                                }
                            }];
 

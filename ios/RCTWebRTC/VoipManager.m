@@ -74,9 +74,9 @@
                               forType:(PKPushType)type
                 withCompletionHandler:(void (^)(void))completion {
     NSMutableDictionary *dict = [payload.dictionaryPayload mutableCopy];
-    NSString *displayName = dict[@"displayName"];
-    NSString *handle = dict[@"handle"];
-    BOOL isVideo = [dict[@"isVideo"] boolValue];
+    NSString *displayName = [dict[@"displayName"] isKindOfClass:[NSString class]] ? dict[@"displayName"] : nil;
+    NSString *handle = [dict[@"handle"] isKindOfClass:[NSString class]] ? dict[@"handle"] : nil;
+    BOOL isVideo = [dict[@"isVideo"] isKindOfClass:[NSNumber class]] ? [dict[@"isVideo"] boolValue] : NO;
     dict[@"isVideo"] = @(isVideo);
 
     if (displayName == nil || displayName.length == 0) {
@@ -84,7 +84,7 @@
         dict[@"displayName"] = displayName;
     }
 
-    if (handle.length == 0) {
+    if (handle == nil || handle.length == 0) {
         handle = displayName;
     }
     dict[@"handle"] = handle;

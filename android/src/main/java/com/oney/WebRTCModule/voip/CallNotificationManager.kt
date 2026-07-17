@@ -137,7 +137,7 @@ class CallNotificationManager {
         callNotificationBuilder(ctx, CHANNEL_INCOMING, displayName, if (isVideo) "Incoming video call" else "Incoming call")
             .setStyle(
                 NotificationCompat.CallStyle.forIncomingCall(
-                    person(ctx, displayName),
+                    person(ctx, displayName, CallManager.currentAvatarBitmap()),
                     declinePendingIntent(ctx),
                     answerPendingIntent(ctx),
                 )
@@ -162,7 +162,7 @@ class CallNotificationManager {
             )
                 .setStyle(
                     NotificationCompat.CallStyle.forIncomingCall(
-                        person(ctx, displayName),
+                        person(ctx, displayName, CallManager.currentWaitingAvatarBitmap()),
                         declineWaitingPendingIntent(ctx),
                         answerWaitingPendingIntent(ctx),
                     )
@@ -197,7 +197,7 @@ class CallNotificationManager {
         return callNotificationBuilder(ctx, CHANNEL_ONGOING, displayName, "Connecting…")
             .setStyle(
                 NotificationCompat.CallStyle.forOngoingCall(
-                    person(ctx, displayName),
+                    person(ctx, displayName, CallManager.currentAvatarBitmap()),
                     hangupPendingIntent(ctx),
                 )
             )
@@ -214,7 +214,7 @@ class CallNotificationManager {
         return callNotificationBuilder(ctx, CHANNEL_ONGOING, displayName, "On hold")
             .setStyle(
                 NotificationCompat.CallStyle.forOngoingCall(
-                    person(ctx, displayName),
+                    person(ctx, displayName, CallManager.currentAvatarBitmap()),
                     hangupPendingIntent(ctx),
                 )
             )
@@ -234,7 +234,7 @@ class CallNotificationManager {
         callNotificationBuilder(ctx, CHANNEL_ONGOING, displayName, "Ongoing call")
             .setStyle(
                 NotificationCompat.CallStyle.forOngoingCall(
-                    person(ctx, displayName),
+                    person(ctx, displayName, CallManager.currentAvatarBitmap()),
                     hangupPendingIntent(ctx),
                 )
             )
@@ -307,8 +307,7 @@ class CallNotificationManager {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
 
-    private fun person(ctx: Context, displayName: String): Person {
-        val avatar = CallManager.currentAvatarBitmap()
+    private fun person(ctx: Context, displayName: String, avatar: Bitmap?): Person {
         val icon = if (avatar != null) {
             IconCompat.createWithBitmap(avatar)
         } else {

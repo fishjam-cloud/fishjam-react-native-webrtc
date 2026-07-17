@@ -465,11 +465,14 @@ class IncomingCallActivity : Activity() {
      * an initials circle. Returned as a holder so [refreshAvatar] can swap in a
      * photo that lands after the screen is already showing.
      */
+    private fun activeAvatarBitmap(): Bitmap? =
+        if (isWaitingCall) CallManager.currentWaitingAvatarBitmap() else CallManager.currentAvatarBitmap()
+
     private fun avatarView(name: String, sizeDp: Int, textSizeSp: Float): FrameLayout {
         val holder = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
         }
-        val bitmap = CallManager.currentAvatarBitmap()
+        val bitmap = activeAvatarBitmap()
         holder.addView(if (bitmap != null) avatarImage(bitmap) else initialsAvatar(name, textSizeSp))
         avatarHolder = holder
         return holder
@@ -506,7 +509,7 @@ class IncomingCallActivity : Activity() {
     /** Replaces the initials circle with the caller photo once it has downloaded. */
     private fun refreshAvatar() {
         val holder = avatarHolder ?: return
-        val bitmap = CallManager.currentAvatarBitmap() ?: return
+        val bitmap = activeAvatarBitmap() ?: return
         holder.removeAllViews()
         holder.addView(avatarImage(bitmap))
     }

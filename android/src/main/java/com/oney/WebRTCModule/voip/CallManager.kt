@@ -99,6 +99,8 @@ object CallManager {
     private var waitingDisplayName: String = ""
     private var waitingHandle: String = ""
     private var waitingIsVideo: Boolean = false
+    private var waitingAvatarUrl: String? = null
+    @Volatile private var waitingAvatarBitmap: Bitmap? = null
     private var waitingRingTimeoutJob: Job? = null
 
     fun hasActiveCall(): Boolean = hasActiveCall
@@ -113,6 +115,9 @@ object CallManager {
 
     /** The downloaded caller avatar for the active call, or null (falls back to initials). */
     fun currentAvatarBitmap(): Bitmap? = avatarBitmap
+
+    /** The downloaded avatar for the waiting (second) call, or null until it loads. */
+    fun currentWaitingAvatarBitmap(): Bitmap? = waitingAvatarBitmap
 
     fun startOutgoingCall(ctx: Context, displayName: String, handle: String, isVideo: Boolean) {
         register(ctx, displayName, handle, isVideo, CallAttributesCompat.DIRECTION_OUTGOING)
@@ -133,18 +138,37 @@ object CallManager {
         if (hasWaitingCall || !answered) {
             return IncomingCallSlot.REJECTED
         }
-        registerWaiting(ctx, displayName, handle, isVideo)
+        registerWaiting(ctx, displayName, handle, isVideo, avatarUrl)
         return IncomingCallSlot.WAITING
     }
 
     @Synchronized
-    private fun registerWaiting(ctx: Context, displayName: String, handle: String, isVideo: Boolean) {
+    private fun registerWaiting(
+        ctx: Context,
+        displayName: String,
+        handle: String,
+        isVideo: Boolean,
+        avatarUrl: String? = null,
+    ) {
         hasWaitingCall = true
         waitingDisplayName = displayName
         waitingHandle = handle
         waitingIsVideo = isVideo
+        waitingAvatarUrl = avatarUrl
+        waitingAvatarBitmap = null
 
-        callNotificationManager.showWaiting(ctx.applicationContext, displayName, isVideo)
+        val appContext = ctx.applicationContext
+        callNotificationManager.showWaiting(appContext, displayName, isVideo)
+        AvatarLoader.load(avatarUrl) { bitmap ->
+            if (bitmap != null && hasWaitingCall) {
+                waitingAvatarBitmap = bitmap
+                callNotificationManager.showWaiting(appContext, displayName, isVideo)
+                appContext.sendBroadcast(
+                    Intent(IncomingCallActivity.ACTION_AVATAR_READY)
+                        .setPackage(appContext.packageName),
+                )
+            }
+        }
         waitingRingTimeoutJob = scope.launch {
             delay(incomingCallTimeoutMs)
             declineWaitingCall(ctx)
@@ -157,6 +181,8 @@ object CallManager {
         hasWaitingCall = false
         waitingRingTimeoutJob?.cancel()
         waitingRingTimeoutJob = null
+        waitingAvatarUrl = null
+        waitingAvatarBitmap = null
         callNotificationManager.cancelWaiting(ctx.applicationContext)
         VoipPushRegistry.discardWaitingIncoming()
     }
@@ -172,6 +198,9 @@ object CallManager {
         val displayName = waitingDisplayName
         val handle = waitingHandle
         val isVideo = waitingIsVideo
+        val avatarUrl = waitingAvatarUrl
+        waitingAvatarUrl = null
+        waitingAvatarBitmap = null
         val previousJob = callJob
 
         if (hasActiveCall) {
@@ -181,7 +210,7 @@ object CallManager {
         scope.launch {
             previousJob?.join()
             VoipPushRegistry.revealWaitingIncoming()
-            register(ctx, displayName, handle, isVideo, CallAttributesCompat.DIRECTION_INCOMING)
+            register(ctx, displayName, handle, isVideo, CallAttributesCompat.DIRECTION_INCOMING, avatarUrl)
             answer()
             launchHostApp(ctx.applicationContext)
         }

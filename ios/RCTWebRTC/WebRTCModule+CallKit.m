@@ -134,7 +134,7 @@ RCT_EXPORT_METHOD(setCallKitCallHeld
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getPendingAnswerRequestId) {
-    return [self callKitManager].pendingAnswerRequestId;
+    return [self callKitManager].pendingAnswerRequestId ?: [NSNull null];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(hasActiveCallKitSession) {
