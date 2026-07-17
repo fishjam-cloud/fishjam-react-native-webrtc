@@ -38,9 +38,12 @@
  */
 import { NativeModules } from 'react-native';
 
+import Logger from './Logger';
 import MediaStream from './MediaStream';
 import MediaStreamError from './MediaStreamError';
 import type { MediaStreamTrackInfo } from './MediaStreamTrack';
+
+const log = new Logger('customVideo');
 
 const { WebRTCModule } = NativeModules;
 
@@ -92,20 +95,31 @@ function ensureInstalled(): Promise<void> {
         return installPromise;
     }
     let timeoutId!: ReturnType<typeof setTimeout>;
+    let timedOut = false;
     const timeout = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-            () => reject(new Error('Custom video track install timed out.')),
-            INSTALL_TIMEOUT_MS,
-        );
+        timeoutId = setTimeout(() => {
+            timedOut = true;
+            reject(new Error('Custom video track install timed out.'));
+        }, INSTALL_TIMEOUT_MS);
     });
     const install = WebRTCModule.installCustomVideoJSI().then(() => {
         if (typeof global.__fishjamWebrtcGetCustomVideoSink !== 'function') {
             throw new Error('Custom video track binding was not installed.');
         }
     });
-    // If the timeout wins the race, `install` may still reject later; absorb
-    // that so it doesn't surface as an unhandled rejection.
-    install.catch(() => {});
+    // If the timeout wins the race, the caller was already answered with the
+    // timeout error and a later `install` rejection has no consumer left — log
+    // the real failure instead of letting it surface as an unhandled rejection.
+    // When install rejects first, the race propagates it to the caller and
+    // this handler stays silent.
+    install.catch((cause: unknown) => {
+        if (timedOut) {
+            log.error(
+                'installCustomVideoJSI failed after the install timeout',
+                cause instanceof Error ? cause : new Error(String(cause)),
+            );
+        }
+    });
     installPromise = Promise.race([install, timeout])
         .finally(() => clearTimeout(timeoutId))
         .catch((cause: unknown) => {
