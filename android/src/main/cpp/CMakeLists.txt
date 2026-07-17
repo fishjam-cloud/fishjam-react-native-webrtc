@@ -54,6 +54,47 @@ target_link_libraries(fishjam-webrtc-audio
     log
 )
 
+# --- Custom audio track ----------------------------------------------------
+#
+# Loaded from Java via System.loadLibrary("webrtc-custom-audio-track") by
+# FJAudioPushInstaller.
+#   - FJAudioFrameScheduler.cpp : per-track FIFO + feeder thread that re-paces
+#                                 arbitrary-size JS pushes into the continuous
+#                                 10 ms int16 frames the encoder expects,
+#                                 inserting silence when the buffer runs dry.
+#   - FJAudioPushJSI.cpp        : shared JSI core installing the per-track push
+#                                 global and routing pushes to the schedulers.
+#   - FJAudioPushInstaller.cpp  : fbjni HybridClass wiring the JS CallInvoker to
+#                                 the shared core and emitting paced frames back
+#                                 to Java. No miniaudio/EGL: nothing is converted
+#                                 or rendered here.
+add_library(webrtc-custom-audio-track
+    SHARED
+    "${FJ_COMMON_CPP_DIR}/fishjam-audio/FJAudioFrameScheduler.cpp"
+    "${FJ_COMMON_CPP_DIR}/fishjam-audio/FJAudioPushJSI.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FJAudioPushInstaller.cpp"
+)
+
+set_target_properties(webrtc-custom-audio-track PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+)
+
+target_include_directories(webrtc-custom-audio-track
+    PRIVATE
+    "${FJ_COMMON_CPP_DIR}/fishjam-audio"
+)
+
+# ReactAndroid / fbjni prefab packages are located above (for the audio sink lib)
+# and remain in scope here.
+target_link_libraries(webrtc-custom-audio-track
+    ReactAndroid::jsi
+    ReactAndroid::reactnative
+    fbjni::fbjni
+    android
+    log
+)
+
 # --- Custom video track ----------------------------------------------------
 #
 # Loaded from Java via System.loadLibrary("webrtc-custom-video-track") by
