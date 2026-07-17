@@ -725,8 +725,7 @@ RCT_EXPORT_METHOD(mediaStreamTrackRelease : (nonnull NSString *)trackID) {
             [customController stopCapture];
             [customController releaseCaptureResources];
         } else if ([track.captureController isKindOfClass:[CustomAudioSourceController class]]) {
-            CustomAudioSourceController *customAudioController =
-                (CustomAudioSourceController *)track.captureController;
+            CustomAudioSourceController *customAudioController = (CustomAudioSourceController *)track.captureController;
             [customAudioController releaseCaptureResources];
         } else {
             [track.captureController stopCapture];

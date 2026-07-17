@@ -24,8 +24,7 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @interface CustomAudioSourceController : CaptureController
 
-- (instancetype)initWithAudioSource:(RTCExternalAudioSource *)audioSource
-                      teardownBlock:(void (^)(void))teardownBlock;
+- (instancetype)initWithAudioSource:(RTCExternalAudioSource *)audioSource teardownBlock:(void (^)(void))teardownBlock;
 
 /** True teardown; idempotent. Also invoked from dealloc as a safety net. */
 - (void)releaseCaptureResources;

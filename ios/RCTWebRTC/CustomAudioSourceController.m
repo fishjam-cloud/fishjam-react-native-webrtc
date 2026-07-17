@@ -4,8 +4,7 @@
     void (^_teardownBlock)(void);
 }
 
-- (instancetype)initWithAudioSource:(RTCExternalAudioSource *)audioSource
-                      teardownBlock:(void (^)(void))teardownBlock {
+- (instancetype)initWithAudioSource:(RTCExternalAudioSource *)audioSource teardownBlock:(void (^)(void))teardownBlock {
     self = [super init];
     if (self) {
         _audioSource = audioSource;

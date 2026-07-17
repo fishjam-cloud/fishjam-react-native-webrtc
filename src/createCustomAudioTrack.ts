@@ -189,7 +189,10 @@ export async function createCustomAudioTrack(
             'createCustomAudioTrack: channelCount must be 1 or 2.',
         );
     }
-    if (!Number.isInteger(maxBufferedDurationMs) || maxBufferedDurationMs <= 0) {
+    if (
+        !Number.isInteger(maxBufferedDurationMs) ||
+        maxBufferedDurationMs <= 0
+    ) {
         throw invalidInitError(
             'createCustomAudioTrack: maxBufferedDurationMs must be a positive integer.',
         );
