@@ -24,11 +24,6 @@ import MediaStream from './MediaStream';
 import MediaStreamTrack, { type MediaTrackSettings } from './MediaStreamTrack';
 import MediaStreamTrackEvent from './MediaStreamTrackEvent';
 import permissions from './Permissions';
-import {
-    clearPendingIncomingCall,
-    getPendingIncomingCall,
-    getVoipToken,
-} from './PushKit';
 import RTCAudioSession from './RTCAudioSession';
 import RTCCertificate from './RTCCertificate';
 import RTCErrorEvent from './RTCErrorEvent';
@@ -51,6 +46,16 @@ import RTCRtpTransceiver from './RTCRtpTransceiver';
 import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
+import {
+    type TelecomConfig,
+    type TelecomEvent,
+    type TelecomEventType,
+} from './Telecom';
+import {
+    clearPendingIncomingCall,
+    getPendingIncomingCall,
+    getVoipToken,
+} from './VoIP';
 import {
     AudioDeviceType,
     AudioOutputManager,
@@ -86,6 +91,11 @@ import {
     type LivestreamStatus,
     type LivestreamStatusInfo,
 } from './useLivestreamStatus';
+import {
+    useTelecom,
+    useTelecomEvent,
+    type UseTelecomResult,
+} from './useTelecom';
 import {
     useVoIPEvents,
     type VoIPEventHandlers,
@@ -143,6 +153,8 @@ export {
     useCallKitService,
     useForegroundService,
     useLivestreamStatus,
+    useTelecom,
+    useTelecomEvent,
     useVoIPEvents,
     writeLivestreamCredentials,
     type AudioDevice,
@@ -171,7 +183,11 @@ export {
     type RTCRtpEncodingParametersInit,
     type RTCRtpSendParametersInit,
     type RTCVideoViewProps,
+    type TelecomConfig,
+    type TelecomEvent,
+    type TelecomEventType,
     type UseAudioOutputResult,
+    type UseTelecomResult,
     type VoIPEventHandlers,
     type VoipIncomingPayload,
 };

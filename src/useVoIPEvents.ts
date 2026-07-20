@@ -3,11 +3,12 @@ import { Platform } from 'react-native';
 
 import { hasActiveCallKitSession, isCallAnswered } from './CallKit';
 import { addListener, removeListener } from './EventEmitter';
+import { hasActiveTelecomCall, isTelecomCallAnswered } from './Telecom';
 import {
     clearPendingIncomingCall,
     getPendingIncomingCall,
     getVoipToken,
-} from './PushKit';
+} from './VoIP';
 import { useCallKitEvent } from './useCallKit';
 
 // If you don't provide displayName it will default to incoming call, isVideo to false
@@ -51,7 +52,7 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
     });
 
     useEffect(() => {
-        // PushKit events (registered / incoming) arrive on the VoIP push channel.
+        // VoIP push events (registered / incoming) arrive on the VoIP push channel.
         addListener(listener.current, 'voipPushEvent', (event) => {
             if (!event || typeof event !== 'object') {
                 return;
@@ -68,17 +69,14 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
                 handlersRef.current.onIncoming?.(
                     payload.incoming as VoipIncomingPayload,
                 );
-                clearPendingIncomingCall();
             }
         });
 
-        // The VoIP token / incoming call are usually issued before JS subscribes
-        // so the live events above are missed. Recover them from the
-        // native buffer on mount.
-        const token = getVoipToken();
-        if (token) {
-            handlersRef.current.onRegistered?.(token);
-        }
+        getVoipToken().then((token) => {
+            if (token) {
+                handlersRef.current.onRegistered?.(token);
+            }
+        });
 
         const pendingCall = getPendingIncomingCall();
         if (pendingCall && hasActiveCallKitSession()) {
@@ -87,7 +85,6 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
                 handlersRef.current.onIncoming?.(
                     pendingCall as unknown as VoipIncomingPayload,
                 );
-                clearPendingIncomingCall();
 
                 // The user may have accepted before JS was
                 // ready, so the live onAnswered was missed. Recover it from
@@ -106,9 +103,76 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
     }, []);
 };
 
-const emptyFunction = () => {};
+const useVoIPEventsAndroid = (handlers: VoIPEventHandlers): void => {
+    const handlersRef = useRef(handlers);
+    handlersRef.current = handlers;
+    const listener = useRef({});
+
+    useEffect(() => {
+        addListener(listener.current, 'telecomActionPerformed', (event) => {
+            if (!event || typeof event !== 'object') {
+                return;
+            }
+            const payload = event as { event?: string };
+            if (payload.event === 'answer') {
+                handlersRef.current.onAnswered?.();
+            } else if (payload.event === 'ended') {
+                clearPendingIncomingCall();
+                handlersRef.current.onEnded?.();
+            }
+        });
+
+        addListener(listener.current, 'voipPushEvent', (event) => {
+            if (!event || typeof event !== 'object') {
+                return;
+            }
+            const payload = event as Record<string, unknown>;
+            if ('registered' in payload) {
+                handlersRef.current.onRegistered?.(
+                    payload.registered as string,
+                );
+            }
+            if ('incoming' in payload) {
+                assertRoomName(payload.incoming);
+
+                handlersRef.current.onIncoming?.(
+                    payload.incoming as VoipIncomingPayload,
+                );
+            }
+        });
+
+        getVoipToken().then((token) => {
+            if (token) {
+                handlersRef.current.onRegistered?.(token);
+            }
+        });
+
+        const pendingCall = getPendingIncomingCall();
+        if (pendingCall && hasActiveTelecomCall()) {
+            try {
+                assertRoomName(pendingCall);
+                handlersRef.current.onIncoming?.(
+                    pendingCall as unknown as VoipIncomingPayload,
+                );
+
+                // The user may have accepted before JS was
+                // ready, so the live onAnswered was missed. Recover it from
+                // native state so the call connects instead of staying stuck.
+                if (isTelecomCallAnswered()) {
+                    handlersRef.current.onAnswered?.();
+                }
+            } catch {
+                // Ignore a malformed buffered payload.
+            }
+        }
+
+        return () => {
+            removeListener(listener.current);
+        };
+    }, []);
+};
 
 export const useVoIPEvents = Platform.select({
     ios: useVoIPEventsIos,
-    default: emptyFunction,
+    android: useVoIPEventsAndroid,
 }) as typeof useVoIPEventsIos;

@@ -24,11 +24,17 @@ public class ForegroundServiceController {
     private static ForegroundServiceController instance;
 
     private ReactApplicationContext reactContext;
+    private Context appContext;
 
     private boolean cameraRequested = false;
     private boolean microphoneRequested = false;
     private boolean screenSharingAllowed = false;
     private boolean screenShareActive = false;
+
+    private boolean callActive = false;
+    private String callDisplayName = "";
+    private boolean callIsVideo = false;
+    private long callConnectedAtMs = 0;
 
     private String channelId = "com.fishjam.foregroundservice.channel";
     private String channelName = "Fishjam Notifications";
@@ -50,6 +56,7 @@ public class ForegroundServiceController {
 
     public void setContext(ReactApplicationContext reactContext) {
         this.reactContext = reactContext;
+        this.appContext = reactContext.getApplicationContext();
     }
 
     // Called by WebRTCForegroundService after startForeground() completes.
@@ -109,19 +116,43 @@ public class ForegroundServiceController {
         applyState();
     }
 
+    /**
+     * Called by CallManager when a Core-Telecom call becomes ongoing (outgoing
+     * started or incoming answered). Switches the service's notification to the
+     * ongoing CallStyle one and keeps camera/microphone types alive for the call
+     * even if the app never enabled the room foreground service from JS.
+     */
+    public synchronized void onCallStarted(Context context, String displayName, boolean isVideo) {
+        if (context != null) appContext = context.getApplicationContext();
+        callActive = true;
+        callDisplayName = displayName != null ? displayName : "";
+        callIsVideo = isVideo;
+        callConnectedAtMs = System.currentTimeMillis();
+        applyState();
+    }
+
+    public synchronized void onCallEnded(Context context) {
+        if (context != null) appContext = context.getApplicationContext();
+        callActive = false;
+        applyState();
+    }
+
     private void applyState() {
-        if (reactContext == null) return;
+        Context context = appContext != null ? appContext : reactContext;
+        if (context == null) return;
 
         boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
-        int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested, screenShareNeedsService);
+        boolean cameraNeeded = cameraRequested || (callActive && callIsVideo);
+        boolean microphoneNeeded = microphoneRequested || callActive;
+        int[] types = buildForegroundServiceTypes(cameraNeeded, microphoneNeeded, screenShareNeedsService);
 
         if (types.length == 0 && !screenShareNeedsService) {
-            Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
-            reactContext.stopService(serviceIntent);
+            Intent serviceIntent = new Intent(context, WebRTCForegroundService.class);
+            context.stopService(serviceIntent);
             return;
         }
 
-        Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
+        Intent serviceIntent = new Intent(context, WebRTCForegroundService.class);
         serviceIntent.putExtra("channelId", channelId);
         serviceIntent.putExtra("channelName", channelName);
         serviceIntent.putExtra("notificationTitle", notificationTitle);
@@ -129,12 +160,16 @@ public class ForegroundServiceController {
         serviceIntent.putExtra("importance", importance);
         serviceIntent.putExtra("onlyAlertOnce", onlyAlertOnce);
         serviceIntent.putExtra("foregroundServiceTypes", types);
+        if (callActive) {
+            serviceIntent.putExtra("voipDisplayName", callDisplayName);
+            serviceIntent.putExtra("voipConnectedAt", callConnectedAtMs);
+        }
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                reactContext.startForegroundService(serviceIntent);
+                context.startForegroundService(serviceIntent);
             } else {
-                reactContext.startService(serviceIntent);
+                context.startService(serviceIntent);
             }
         } catch (RuntimeException e) {
             Log.e(TAG, "Failed to start foreground service", e);
@@ -167,7 +202,9 @@ public class ForegroundServiceController {
     }
 
     private boolean hasPermission(String permission) {
-        return ContextCompat.checkSelfPermission(reactContext, permission)
+        Context context = appContext != null ? appContext : reactContext;
+        return context != null
+                && ContextCompat.checkSelfPermission(context, permission)
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 }

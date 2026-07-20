@@ -12,8 +12,10 @@ import android.os.IBinder;
 
 import androidx.core.app.NotificationCompat;
 
+import com.oney.WebRTCModule.voip.CallNotificationManager;
+
 public class WebRTCForegroundService extends Service {
-    private static final int FOREGROUND_SERVICE_ID = 1668;
+    private static final int FOREGROUND_SERVICE_ID = CallNotificationManager.NOTIFICATION_ID;
 
     private final IBinder binder = new LocalBinder();
 
@@ -39,6 +41,27 @@ public class WebRTCForegroundService extends Service {
             return;
         }
 
+        int foregroundServiceType = 0;
+        int[] foregroundServiceTypesArray = intent.getIntArrayExtra("foregroundServiceTypes");
+        if (foregroundServiceTypesArray != null) {
+            for (int value : foregroundServiceTypesArray) {
+                foregroundServiceType |= value;
+            }
+        }
+
+        // Call mode: an active Core-Telecom call owns the notification slot.
+        // Post the ongoing CallStyle notification through startForeground()
+        // (FGS-attached is what makes it valid on Android 14+ without a
+        // full-screen intent) instead of the generic room notification.
+        String voipDisplayName = intent.getStringExtra("voipDisplayName");
+        if (voipDisplayName != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            long connectedAt = intent.getLongExtra("voipConnectedAt", System.currentTimeMillis());
+            CallNotificationManager callNotificationManager = new CallNotificationManager();
+            Notification notification = callNotificationManager.buildOngoing(this, voipDisplayName, connectedAt);
+            startForegroundWithNotification(notification, foregroundServiceType);
+            return;
+        }
+
         String channelId = intent.getStringExtra("channelId");
         String channelName = intent.getStringExtra("channelName");
         String notificationTitle = intent.getStringExtra("notificationTitle");
@@ -48,17 +71,9 @@ public class WebRTCForegroundService extends Service {
         if (importance == null) {
             importance = "high";
         }
-        int[] foregroundServiceTypesArray = intent.getIntArrayExtra("foregroundServiceTypes");
 
         if (channelId == null || channelName == null || notificationTitle == null || notificationContent == null) {
             return;
-        }
-
-        int foregroundServiceType = 0;
-        if (foregroundServiceTypesArray != null) {
-            for (int value : foregroundServiceTypesArray) {
-                foregroundServiceType |= value;
-            }
         }
 
         Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());

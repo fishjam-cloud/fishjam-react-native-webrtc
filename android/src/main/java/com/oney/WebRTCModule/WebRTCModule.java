@@ -73,9 +73,12 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     private FJVideoPushInstaller videoPushInstaller;
     private boolean videoPushInstallerInitialized;
 
+    // Core-Telecom (native call UX) and VoIP push bridging
+    private final TelecomController telecomController;
+    private final VoipController voipController;
+
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
-
         mPeerConnectionObservers = new SparseArray<>();
         localStreams = new HashMap<>();
         audioExtractionController = new AudioExtractionController(reactContext, this::getTrack);
@@ -140,6 +143,11 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         foregroundServiceController = ForegroundServiceController.getInstance();
         foregroundServiceController.setContext(reactContext);
         audioOutputManager = new AudioOutputManager(this, reactContext);
+
+        telecomController = new TelecomController(this, reactContext, audioOutputManager);
+        voipController = new VoipController(this);
+        telecomController.attach();
+        voipController.attach();
     }
 
     @Override
@@ -155,6 +163,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         getUserMediaImpl.dispose();
         // prevent using stale context
         foregroundServiceController.setContext(null);
+
+        telecomController.detach();
+        voipController.detach();
     }
 
     @NonNull
@@ -1690,5 +1701,49 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void removeListeners(Integer count) {
         // Keep: Required for RN built in Event Emitter Calls.
+    }
+
+    @ReactMethod
+    public void startTelecomCall(String displayName, boolean isVideo, Promise promise) {
+        telecomController.startCall(displayName, isVideo);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void setTelecomCallActive(Promise promise) {
+        telecomController.setCallActive();
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void endTelecomCall(Promise promise) {
+        telecomController.endCall();
+        promise.resolve(null);
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public boolean hasActiveTelecomCall() {
+        return telecomController.hasActiveCall();
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public boolean isTelecomCallAnswered() {
+        return telecomController.isAnswered();
+    }
+
+    @ReactMethod
+    public void getVoipToken(Promise promise) {
+        voipController.resolveToken(promise);
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public WritableMap getPendingIncomingCall() {
+        return voipController.getPendingIncomingCall();
+    }
+
+    @ReactMethod
+    public void clearPendingIncomingCall(Promise promise) {
+        voipController.clearPendingIncomingCall();
+        promise.resolve(null);
     }
 }

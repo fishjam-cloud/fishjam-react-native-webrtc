@@ -1,4 +1,7 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 def safeExtGet(prop, fallback) {
     rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
@@ -60,9 +63,18 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
+    }
+}
+
 dependencies {
     implementation "com.facebook.react:react-android:+"
     api 'com.github.fishjam-cloud:webrtc:v124.0.2.2'
-    implementation "androidx.core:core:1.7.0"
+    implementation "androidx.core:core:1.16.0"
+    implementation ("androidx.core:core-telecom:1.0.1")
     implementation 'com.facebook.fbjni:fbjni:0.6.0'
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation 'com.google.firebase:firebase-messaging:25.1.0'
 }
