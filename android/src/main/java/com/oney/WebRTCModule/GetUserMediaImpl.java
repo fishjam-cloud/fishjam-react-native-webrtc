@@ -732,10 +732,10 @@ class GetUserMediaImpl {
         int maxBufferedDurationMs =
                 init != null && init.hasKey("maxBufferedDurationMs") ? init.getInt("maxBufferedDurationMs") : 0;
         if (sampleRateHz <= 0 || sampleRateHz % 100 != 0 || (channelCount != 1 && channelCount != 2)
-                || maxBufferedDurationMs <= 0) {
+                || maxBufferedDurationMs < 10) {
             promise.reject("E_INVALID_CUSTOM_AUDIO_TRACK_INIT",
                     "sampleRateHz must be a positive multiple of 100, channelCount 1 or 2, and "
-                            + "maxBufferedDurationMs a positive integer.");
+                            + "maxBufferedDurationMs an integer of at least 10 (one 10 ms frame).");
             return;
         }
 

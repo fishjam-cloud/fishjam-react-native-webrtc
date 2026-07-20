@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -197,6 +198,49 @@ void testOverflowDropsOldestWholeFrames() {
     }
 }
 
+// A capacity below one 10 ms frame is clamped up to a whole frame, so pushed
+// audio still comes out instead of being trimmed into permanent silence.
+void testTinyCapacityStillEmitsData() {
+    FrameRecorder recorder;
+    // 5 ms capacity at 48 kHz mono would be 240 samples — half an emit frame.
+    FJAudioFrameScheduler scheduler(48000, 1, 5, recorder.emitFn(1));
+    std::vector<int16_t> pcm(480 * 3, 1000);
+    scheduler.enqueueInt16(pcm.data(), pcm.size());
+    scheduler.start();
+    sleepMs(60);
+    scheduler.stop();
+
+    size_t dataFrames = 0;
+    for (const auto &frame : recorder.frames) {
+        if (!isSilence(frame)) {
+            dataFrames++;
+        }
+    }
+    CHECK(dataFrames >= 1);
+}
+
+// A throwing emit callback drops that frame; it must not unwind out of the
+// feeder thread (process abort) and later frames must keep arriving.
+void testEmitThrowKeepsFeederAlive() {
+    std::mutex mutex;
+    size_t calls = 0;
+    size_t callsAfterThrows = 0;
+    FJAudioFrameScheduler scheduler(48000, 1, 1000, [&](const int16_t *, size_t) {
+        std::lock_guard<std::mutex> lock(mutex);
+        calls++;
+        if (calls <= 2) {
+            throw std::runtime_error("emit failed");
+        }
+        callsAfterThrows++;
+    });
+    scheduler.start();
+    sleepMs(100);
+    scheduler.stop();
+
+    // Surviving to here is the real assertion; the count confirms liveness.
+    CHECK(callsAfterThrows >= 1);
+}
+
 // stop() joins the feeder: no emit ever lands after it returns. Double-stop and
 // destructor-after-stop are safe.
 void testStopIsFinalAndIdempotent() {
@@ -235,6 +279,8 @@ int main() {
     testStereoOddPushKeepsAlignment();
     testFloat32ConversionAndClamp();
     testOverflowDropsOldestWholeFrames();
+    testTinyCapacityStillEmitsData();
+    testEmitThrowKeepsFeederAlive();
     testStopIsFinalAndIdempotent();
     testPacingIsRoughlyRealTime();
 

@@ -18,8 +18,11 @@ FJAudioFrameScheduler::FJAudioFrameScheduler(int sampleRateHz, int channelCount,
     : sampleRateHz_(sampleRateHz),
       channelCount_(channelCount),
       samplesPerEmit_(static_cast<size_t>(sampleRateHz / kEmitsPerSecond) * static_cast<size_t>(channelCount)),
-      maxBufferedSamples_(static_cast<size_t>(sampleRateHz) * static_cast<size_t>(channelCount) *
-                          static_cast<size_t>(maxBufferedDurationMs) / 1000),
+      // Capacity below one emit frame would make dropOldestBeyondCapacityLocked
+      // strip every push back under a full frame — permanent silence.
+      maxBufferedSamples_(std::max(samplesPerEmit_,
+                                   static_cast<size_t>(sampleRateHz) * static_cast<size_t>(channelCount) *
+                                       static_cast<size_t>(maxBufferedDurationMs) / 1000)),
       emit_(std::move(emit)) {}
 
 FJAudioFrameScheduler::~FJAudioFrameScheduler() {
@@ -99,7 +102,14 @@ void FJAudioFrameScheduler::feederLoop() {
                 std::fill(emitScratch_.begin(), emitScratch_.end(), 0);
             }
         }
-        emit_(emitScratch_.data(), samplesPerEmit_ / static_cast<size_t>(channelCount_));
+        // The emit callback crosses into platform code (on Android fbjni
+        // translates Java exceptions into C++ ones); an exception escaping this
+        // raw std::thread would std::terminate() the process, so drop the frame
+        // and keep the feeder alive instead.
+        try {
+            emit_(emitScratch_.data(), samplesPerEmit_ / static_cast<size_t>(channelCount_));
+        } catch (...) {
+        }
 
         std::this_thread::sleep_until(nextDeadline);
         nextDeadline += kEmitInterval;

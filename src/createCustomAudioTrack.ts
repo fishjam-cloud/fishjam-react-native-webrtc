@@ -127,7 +127,8 @@ export interface CustomAudioTrackInit {
      * How much pushed-but-not-yet-sent audio to hold, in milliseconds, before
      * the oldest is dropped. The buffer drains in real time, so this is the
      * furthest you can push ahead — for example a long text-to-speech
-     * utterance handed over in one call. Defaults to `60000` (one minute).
+     * utterance handed over in one call. Must be at least `10` (one audio
+     * frame). Defaults to `60000` (one minute).
      */
     maxBufferedDurationMs?: number;
 }
@@ -210,10 +211,10 @@ export async function createCustomAudioTrack(
     }
     if (
         !Number.isInteger(maxBufferedDurationMs) ||
-        maxBufferedDurationMs <= 0
+        maxBufferedDurationMs < 10
     ) {
         throw invalidInitError(
-            'createCustomAudioTrack: maxBufferedDurationMs must be a positive integer.',
+            'createCustomAudioTrack: maxBufferedDurationMs must be an integer of at least 10 (one 10 ms frame).',
         );
     }
 
