@@ -80,6 +80,13 @@ export async function setCallKitCallHeld(onHold: boolean): Promise<void> {
     await WebRTCModule.setCallKitCallHeld(onHold);
 }
 
+export async function setCallKitMuted(muted: boolean): Promise<void> {
+    if (Platform.OS !== 'ios') {
+        return;
+    }
+    await WebRTCModule.setCallKitMuted(muted);
+}
+
 export function getPendingAnswerRequestId(): string | null {
     if (Platform.OS !== 'ios') {
         return null;

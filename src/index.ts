@@ -21,6 +21,7 @@ import {
     type CallKitConfig,
     isCallKitCallHeld,
     setCallKitCallHeld,
+    setCallKitMuted,
 } from './CallKit';
 import { setupNativeEvents } from './EventEmitter';
 import Logger from './Logger';
@@ -71,6 +72,7 @@ import {
     isCallHeld,
     reportOutgoingCallConnected,
     setCallHeld,
+    setCallMuted,
     type VoipCallIntent,
 } from './VoIP';
 import {
@@ -175,6 +177,8 @@ export {
     stopPIP,
     setCallHeld,
     setCallKitCallHeld,
+    setCallKitMuted,
+    setCallMuted,
     setTelecomCallHeld,
     useAudioOutput,
     useCallKit,

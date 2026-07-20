@@ -44,5 +44,6 @@ typedef NS_ENUM(NSInteger, IncomingCallSlot) {
 - (void)failIncomingCallConnected:(NSString *)requestId;
 - (void)reportOutgoingCallConnected;
 - (void)setCallHeld:(BOOL)onHold;
+- (void)setMuted:(BOOL)muted;
 
 @end

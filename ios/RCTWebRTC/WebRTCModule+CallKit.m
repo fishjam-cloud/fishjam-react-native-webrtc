@@ -133,8 +133,20 @@ RCT_EXPORT_METHOD(setCallKitCallHeld
     }
 }
 
+RCT_EXPORT_METHOD(setCallKitMuted
+                  : (BOOL)muted resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    @try {
+        [[self callKitManager] setMuted:muted];
+        resolve(nil);
+    } @catch (NSException *exception) {
+        reject(@"E_CALLKIT_SET_MUTED_FAILED", exception.reason, nil);
+    }
+}
+
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getPendingAnswerRequestId) {
-    return [self callKitManager].pendingAnswerRequestId;
+    return [self callKitManager].pendingAnswerRequestId ?: [NSNull null];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(hasActiveCallKitSession) {

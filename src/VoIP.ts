@@ -7,6 +7,7 @@ import {
     isCallKitCallHeld,
     reportOutgoingCallConnected as reportCallKitOutgoingCallConnected,
     setCallKitCallHeld,
+    setCallKitMuted,
 } from './CallKit';
 import {
     failTelecomCallAnswered,
@@ -123,6 +124,14 @@ export function setCallHeld(onHold: boolean): Promise<void> {
     return Platform.OS === 'ios'
         ? setCallKitCallHeld(onHold)
         : setTelecomCallHeld(onHold);
+}
+
+/**
+ * Drives the system mute state so the OS call UI reflects an in-app mute, and lets
+ * the mute round-trip back through `onMuteChanged`.
+ */
+export function setCallMuted(muted: boolean): Promise<void> {
+    return Platform.OS === 'ios' ? setCallKitMuted(muted) : Promise.resolve();
 }
 
 /**
