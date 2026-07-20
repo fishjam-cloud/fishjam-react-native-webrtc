@@ -111,4 +111,9 @@ object VoipPushRegistry {
             listener?.onWaitingCallDeclined(incoming)
         }
     }
+
+    @Synchronized
+    fun reportRejectedIncoming(incoming: Incoming) {
+        listener?.onWaitingCallDeclined(incoming)
+    }
 }

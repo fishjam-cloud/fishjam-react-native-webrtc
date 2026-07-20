@@ -42,7 +42,7 @@ class PushNotificationService : FirebaseMessagingService() {
                     VoipPushRegistry.bufferWaitingIncoming(incoming)
                 }
                 IncomingCallSlot.REJECTED -> {
-                    // Already tracking two calls - drop it, nothing to notify JS about.
+                    VoipPushRegistry.reportRejectedIncoming(incoming)
                 }
             }
         } else {
