@@ -38,9 +38,12 @@
  */
 import { NativeModules } from 'react-native';
 
+import Logger from './Logger';
 import MediaStream from './MediaStream';
 import MediaStreamError from './MediaStreamError';
 import type { MediaStreamTrackInfo } from './MediaStreamTrack';
+
+const log = new Logger('customVideo');
 
 const { WebRTCModule } = NativeModules;
 
@@ -92,15 +95,29 @@ function ensureInstalled(): Promise<void> {
         return installPromise;
     }
     let timeoutId!: ReturnType<typeof setTimeout>;
+    let timedOut = false;
     const timeout = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-            () => reject(new Error('Custom video track install timed out.')),
-            INSTALL_TIMEOUT_MS,
-        );
+        timeoutId = setTimeout(() => {
+            timedOut = true;
+            reject(new Error('Custom video track install timed out.'));
+        }, INSTALL_TIMEOUT_MS);
     });
     const install = WebRTCModule.installCustomVideoJSI().then(() => {
         if (typeof global.__fishjamWebrtcGetCustomVideoSink !== 'function') {
             throw new Error('Custom video track binding was not installed.');
+        }
+    });
+    // If the timeout wins the race, the caller was already answered with the
+    // timeout error and a later `install` rejection has no consumer left — log
+    // the real failure instead of letting it surface as an unhandled rejection.
+    // When install rejects first, the race propagates it to the caller and
+    // this handler stays silent.
+    install.catch((cause: unknown) => {
+        if (timedOut) {
+            log.error(
+                'installCustomVideoJSI failed after the install timeout',
+                cause instanceof Error ? cause : new Error(String(cause)),
+            );
         }
     });
     installPromise = Promise.race([install, timeout])
@@ -240,8 +257,10 @@ export interface CustomVideoFrameFence {
  *
  * Push from the *same* worklet runtime the sink was captured into: `push` binds
  * lazily to whichever runtime first resolves it, so importing one sink into two
- * runtimes and pushing from both is unsupported. `push` is stable per runtime, so
- * a hot loop may hoist it once (`const push = track.sink.push`) and reuse it.
+ * runtimes and pushing from both is unsupported. Each access to `sink.push`
+ * returns a fresh (functionally identical) function, so a hot loop should hoist
+ * it once (`const push = track.sink.push`) and reuse it, which also skips a
+ * small per-access allocation.
  */
 export interface CustomVideoSink {
     push(frame: object): void;

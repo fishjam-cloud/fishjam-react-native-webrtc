@@ -29,6 +29,7 @@
     "scripts": {
         "lint": "eslint --max-warnings 0 . && tsc --noEmit",
         "lintfix": "eslint --max-warnings 0 --fix . && tsc --noEmit",
+        "test:cpp": "tools/test-cpp.sh",
         "prepare": "bob build",
         "format": "tools/format.sh && npx prettier --write 'src/**/*.{ts,tsx}' 'metro.config.js' 'metro.config.macos.js' 'react-native.config.js'"
     },

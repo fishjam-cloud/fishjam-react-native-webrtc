@@ -73,6 +73,9 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     private FJVideoPushInstaller videoPushInstaller;
     private boolean videoPushInstallerInitialized;
 
+    private FJAudioPushInstaller audioPushInstaller;
+    private boolean audioPushInstallerInitialized;
+
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
 
@@ -1043,6 +1046,45 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         return videoPushInstaller;
     }
 
+    /**
+     * Lazily builds the custom-audio JSI installer, which owns the per-track pacing
+     * schedulers. Returns null when there is no JSI CallInvoker (the old architecture),
+     * making custom audio tracks unsupported.
+     *
+     * <p>The emitter runs on a scheduler feeder thread (not the executor): it resolves the
+     * track's external audio source from a thread-safe registry and hands it one 10 ms frame,
+     * which the source consumes synchronously.
+     */
+    private synchronized FJAudioPushInstaller getAudioPushInstaller() {
+        if (audioPushInstallerInitialized) {
+            return audioPushInstaller;
+        }
+        try {
+            ReactApplicationContext ctx = getReactApplicationContext();
+            if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
+                audioPushInstaller = new FJAudioPushInstaller(ctx,
+                        (trackId, directBuffer, numberOfFrames)
+                                -> getUserMediaImpl.pushCustomAudioFrame(trackId, directBuffer, numberOfFrames));
+            }
+            // Same latching rationale as the video installer above.
+            audioPushInstallerInitialized = true;
+        } catch (Throwable t) {
+            Log.w(TAG, "Custom audio tracks unavailable: failed to build the JSI installer", t);
+        }
+        return audioPushInstaller;
+    }
+
+    /**
+     * Stops and removes a custom audio track's pacing scheduler, joining its feeder thread so
+     * no frame is in flight before the track's source is disposed. No-op for other tracks.
+     */
+    void unregisterCustomAudioTrack(String trackId) {
+        FJAudioPushInstaller inst = audioPushInstaller;
+        if (inst != null) {
+            inst.unregisterTrack(trackId);
+        }
+    }
+
     @ReactMethod
     public void installCustomVideoJSI(Promise promise) {
         // Gate on API 26 BEFORE getVideoPushInstaller(), which constructs
@@ -1067,6 +1109,30 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         // idempotency (it resets its installed flag and re-sets the global), so the
         // Java side must NOT short-circuit on a cached "already installed" flag.
         inst.install(promise);
+    }
+
+    @ReactMethod
+    public void installCustomAudioJSI(Promise promise) {
+        // No API-level gate: unlike custom video, the audio push lib references no
+        // __INTRODUCED_IN(26) symbols.
+        FJAudioPushInstaller inst = getAudioPushInstaller();
+        if (inst == null) {
+            promise.reject("E_NO_JSI", "Custom audio tracks require the New Architecture.");
+            return;
+        }
+        // Re-run the C++ install on every call, for the same JS-reload reason as
+        // installCustomVideoJSI; FJAudioPush::install owns idempotency.
+        inst.install(promise);
+    }
+
+    @ReactMethod
+    public void createCustomAudioTrack(ReadableMap init, Promise promise) {
+        FJAudioPushInstaller inst = getAudioPushInstaller();
+        if (inst == null) {
+            promise.reject("E_NO_JSI", "Custom audio tracks require the New Architecture.");
+            return;
+        }
+        ThreadUtils.runOnExecutor(() -> getUserMediaImpl.createCustomAudioTrack(inst, init, promise));
     }
 
     @ReactMethod

@@ -23,7 +23,7 @@ Pod::Spec.new do |s|
   s.libraries           = 'c', 'sqlite3', 'stdc++'
   s.framework           = 'AudioToolbox','AVFoundation', 'CoreAudio', 'CoreGraphics', 'CoreVideo', 'GLKit', 'VideoToolbox'
   s.dependency          'React-Core'
-  s.dependency          'FishjamWebRTC', '~> 124.0.2.2'
+  s.dependency          'FishjamWebRTC', '~> 124.0.2.3'
   # JSI audio-sink channel deps. React-jsi is universal; React-callinvoker is
   # present in new-arch-capable RN builds (guarded by FJ_HAS_CALL_INVOKER).
   s.dependency          'React-jsi'
