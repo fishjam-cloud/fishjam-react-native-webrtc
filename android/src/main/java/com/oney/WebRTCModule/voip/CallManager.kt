@@ -87,6 +87,11 @@ object CallManager {
     private var videoCall: Boolean = false
     private var avatarUrl: String? = null
     @Volatile private var avatarBitmap: Bitmap? = null
+
+    // AvatarLoader callbacks arrive async. Each load captures the generation at kick
+    // time and is dropped if the slot's generation moved on before it landed.
+    @Volatile private var activeAvatarGeneration = 0
+    @Volatile private var waitingAvatarGeneration = 0
     private var timeoutsLoaded = false
     private var incomingCallTimeoutMs = DEFAULT_INCOMING_CALL_TIMEOUT_MS
     private var outgoingCallTimeoutMs = DEFAULT_OUTGOING_CALL_TIMEOUT_MS
@@ -156,11 +161,12 @@ object CallManager {
         waitingIsVideo = isVideo
         waitingAvatarUrl = avatarUrl
         waitingAvatarBitmap = null
+        val avatarGeneration = ++waitingAvatarGeneration
 
         val appContext = ctx.applicationContext
         callNotificationManager.showWaiting(appContext, displayName, isVideo)
         AvatarLoader.load(avatarUrl) { bitmap ->
-            if (bitmap != null && hasWaitingCall) {
+            if (bitmap != null && hasWaitingCall && avatarGeneration == waitingAvatarGeneration) {
                 waitingAvatarBitmap = bitmap
                 callNotificationManager.showWaiting(appContext, displayName, isVideo)
                 appContext.sendBroadcast(
@@ -359,6 +365,7 @@ object CallManager {
         this.videoCall = isVideo
         this.avatarUrl = avatarUrl
         this.avatarBitmap = null
+        val avatarGeneration = ++activeAvatarGeneration
         val isIncoming = direction == CallAttributesCompat.DIRECTION_INCOMING
         isOutgoing = direction == CallAttributesCompat.DIRECTION_OUTGOING
         val appContext = ctx.applicationContext
@@ -409,7 +416,7 @@ object CallManager {
                     if (isIncoming) {
                         callNotificationManager.showIncoming(ctx.applicationContext, displayName, isVideo)
                         AvatarLoader.load(avatarUrl) { bitmap ->
-                            if (bitmap != null && hasActiveCall && !answered) {
+                            if (bitmap != null && hasActiveCall && !answered && avatarGeneration == activeAvatarGeneration) {
                                 avatarBitmap = bitmap
                                 callNotificationManager.updateIncomingAvatar(
                                     appContext, displayName, isVideo,
