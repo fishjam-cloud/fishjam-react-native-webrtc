@@ -3,10 +3,12 @@ import { Platform } from 'react-native';
 
 import { addListener, removeListener } from './EventEmitter';
 import {
+    type CallEndedReason,
     endTelecomCall,
     hasActiveTelecomCall,
     isTelecomCallAnswered,
-    setTelecomCallActive,
+    isTelecomCallHeld,
+    setTelecomCallHeld,
     startTelecomCall,
     type TelecomConfig,
     type TelecomEvent,
@@ -14,44 +16,39 @@ import {
 
 export type UseTelecomResult = {
     startCall: (config: TelecomConfig) => Promise<void>;
-    setCallActive: () => Promise<void>;
-    endCall: () => Promise<void>;
+    endCall: (reason?: CallEndedReason) => Promise<void>;
     hasActiveCall: () => boolean;
     isAnswered: () => boolean;
+    setCallHeld: (onHold: boolean) => Promise<void>;
+    isHeld: () => boolean;
 };
 
-function useTelecomAndroid(): UseTelecomResult {
+export function useTelecom(): UseTelecomResult {
     const startCall = useCallback(
         (config: TelecomConfig) => startTelecomCall(config),
         [],
     );
-    const setCallActive = useCallback(() => setTelecomCallActive(), []);
-    const endCall = useCallback(() => endTelecomCall(), []);
+    const endCall = useCallback(
+        (reason?: CallEndedReason) => endTelecomCall(reason),
+        [],
+    );
     const hasActiveCall = useCallback(() => hasActiveTelecomCall(), []);
     const isAnswered = useCallback(() => isTelecomCallAnswered(), []);
+    const setCallHeld = useCallback(
+        (onHold: boolean) => setTelecomCallHeld(onHold),
+        [],
+    );
+    const isHeld = useCallback(() => isTelecomCallHeld(), []);
 
     return {
         startCall,
-        setCallActive,
         endCall,
         hasActiveCall,
         isAnswered,
+        setCallHeld,
+        isHeld,
     };
 }
-
-const noop = async () => {};
-const emptyResult: UseTelecomResult = {
-    startCall: noop,
-    setCallActive: noop,
-    endCall: noop,
-    hasActiveCall: () => false,
-    isAnswered: () => false,
-};
-
-export const useTelecom = Platform.select({
-    android: useTelecomAndroid,
-    default: () => emptyResult,
-}) as typeof useTelecomAndroid;
 
 export function useTelecomEvent(callback: (event: TelecomEvent) => void): void {
     const callbackRef = useRef(callback);

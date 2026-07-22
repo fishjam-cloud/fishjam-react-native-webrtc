@@ -16,7 +16,13 @@ import {
     type AudioExtractionOptions,
     type AudioTrackData,
 } from './AudioExtraction';
-import { type CallKitAction, type CallKitConfig } from './CallKit';
+import {
+    type CallKitAction,
+    type CallKitConfig,
+    isCallKitCallHeld,
+    setCallKitCallHeld,
+    setCallKitMuted,
+} from './CallKit';
 import { setupNativeEvents } from './EventEmitter';
 import Logger from './Logger';
 import mediaDevices from './MediaDevices';
@@ -47,14 +53,27 @@ import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
 import {
+    type CallEndedReason,
     type TelecomConfig,
     type TelecomEvent,
     type TelecomEventType,
+    isTelecomCallHeld,
+    setTelecomCallHeld,
 } from './Telecom';
 import {
+    clearPendingCallIntent,
     clearPendingIncomingCall,
+    failIncomingCallConnected,
+    fulfillIncomingCallConnected,
+    getPendingAnswerRequestId,
+    getPendingCallIntent,
     getPendingIncomingCall,
     getVoipToken,
+    isCallHeld,
+    reportOutgoingCallConnected,
+    setCallHeld,
+    setCallMuted,
+    type VoipCallIntent,
 } from './VoIP';
 import {
     AudioDeviceType,
@@ -114,12 +133,17 @@ setupNativeEvents();
 export {
     AudioDeviceType,
     AudioOutputManager,
+    clearPendingCallIntent,
     clearPendingIncomingCall,
     createCustomVideoBufferPool,
     createCustomVideoTrack,
     Event,
     EventTarget,
+    failIncomingCallConnected,
     forwardFrame,
+    fulfillIncomingCallConnected,
+    getPendingAnswerRequestId,
+    getPendingCallIntent,
     getPendingIncomingCall,
     getVoipToken,
     mediaDevices,
@@ -130,6 +154,10 @@ export {
     presentLivestreamBroadcastPicker,
     pushFrame,
     registerGlobals,
+    reportOutgoingCallConnected,
+    isCallHeld,
+    isCallKitCallHeld,
+    isTelecomCallHeld,
     RTCAudioSession,
     RTCCertificate,
     RTCErrorEvent,
@@ -147,6 +175,11 @@ export {
     startAudioExtraction,
     startPIP,
     stopPIP,
+    setCallHeld,
+    setCallKitCallHeld,
+    setCallKitMuted,
+    setCallMuted,
+    setTelecomCallHeld,
     useAudioOutput,
     useCallKit,
     useCallKitEvent,
@@ -161,6 +194,7 @@ export {
     type AudioExtractionOptions,
     type AudioOutputChangedInfo,
     type AudioTrackData,
+    type CallEndedReason,
     type CallKitAction,
     type CallKitConfig,
     type CustomVideoBuffer,
@@ -189,6 +223,7 @@ export {
     type UseAudioOutputResult,
     type UseTelecomResult,
     type VoIPEventHandlers,
+    type VoipCallIntent,
     type VoipIncomingPayload,
 };
 

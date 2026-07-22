@@ -1704,20 +1704,38 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void startTelecomCall(String displayName, boolean isVideo, Promise promise) {
-        telecomController.startCall(displayName, isVideo);
+    public void startTelecomCall(String displayName, String handle, boolean isVideo, Promise promise) {
+        String callHandle = (handle == null || handle.isEmpty()) ? displayName : handle;
+        telecomController.startCall(displayName, callHandle, isVideo);
         promise.resolve(null);
     }
 
     @ReactMethod
-    public void setTelecomCallActive(Promise promise) {
-        telecomController.setCallActive();
+    public void reportOutgoingCallConnected(Promise promise) {
+        telecomController.reportOutgoingCallConnected();
         promise.resolve(null);
     }
 
     @ReactMethod
-    public void endTelecomCall(Promise promise) {
-        telecomController.endCall();
+    public void fulfillTelecomCallAnswered(String requestId, Promise promise) {
+        promise.resolve(telecomController.fulfillAnswered(requestId));
+    }
+
+    @ReactMethod
+    public void failTelecomCallAnswered(String requestId, Promise promise) {
+        telecomController.failAnswered(requestId);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void endTelecomCall(String reason, Promise promise) {
+        telecomController.endCall(reason);
+        promise.resolve(null);
+    }
+
+    @ReactMethod
+    public void setTelecomCallHeld(boolean onHold, Promise promise) {
+        telecomController.setCallHeld(onHold);
         promise.resolve(null);
     }
 
@@ -1729,6 +1747,16 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     @ReactMethod(isBlockingSynchronousMethod = true)
     public boolean isTelecomCallAnswered() {
         return telecomController.isAnswered();
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public boolean isTelecomCallHeld() {
+        return telecomController.isOnHold();
+    }
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    public String getPendingAnswerRequestId() {
+        return telecomController.pendingAnswerRequestId();
     }
 
     @ReactMethod

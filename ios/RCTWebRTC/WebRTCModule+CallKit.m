@@ -23,11 +23,11 @@ static void *CallKitManagerKey = &CallKitManagerKey;
     manager.onCallStarted = ^{
         [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"started" : [NSNull null]}];
     };
-    manager.onCallAnswered = ^{
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"answer" : [NSNull null]}];
+    manager.onCallAnswered = ^(NSString *requestId) {
+        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"answer" : requestId}];
     };
-    manager.onCallEnded = ^{
-        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"ended" : [NSNull null]}];
+    manager.onCallEnded = ^(NSString *reason) {
+        [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"ended" : reason ?: @"local"}];
     };
     manager.onCallFailed = ^(NSString *reason) {
         [weakSelf sendEventWithName:kEventCallKitActionPerformed body:@{@"failed" : reason ?: @""}];
@@ -55,7 +55,8 @@ static void *CallKitManagerKey = &CallKitManagerKey;
 }
 
 RCT_EXPORT_METHOD(startCallKitSession
-                  : (NSString *)displayName isVideo
+                  : (NSString *)displayName handle
+                  : (NSString *)handle isVideo
                   : (BOOL)isVideo resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject) {
@@ -64,21 +65,88 @@ RCT_EXPORT_METHOD(startCallKitSession
         return;
     }
 
+    NSString *callHandle = handle.length > 0 ? handle : displayName;
+
     @try {
-        [[self callKitManager] startCallWithDisplayName:displayName isVideo:isVideo];
+        [[self callKitManager] startCallWithDisplayName:displayName handle:callHandle isVideo:isVideo];
         resolve(nil);
     } @catch (NSException *exception) {
         reject(@"E_CALLKIT_START_FAILED", exception.reason, nil);
     }
 }
 
-RCT_EXPORT_METHOD(endCallKitSession : (RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(endCallKitSession
+                  : (NSString *)reason resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
     @try {
-        [[self callKitManager] endCall];
+        [[self callKitManager] endCallWithReason:reason];
         resolve(nil);
     } @catch (NSException *exception) {
         reject(@"E_CALLKIT_END_FAILED", exception.reason, nil);
     }
+}
+
+RCT_EXPORT_METHOD(fulfillIncomingCallConnected
+                  : (NSString *)requestId resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    @try {
+        resolve(@([[self callKitManager] fulfillIncomingCallConnected:requestId]));
+    } @catch (NSException *exception) {
+        reject(@"E_CALLKIT_FULFILL_ANSWER_FAILED", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_METHOD(failIncomingCallConnected
+                  : (NSString *)requestId resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    @try {
+        [[self callKitManager] failIncomingCallConnected:requestId];
+        resolve(nil);
+    } @catch (NSException *exception) {
+        reject(@"E_CALLKIT_FAIL_ANSWER_FAILED", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_METHOD(reportOutgoingCallConnected
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    @try {
+        [[self callKitManager] reportOutgoingCallConnected];
+        resolve(nil);
+    } @catch (NSException *exception) {
+        reject(@"E_CALLKIT_REPORT_OUTGOING_CONNECTED_FAILED", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_METHOD(setCallKitCallHeld
+                  : (BOOL)onHold resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    @try {
+        [[self callKitManager] setCallHeld:onHold];
+        resolve(nil);
+    } @catch (NSException *exception) {
+        reject(@"E_CALLKIT_SET_HELD_FAILED", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_METHOD(setCallKitMuted
+                  : (BOOL)muted resolver
+                  : (RCTPromiseResolveBlock)resolve rejecter
+                  : (RCTPromiseRejectBlock)reject) {
+    @try {
+        [[self callKitManager] setMuted:muted];
+        resolve(nil);
+    } @catch (NSException *exception) {
+        reject(@"E_CALLKIT_SET_MUTED_FAILED", exception.reason, nil);
+    }
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getPendingAnswerRequestId) {
+    return [self callKitManager].pendingAnswerRequestId ?: [NSNull null];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(hasActiveCallKitSession) {
@@ -87,6 +155,10 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(hasActiveCallKitSession) {
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isCallAnswered) {
     return @([self callKitManager].isCallAnswered);
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isCallKitCallHeld) {
+    return @([self callKitManager].isCallOnHold);
 }
 
 @end

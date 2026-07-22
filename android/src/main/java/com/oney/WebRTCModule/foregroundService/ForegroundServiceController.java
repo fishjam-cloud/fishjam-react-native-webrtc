@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
+import com.oney.WebRTCModule.voip.VoipForegroundRequest;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,10 +32,7 @@ public class ForegroundServiceController {
     private boolean screenSharingAllowed = false;
     private boolean screenShareActive = false;
 
-    private boolean callActive = false;
-    private String callDisplayName = "";
-    private boolean callIsVideo = false;
-    private long callConnectedAtMs = 0;
+    private VoipForegroundRequest voipRequest = VoipForegroundRequest.INACTIVE;
 
     private String channelId = "com.fishjam.foregroundservice.channel";
     private String channelName = "Fishjam Notifications";
@@ -116,25 +114,19 @@ public class ForegroundServiceController {
         applyState();
     }
 
-    /**
-     * Called by CallManager when a Core-Telecom call becomes ongoing (outgoing
-     * started or incoming answered). Switches the service's notification to the
-     * ongoing CallStyle one and keeps camera/microphone types alive for the call
-     * even if the app never enabled the room foreground service from JS.
-     */
-    public synchronized void onCallStarted(Context context, String displayName, boolean isVideo) {
-        if (context != null) appContext = context.getApplicationContext();
-        callActive = true;
-        callDisplayName = displayName != null ? displayName : "";
-        callIsVideo = isVideo;
-        callConnectedAtMs = System.currentTimeMillis();
+    public synchronized void setVoipRequest(VoipForegroundRequest request) {
+        voipRequest = request;
         applyState();
     }
 
-    public synchronized void onCallEnded(Context context) {
-        if (context != null) appContext = context.getApplicationContext();
-        callActive = false;
+    public synchronized void setVoipHeld(boolean held) {
+        if (!voipRequest.isActive()) return;
+        voipRequest = voipRequest.withHeld(held);
         applyState();
+    }
+
+    public synchronized VoipForegroundRequest getVoipRequest() {
+        return voipRequest;
     }
 
     private void applyState() {
@@ -142,8 +134,8 @@ public class ForegroundServiceController {
         if (context == null) return;
 
         boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
-        boolean cameraNeeded = cameraRequested || (callActive && callIsVideo);
-        boolean microphoneNeeded = microphoneRequested || callActive;
+        boolean cameraNeeded = cameraRequested || voipRequest.needsCamera();
+        boolean microphoneNeeded = microphoneRequested || voipRequest.needsMicrophone();
         int[] types = buildForegroundServiceTypes(cameraNeeded, microphoneNeeded, screenShareNeedsService);
 
         if (types.length == 0 && !screenShareNeedsService) {
@@ -160,10 +152,6 @@ public class ForegroundServiceController {
         serviceIntent.putExtra("importance", importance);
         serviceIntent.putExtra("onlyAlertOnce", onlyAlertOnce);
         serviceIntent.putExtra("foregroundServiceTypes", types);
-        if (callActive) {
-            serviceIntent.putExtra("voipDisplayName", callDisplayName);
-            serviceIntent.putExtra("voipConnectedAt", callConnectedAtMs);
-        }
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

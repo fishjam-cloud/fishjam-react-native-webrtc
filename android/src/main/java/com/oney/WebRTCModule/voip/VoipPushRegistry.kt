@@ -9,11 +9,18 @@ import com.google.firebase.installations.FirebaseInstallations
  * JS layer.
  */
 object VoipPushRegistry {
-    data class Incoming(val roomName: String, val displayName: String, val isVideo: Boolean)
+    data class Incoming(
+        val roomName: String,
+        val displayName: String,
+        val handle: String,
+        val isVideo: Boolean,
+        val avatarUrl: String? = null,
+    )
 
     interface Listener {
         fun onVoipToken(token: String)
         fun onVoipIncoming(incoming: Incoming)
+        fun onWaitingCallDeclined(incoming: Incoming)
     }
 
     @Volatile
@@ -21,6 +28,10 @@ object VoipPushRegistry {
 
     @Volatile
     private var pendingIncoming: Incoming? = null
+
+
+    @Volatile
+    private var pendingWaitingIncoming: Incoming? = null
 
     @Volatile
     private var listener: Listener? = null
@@ -78,5 +89,31 @@ object VoipPushRegistry {
     @Synchronized
     fun clearPending() {
         pendingIncoming = null
+    }
+
+    @Synchronized
+    fun bufferWaitingIncoming(incoming: Incoming) {
+        pendingWaitingIncoming = incoming
+    }
+
+    @Synchronized
+    fun revealWaitingIncoming() {
+        val incoming = pendingWaitingIncoming ?: return
+        pendingWaitingIncoming = null
+        reportIncoming(incoming)
+    }
+
+    @Synchronized
+    fun discardWaitingIncoming() {
+        val incoming = pendingWaitingIncoming
+        pendingWaitingIncoming = null
+        if (incoming != null) {
+            listener?.onWaitingCallDeclined(incoming)
+        }
+    }
+
+    @Synchronized
+    fun reportRejectedIncoming(incoming: Incoming) {
+        listener?.onWaitingCallDeclined(incoming)
     }
 }

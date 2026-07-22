@@ -5,10 +5,12 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.telecom.DisconnectCause
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.MotionEvent
@@ -43,7 +45,11 @@ import kotlin.math.abs
 class IncomingCallActivity : Activity() {
     companion object {
         const val ACTION_ANSWER = "fishjam.voip.ACTION_ANSWER"
+        const val ACTION_SHOW_WAITING = "fishjam.voip.ACTION_SHOW_WAITING"
         const val ACTION_CALL_ENDED = "fishjam.voip.ACTION_CALL_ENDED"
+
+        /** Broadcast by [CallManager] once the caller avatar has downloaded. */
+        const val ACTION_AVATAR_READY = "fishjam.voip.ACTION_AVATAR_READY"
 
         /** Fraction of max travel the knob must cross to trigger the action. */
         private const val SWIPE_TRIGGER = 0.7f
@@ -60,10 +66,19 @@ class IncomingCallActivity : Activity() {
 
     private val callEndedReceiver =
         object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) = finish()
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    ACTION_CALL_ENDED -> finish()
+                    ACTION_AVATAR_READY -> refreshAvatar()
+                }
+            }
         }
     private var callEndedReceiverRegistered = false
     private var isAnswering = false
+    private var isWaitingCall = false
+
+    /** The hero avatar container, so a late-arriving photo can replace the initials. */
+    private var avatarHolder: FrameLayout? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,6 +86,21 @@ class IncomingCallActivity : Activity() {
 
         if (intent?.action == ACTION_ANSWER) {
             answerAndOpenApp()
+            return
+        }
+
+        if (intent?.action == ACTION_SHOW_WAITING) {
+            if (!CallManager.hasWaitingCall()) {
+                finish()
+                return
+            }
+            isWaitingCall = true
+            setContentView(
+                buildWaitingUi(
+                    CallManager.waitingDisplayName(),
+                    CallManager.waitingIsVideo(),
+                ),
+            )
             return
         }
 
@@ -126,7 +156,7 @@ class IncomingCallActivity : Activity() {
         ContextCompat.registerReceiver(
             this,
             callEndedReceiver,
-            IntentFilter(ACTION_CALL_ENDED),
+            IntentFilter(ACTION_CALL_ENDED).apply { addAction(ACTION_AVATAR_READY) },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
     }
@@ -207,6 +237,14 @@ class IncomingCallActivity : Activity() {
 
         root.addView(buildSwipeBar())
 
+        return root
+    }
+
+    private fun buildWaitingUi(displayName: String, isVideo: Boolean): ViewGroup {
+        val root = buildUi(displayName, isVideo)
+        root.post {
+            if (!CallManager.hasWaitingCall()) finish()
+        }
         return root
     }
 
@@ -393,9 +431,20 @@ class IncomingCallActivity : Activity() {
                     val fraction =
                         if (maxTravel > 0f) knob.translationX / maxTravel else 0f
                     when {
-                        fraction >= SWIPE_TRIGGER -> answerAndOpenApp()
+                        fraction >= SWIPE_TRIGGER -> {
+                            if (isWaitingCall) {
+                                CallManager.acceptWaitingCall(this@IncomingCallActivity)
+                            } else {
+                                answerAndOpenApp()
+                            }
+                            finish()
+                        }
                         fraction <= -SWIPE_TRIGGER -> {
-                            CallManager.endCall()
+                            if (isWaitingCall) {
+                                CallManager.declineWaitingCall(this@IncomingCallActivity)
+                            } else {
+                                CallManager.endCall(DisconnectCause(DisconnectCause.REJECTED))
+                            }
                             finish()
                         }
                         else -> resetVisuals()
@@ -411,7 +460,25 @@ class IncomingCallActivity : Activity() {
         }
     }
 
-    private fun avatarView(name: String, sizeDp: Int, textSizeSp: Float): TextView =
+    /**
+     * The hero avatar: shows the downloaded caller photo if available, otherwise
+     * an initials circle. Returned as a holder so [refreshAvatar] can swap in a
+     * photo that lands after the screen is already showing.
+     */
+    private fun activeAvatarBitmap(): Bitmap? =
+        if (isWaitingCall) CallManager.currentWaitingAvatarBitmap() else CallManager.currentAvatarBitmap()
+
+    private fun avatarView(name: String, sizeDp: Int, textSizeSp: Float): FrameLayout {
+        val holder = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+        }
+        val bitmap = activeAvatarBitmap()
+        holder.addView(if (bitmap != null) avatarImage(bitmap) else initialsAvatar(name, textSizeSp))
+        avatarHolder = holder
+        return holder
+    }
+
+    private fun initialsAvatar(name: String, textSizeSp: Float): TextView =
         TextView(this).apply {
             text = name.firstOrNull()?.uppercase() ?: "?"
             setTextColor(Color.WHITE)
@@ -422,8 +489,30 @@ class IncomingCallActivity : Activity() {
                     shape = GradientDrawable.OVAL
                     setColor(avatarGreen)
                 }
-            layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            )
         }
+
+    /** The already circular-cropped caller photo, sized to fill the holder. */
+    private fun avatarImage(bitmap: Bitmap): ImageView =
+        ImageView(this).apply {
+            setImageBitmap(bitmap)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT,
+            )
+        }
+
+    /** Replaces the initials circle with the caller photo once it has downloaded. */
+    private fun refreshAvatar() {
+        val holder = avatarHolder ?: return
+        val bitmap = activeAvatarBitmap() ?: return
+        holder.removeAllViews()
+        holder.addView(avatarImage(bitmap))
+    }
 
     private fun pill(color: Int, radiusDp: Int): GradientDrawable =
         GradientDrawable().apply {

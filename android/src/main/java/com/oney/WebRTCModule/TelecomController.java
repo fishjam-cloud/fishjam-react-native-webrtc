@@ -39,21 +39,37 @@ final class TelecomController implements CallEventsListener {
         }
     }
 
-    void startCall(String displayName, boolean isVideo) {
+    void startCall(String displayName, String handle, boolean isVideo) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CallManager.INSTANCE.startOutgoingCall(reactContext, displayName, isVideo);
+            CallManager.INSTANCE.startOutgoingCall(reactContext, displayName, handle, isVideo);
         }
     }
 
-    void setCallActive() {
+    void reportOutgoingCallConnected() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CallManager.INSTANCE.setCallActive();
+            CallManager.INSTANCE.reportOutgoingCallConnected();
         }
     }
 
-    void endCall() {
+    boolean fulfillAnswered(String requestId) {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && CallManager.INSTANCE.fulfillAnswered(requestId);
+    }
+
+    void failAnswered(String requestId) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CallManager.INSTANCE.endCall();
+            CallManager.INSTANCE.failAnswered(requestId);
+        }
+    }
+
+    void endCall(String reason) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CallManager.INSTANCE.endCall(CallManager.INSTANCE.reasonToCause(reason));
+        }
+    }
+
+    void setCallHeld(boolean onHold) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CallManager.INSTANCE.setCallHeld(onHold);
         }
     }
 
@@ -65,6 +81,14 @@ final class TelecomController implements CallEventsListener {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && CallManager.INSTANCE.isAnswered();
     }
 
+    boolean isOnHold() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && CallManager.INSTANCE.isOnHold();
+    }
+
+    String pendingAnswerRequestId() {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? CallManager.INSTANCE.pendingAnswerRequestId() : null;
+    }
+
     @Override
     public void onStarted() {
         WritableMap body = Arguments.createMap();
@@ -73,7 +97,7 @@ final class TelecomController implements CallEventsListener {
     }
 
     @Override
-    public void onAnswered() {
+    public void onAnswered(String requestId) {
         // Warm start: the host activity already exists, so the lifecycle hook
         // in LockScreenController never fires — flag it directly.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -84,13 +108,15 @@ final class TelecomController implements CallEventsListener {
         }
         WritableMap body = Arguments.createMap();
         body.putString("event", "answer");
+        body.putString("requestId", requestId);
         webRTCModule.sendEvent("telecomActionPerformed", body);
     }
 
     @Override
-    public void onEnded() {
+    public void onEnded(String reason) {
         WritableMap body = Arguments.createMap();
         body.putString("event", "ended");
+        body.putString("reason", reason);
         webRTCModule.sendEvent("telecomActionPerformed", body);
     }
 
@@ -107,6 +133,14 @@ final class TelecomController implements CallEventsListener {
         WritableMap body = Arguments.createMap();
         body.putString("event", "muteChanged");
         body.putBoolean("muted", muted);
+        webRTCModule.sendEvent("telecomActionPerformed", body);
+    }
+
+    @Override
+    public void onHoldChanged(boolean onHold) {
+        WritableMap body = Arguments.createMap();
+        body.putString("event", "holdChanged");
+        body.putBoolean("held", onHold);
         webRTCModule.sendEvent("telecomActionPerformed", body);
     }
 }
