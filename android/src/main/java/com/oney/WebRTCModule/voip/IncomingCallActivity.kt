@@ -48,6 +48,12 @@ class IncomingCallActivity : Activity() {
         const val ACTION_SHOW_WAITING = "fishjam.voip.ACTION_SHOW_WAITING"
         const val ACTION_CALL_ENDED = "fishjam.voip.ACTION_CALL_ENDED"
 
+        /**
+         * Distinct from [ACTION_CALL_ENDED], which is about the
+         * current call and must not dismiss the waiting screen.
+         */
+        const val ACTION_WAITING_ENDED = "fishjam.voip.ACTION_WAITING_ENDED"
+
         /** Broadcast by [CallManager] once the caller avatar has downloaded. */
         const val ACTION_AVATAR_READY = "fishjam.voip.ACTION_AVATAR_READY"
 
@@ -68,7 +74,8 @@ class IncomingCallActivity : Activity() {
         object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
                 when (intent.action) {
-                    ACTION_CALL_ENDED -> finish()
+                    ACTION_CALL_ENDED -> if (!isWaitingCall) finish()
+                    ACTION_WAITING_ENDED -> if (isWaitingCall) finish()
                     ACTION_AVATAR_READY -> refreshAvatar()
                 }
             }
@@ -101,6 +108,7 @@ class IncomingCallActivity : Activity() {
                     CallManager.waitingIsVideo(),
                 ),
             )
+            registerCallEndedReceiver()
             return
         }
 
@@ -156,7 +164,10 @@ class IncomingCallActivity : Activity() {
         ContextCompat.registerReceiver(
             this,
             callEndedReceiver,
-            IntentFilter(ACTION_CALL_ENDED).apply { addAction(ACTION_AVATAR_READY) },
+            IntentFilter(ACTION_CALL_ENDED).apply {
+                addAction(ACTION_WAITING_ENDED)
+                addAction(ACTION_AVATAR_READY)
+            },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
     }
