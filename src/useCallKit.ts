@@ -61,19 +61,17 @@ function useCallKitIos(): UseCallKitResult {
     };
 }
 
-const useCallKitServiceIos = (config: CallKitConfig) => {
-    const { displayName, handle, isVideo } = config;
+const useCallKitServiceIos = (config: Omit<CallKitConfig, 'handle'>) => {
+    const { displayName, isVideo } = config;
     const { startCallKitSession, endCallKitSession } = useCallKitIos();
 
     useEffect(() => {
-        startCallKitSession({ displayName, handle, isVideo }).catch(
-            console.error,
-        );
+        startCallKitSession({ displayName, isVideo }).catch(console.error);
 
         return () => {
             endCallKitSession().catch(console.error);
         };
-    }, [startCallKitSession, endCallKitSession, displayName, handle, isVideo]);
+    }, [startCallKitSession, endCallKitSession, displayName, isVideo]);
 };
 
 const emptyFunction = () => {};
