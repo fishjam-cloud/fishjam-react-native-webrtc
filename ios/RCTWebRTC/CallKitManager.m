@@ -56,7 +56,8 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
         providerConfiguration.supportedHandleTypes = [NSSet setWithObject:@(CXHandleTypeGeneric)];
         providerConfiguration.maximumCallsPerCallGroup = 1;
         providerConfiguration.maximumCallGroups = 2;
-        providerConfiguration.includesCallsInRecents = YES;
+        providerConfiguration.includesCallsInRecents =
+            [[NSBundle.mainBundle objectForInfoDictionaryKey:@"FishjamVoipEnabled"] boolValue];
 
         _provider = [[CXProvider alloc] initWithConfiguration:providerConfiguration];
         [_provider setDelegate:self queue:nil];

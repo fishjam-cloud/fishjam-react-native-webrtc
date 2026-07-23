@@ -190,6 +190,7 @@ object CallManager {
         waitingAvatarUrl = null
         waitingAvatarBitmap = null
         callNotificationManager.cancelWaiting(ctx.applicationContext)
+        notifyWaitingEnded(ctx)
         VoipPushRegistry.discardWaitingIncoming()
     }
 
@@ -200,6 +201,7 @@ object CallManager {
         waitingRingTimeoutJob?.cancel()
         waitingRingTimeoutJob = null
         callNotificationManager.cancelWaiting(ctx.applicationContext)
+        notifyWaitingEnded(ctx)
 
         val displayName = waitingDisplayName
         val handle = waitingHandle
@@ -220,6 +222,14 @@ object CallManager {
             answer()
             launchHostApp(ctx.applicationContext)
         }
+    }
+
+    /** Dismisses a waiting-call screen that is still showing the ring UI. */
+    private fun notifyWaitingEnded(ctx: Context) {
+        val appContext = ctx.applicationContext
+        appContext.sendBroadcast(
+            Intent(IncomingCallActivity.ACTION_WAITING_ENDED).setPackage(appContext.packageName)
+        )
     }
 
     fun answer() { actions?.trySend(CallAction.Answer) }

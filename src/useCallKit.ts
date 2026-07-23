@@ -61,7 +61,7 @@ function useCallKitIos(): UseCallKitResult {
     };
 }
 
-const useCallKitServiceIos = (config: CallKitConfig) => {
+const useCallKitServiceIos = (config: Omit<CallKitConfig, 'handle'>) => {
     const { displayName, isVideo } = config;
     const { startCallKitSession, endCallKitSession } = useCallKitIos();
 
