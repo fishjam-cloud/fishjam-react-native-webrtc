@@ -271,6 +271,11 @@ object CallManager {
         else -> DisconnectCause(DisconnectCause.LOCAL)
     }
 
+    private fun sanitizeDisconnectCause(cause: DisconnectCause): DisconnectCause = when (cause.code) {
+        DisconnectCause.LOCAL, DisconnectCause.REJECTED, DisconnectCause.MISSED, DisconnectCause.REMOTE -> cause
+        else -> DisconnectCause(DisconnectCause.LOCAL)
+    }
+
     private fun causeToReason(cause: DisconnectCause): String = when (cause.code) {
         DisconnectCause.LOCAL -> "local"
         DisconnectCause.REJECTED -> "rejected"
@@ -498,7 +503,7 @@ object CallManager {
                 CallAction.Activate -> setActive()
                 CallAction.Hold -> setInactive()
                 is CallAction.SetEndpoint -> requestEndpointChange(action.endpoint)
-                is CallAction.Disconnect -> { disconnect(action.cause) }
+                is CallAction.Disconnect -> { disconnect(sanitizeDisconnectCause(action.cause)) }
             }
 
             if (result is CallControlResult.Error) {
