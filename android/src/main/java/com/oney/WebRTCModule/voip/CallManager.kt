@@ -262,7 +262,7 @@ object CallManager {
         if (pendingAnswerRequestId == requestId) {
             pendingAnswerRequestId = null
         }
-        endCall(DisconnectCause(DisconnectCause.ERROR))
+        endCall(DisconnectCause(DisconnectCause.LOCAL))
     }
 
     fun endCall(cause: DisconnectCause = DisconnectCause(DisconnectCause.LOCAL)) {
@@ -276,8 +276,8 @@ object CallManager {
         "rejected" -> DisconnectCause(DisconnectCause.REJECTED)
         "missed" -> DisconnectCause(DisconnectCause.MISSED)
         "remote" -> DisconnectCause(DisconnectCause.REMOTE)
-        "answeredElsewhere" -> DisconnectCause(DisconnectCause.ANSWERED_ELSEWHERE)
-        "failed" -> DisconnectCause(DisconnectCause.ERROR)
+        "answeredElsewhere" -> DisconnectCause(DisconnectCause.REJECTED)
+        "failed" -> DisconnectCause(DisconnectCause.LOCAL)
         else -> DisconnectCause(DisconnectCause.LOCAL)
     }
 
@@ -556,7 +556,7 @@ object CallManager {
             if (pendingAnswerRequestId != timedOutRequestId) return@createRequest
             pendingAnswerRequestId = null
             listener?.onFailed("answer fulfill timed out")
-            endCall(DisconnectCause(DisconnectCause.ERROR))
+            endCall(DisconnectCause(DisconnectCause.LOCAL))
         }
         pendingAnswerRequestId = requestId
         listener?.onAnswered(requestId)
