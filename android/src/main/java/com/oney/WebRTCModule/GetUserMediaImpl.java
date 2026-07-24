@@ -29,6 +29,7 @@ import com.oney.WebRTCModule.videoEffects.VideoFrameProcessor;
 
 import org.webrtc.*;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -78,6 +79,15 @@ class GetUserMediaImpl {
      * {@link #disposeTrack}.
      */
     private final Map<String, CustomVideoCaptureController> customVideoControllers = new ConcurrentHashMap<>();
+
+    /**
+     * trackId -> {@link ExternalAudioSource} registry, resolved by the paced emit path.
+     * That emit runs on the track's scheduler feeder thread, which races the executor
+     * mutating {@link #tracks} (an unsynchronised HashMap); this concurrent registry
+     * decouples delivery from {@code tracks}. Entries are added by
+     * {@link #createCustomAudioTrack} and removed by {@link #disposeTrack}.
+     */
+    private final Map<String, ExternalAudioSource> customAudioSources = new ConcurrentHashMap<>();
 
     private final WebRTCModule webRTCModule;
 
@@ -273,6 +283,12 @@ class GetUserMediaImpl {
     void disposeTrack(String id) {
         TrackPrivate track = tracks.remove(id);
         customVideoControllers.remove(id);
+        // Order matters for custom audio: drop the source from the registry first so any
+        // in-flight emit becomes a no-op, then stop the scheduler (joins its feeder
+        // thread), and only then dispose the track/source below.
+        if (customAudioSources.remove(id) != null) {
+            webRTCModule.unregisterCustomAudioTrack(id);
+        }
         if (track != null) {
             track.dispose();
         }
@@ -701,6 +717,80 @@ class GetUserMediaImpl {
                 "createCustomVideoTrack streamId=" + streamId + " trackId=" + trackId
                         + (poolId != null ? " pooled" : " forwarding"));
         promise.resolve(data);
+    }
+
+    /**
+     * Creates a custom audio track whose PCM is pushed from JS. Mirrors
+     * {@link #createCustomVideoTrack}: builds the fork's {@link ExternalAudioSource} +
+     * {@link AudioTrack}, registers both the source (for the emit path) and the pacing
+     * scheduler, and lands the track in {@code tracks}/{@code localStreams} so the existing
+     * publish and dispose paths work untouched.
+     */
+    void createCustomAudioTrack(FJAudioPushInstaller installer, ReadableMap init, Promise promise) {
+        int sampleRateHz = init != null && init.hasKey("sampleRateHz") ? init.getInt("sampleRateHz") : 0;
+        int channelCount = init != null && init.hasKey("channelCount") ? init.getInt("channelCount") : 0;
+        int maxBufferedDurationMs =
+                init != null && init.hasKey("maxBufferedDurationMs") ? init.getInt("maxBufferedDurationMs") : 0;
+        if (sampleRateHz <= 0 || sampleRateHz % 100 != 0 || (channelCount != 1 && channelCount != 2)
+                || maxBufferedDurationMs < 10) {
+            promise.reject("E_INVALID_CUSTOM_AUDIO_TRACK_INIT",
+                    "sampleRateHz must be a positive multiple of 100, channelCount 1 or 2, and "
+                            + "maxBufferedDurationMs an integer of at least 10 (one 10 ms frame).");
+            return;
+        }
+
+        PeerConnectionFactory pcFactory = webRTCModule.mFactory;
+        ExternalAudioSource audioSource = pcFactory.createExternalAudioSource(sampleRateHz, channelCount);
+        String trackId = UUID.randomUUID().toString();
+        AudioTrack audioTrack = pcFactory.createAudioTrack(trackId, audioSource);
+        audioTrack.setEnabled(true);
+
+        // Register so the existing disposeTrack -> TrackPrivate.dispose path disposes the
+        // source/track. surfaceTextureHelper/videoCaptureController are video-only.
+        tracks.put(trackId,
+                new TrackPrivate(
+                        audioTrack, audioSource, /* videoCaptureController */ null, /* surfaceTextureHelper */ null));
+        // Publish the source before starting the scheduler: its feeder thread begins
+        // emitting (silence) immediately and resolves the source through this registry.
+        customAudioSources.put(trackId, audioSource);
+        installer.registerTrack(trackId, sampleRateHz, channelCount, maxBufferedDurationMs);
+
+        String streamId = UUID.randomUUID().toString();
+        MediaStream mediaStream = pcFactory.createLocalMediaStream(streamId);
+        mediaStream.addTrack(audioTrack);
+        webRTCModule.localStreams.put(streamId, mediaStream);
+
+        WritableMap trackInfo = Arguments.createMap();
+        trackInfo.putString("id", trackId);
+        trackInfo.putString("kind", audioTrack.kind());
+        trackInfo.putString("readyState", "live");
+        trackInfo.putBoolean("remote", false);
+        trackInfo.putBoolean("enabled", audioTrack.enabled());
+        WritableMap settings = Arguments.createMap();
+        settings.putString("deviceId", "custom-audio");
+        settings.putString("groupId", "");
+        trackInfo.putMap("settings", settings);
+
+        WritableMap data = Arguments.createMap();
+        data.putString("streamId", streamId);
+        data.putMap("track", trackInfo);
+
+        Log.d(TAG, "createCustomAudioTrack streamId=" + streamId + " trackId=" + trackId);
+        promise.resolve(data);
+    }
+
+    /**
+     * Hands one paced 10 ms frame to a custom audio track's source. Routed from the track's
+     * scheduler feeder thread via {@link FJAudioPushInstaller}. {@code directBuffer} is only
+     * valid for this call, and the source consumes it synchronously. Fire-and-forget.
+     */
+    void pushCustomAudioFrame(String trackId, ByteBuffer directBuffer, int numberOfFrames) {
+        ExternalAudioSource source = customAudioSources.get(trackId);
+        if (source == null) {
+            // Track disposed mid-flight; drop.
+            return;
+        }
+        source.pushAudioFrame(directBuffer, numberOfFrames);
     }
 
     /**

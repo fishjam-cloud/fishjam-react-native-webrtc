@@ -11,6 +11,7 @@
 #import "WebRTCModuleOptions.h"
 
 #import <React/RCTUIManager.h>
+#import "CustomAudioSourceController.h"
 #import "CustomVideoCaptureController.h"
 #import "ProcessorProvider.h"
 #import "ScreenCaptureController.h"
@@ -723,6 +724,9 @@ RCT_EXPORT_METHOD(mediaStreamTrackRelease : (nonnull NSString *)trackID) {
             CustomVideoCaptureController *customController = (CustomVideoCaptureController *)track.captureController;
             [customController stopCapture];
             [customController releaseCaptureResources];
+        } else if ([track.captureController isKindOfClass:[CustomAudioSourceController class]]) {
+            CustomAudioSourceController *customAudioController = (CustomAudioSourceController *)track.captureController;
+            [customAudioController releaseCaptureResources];
         } else {
             [track.captureController stopCapture];
         }

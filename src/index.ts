@@ -82,6 +82,14 @@ import {
     type AudioOutputChangedInfo,
 } from './audioOutputManager';
 import {
+    createCustomAudioTrack,
+    pushAudioSamples,
+    type CustomAudioTrackInit,
+    type CustomAudioSink,
+    type CustomAudioTrack,
+    type CustomAudioTrackResult,
+} from './createCustomAudioTrack';
+import {
     createCustomVideoBufferPool,
     createCustomVideoTrack,
     pushFrame,
@@ -135,6 +143,7 @@ export {
     AudioOutputManager,
     clearPendingCallIntent,
     clearPendingIncomingCall,
+    createCustomAudioTrack,
     createCustomVideoBufferPool,
     createCustomVideoTrack,
     Event,
@@ -152,6 +161,7 @@ export {
     permissions,
     presentBroadcastPicker,
     presentLivestreamBroadcastPicker,
+    pushAudioSamples,
     pushFrame,
     registerGlobals,
     reportOutgoingCallConnected,
@@ -197,6 +207,10 @@ export {
     type CallEndedReason,
     type CallKitAction,
     type CallKitConfig,
+    type CustomAudioSink,
+    type CustomAudioTrack,
+    type CustomAudioTrackInit,
+    type CustomAudioTrackResult,
     type CustomVideoBuffer,
     type CustomVideoBufferPool,
     type CustomVideoBufferPoolInit,

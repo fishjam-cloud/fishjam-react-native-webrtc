@@ -26,3 +26,5 @@ jobs:
                     exit 1
                   fi
             - run: npm run lint
+            - name: C++ unit tests
+              run: npm run test:cpp

@@ -71,9 +71,9 @@ kotlin {
 
 dependencies {
     implementation "com.facebook.react:react-android:+"
-    api 'com.github.fishjam-cloud:webrtc:v124.0.2.2'
-    implementation "androidx.core:core:1.16.0"
     implementation ("androidx.core:core-telecom:1.0.1")
+    implementation "androidx.core:core:1.16.0"
+    api 'com.github.fishjam-cloud:webrtc:v124.0.2.3'
     implementation 'com.facebook.fbjni:fbjni:0.6.0'
     implementation 'androidx.core:core-ktx:1.16.0'
     implementation 'com.google.firebase:firebase-messaging:25.1.0'
