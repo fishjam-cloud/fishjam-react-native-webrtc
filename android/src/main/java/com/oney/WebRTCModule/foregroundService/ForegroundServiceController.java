@@ -54,7 +54,9 @@ public class ForegroundServiceController {
 
     public void setContext(ReactApplicationContext reactContext) {
         this.reactContext = reactContext;
-        this.appContext = reactContext.getApplicationContext();
+        if (reactContext != null) {
+            this.appContext = reactContext.getApplicationContext();
+        }
     }
 
     // Called by WebRTCForegroundService after startForeground() completes.
