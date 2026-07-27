@@ -262,7 +262,7 @@ object CallManager {
         if (pendingAnswerRequestId == requestId) {
             pendingAnswerRequestId = null
         }
-        endCall(DisconnectCause(DisconnectCause.LOCAL))
+        endCall(DisconnectCause(DisconnectCause.ERROR))
     }
 
     fun endCall(cause: DisconnectCause = DisconnectCause(DisconnectCause.LOCAL)) {
@@ -276,8 +276,17 @@ object CallManager {
         "rejected" -> DisconnectCause(DisconnectCause.REJECTED)
         "missed" -> DisconnectCause(DisconnectCause.MISSED)
         "remote" -> DisconnectCause(DisconnectCause.REMOTE)
-        "answeredElsewhere" -> DisconnectCause(DisconnectCause.REJECTED)
-        "failed" -> DisconnectCause(DisconnectCause.LOCAL)
+        "answeredElsewhere" -> DisconnectCause(DisconnectCause.ANSWERED_ELSEWHERE)
+        "failed" -> DisconnectCause(DisconnectCause.ERROR)
+        else -> DisconnectCause(DisconnectCause.LOCAL)
+    }
+
+    private fun telecomSafeCause(cause: DisconnectCause): DisconnectCause = when (cause.code) {
+        DisconnectCause.LOCAL,
+        DisconnectCause.REMOTE,
+        DisconnectCause.MISSED,
+        DisconnectCause.REJECTED -> cause
+        DisconnectCause.ANSWERED_ELSEWHERE -> DisconnectCause(DisconnectCause.REJECTED)
         else -> DisconnectCause(DisconnectCause.LOCAL)
     }
 
@@ -508,7 +517,7 @@ object CallManager {
                 CallAction.Activate -> setActive()
                 CallAction.Hold -> setInactive()
                 is CallAction.SetEndpoint -> requestEndpointChange(action.endpoint)
-                is CallAction.Disconnect -> { disconnect(action.cause) }
+                is CallAction.Disconnect -> { disconnect(telecomSafeCause(action.cause)) }
             }
 
             if (result is CallControlResult.Error) {
@@ -556,7 +565,7 @@ object CallManager {
             if (pendingAnswerRequestId != timedOutRequestId) return@createRequest
             pendingAnswerRequestId = null
             listener?.onFailed("answer fulfill timed out")
-            endCall(DisconnectCause(DisconnectCause.LOCAL))
+            endCall(DisconnectCause(DisconnectCause.ERROR))
         }
         pendingAnswerRequestId = requestId
         listener?.onAnswered(requestId)
