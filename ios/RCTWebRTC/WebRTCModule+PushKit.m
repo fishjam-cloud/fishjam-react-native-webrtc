@@ -21,16 +21,6 @@
     push.onCallIntent = ^(NSDictionary *intent) {
         [weakSelf sendEventWithName:kEventVoipPush body:@{@"callIntent" : intent ?: @{}}];
     };
-
-    NSString *token = push.token;
-    if (token.length > 0) {
-        [weakSelf sendEventWithName:kEventVoipPush body:@{@"registered" : token}];
-    }
-
-    NSDictionary *pendingCall = push.pendingIncomingCall;
-    if (pendingCall) {
-        [weakSelf sendEventWithName:kEventVoipPush body:@{@"incoming" : pendingCall}];
-    }
 }
 
 - (void)stopObservingPushKit {
