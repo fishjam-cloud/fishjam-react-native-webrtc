@@ -346,6 +346,9 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     }
 
     [self.provider reportCallWithUUID:uuid endedAtDate:[NSDate date] reason:CXCallEndedReasonFailed];
+    if (self.onCallEnded) {
+        self.onCallEnded(@"failed");
+    }
     [self cleanupCurrentCall];
 }
 
@@ -538,7 +541,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     }
 
     [action fail];
-    [self reportAnswerFailureForCall:action.UUID];
+    [self reportAnswerFailureForCall:((CXAnswerCallAction *)action).callUUID];
 }
 
 - (void)provider:(CXProvider *)provider performSetHeldCallAction:(CXSetHeldCallAction *)action {
