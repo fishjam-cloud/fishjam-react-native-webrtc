@@ -379,6 +379,7 @@ object CallManager {
         hasActiveCall = true
         answered = false
         onHold = false
+        pendingAnswerRequestId = null
 
         this.displayName = displayName
         this.videoCall = isVideo
@@ -481,28 +482,30 @@ object CallManager {
             } catch (e: UnsupportedOperationException) {
                 listener?.onFailed(e.message ?: "Telecom not supported on this device")
             } finally {
-                DialtonePlayer.stop()
-                cancelRingTimeout()
-                FulfillRequestManager.cancelAll()
-                pendingAnswerRequestId = null
-                hasActiveCall = false
-                answered = false
-                onHold = false
-                isOutgoing = false
-                this@CallManager.avatarUrl = null
-                avatarBitmap = null
-                actions = null
-                channel.close()
-                audioOutputManager?.setTelecomOwnsRouting(false)
-                LockScreenController.onCallEnded()
-                VoipForegroundServiceController.onCallEnded()
-                callNotificationManager.cancel(ctx.applicationContext)
-                VoipPushRegistry.clearPending()
-                // Dismiss IncomingCallActivity if the call ended before the
-                // user acted (remote hangup, timeout, answered elsewhere).
-                ctx.applicationContext.sendBroadcast(
-                    Intent(IncomingCallActivity.ACTION_CALL_ENDED).setPackage(appContext.packageName)
-                )
+                synchronized(this@CallManager) {
+                    DialtonePlayer.stop()
+                    cancelRingTimeout()
+                    FulfillRequestManager.cancelAll()
+                    pendingAnswerRequestId = null
+                    hasActiveCall = false
+                    answered = false
+                    onHold = false
+                    isOutgoing = false
+                    this@CallManager.avatarUrl = null
+                    avatarBitmap = null
+                    actions = null
+                    channel.close()
+                    audioOutputManager?.setTelecomOwnsRouting(false)
+                    LockScreenController.onCallEnded()
+                    VoipForegroundServiceController.onCallEnded()
+                    callNotificationManager.cancel(ctx.applicationContext)
+                    VoipPushRegistry.clearPending()
+                    // Dismiss IncomingCallActivity if the call ended before the
+                    // user acted (remote hangup, timeout, answered elsewhere).
+                    ctx.applicationContext.sendBroadcast(
+                        Intent(IncomingCallActivity.ACTION_CALL_ENDED).setPackage(appContext.packageName)
+                    )
+                }
             }
         }
     }
@@ -520,7 +523,10 @@ object CallManager {
                 is CallAction.Disconnect -> { disconnect(telecomSafeCause(action.cause)) }
             }
 
-            if (result is CallControlResult.Error) {
+            if (action is CallAction.Disconnect) {
+                listener?.onEnded(causeToReason(action.cause))
+                this@processActions.cancel()
+            } else if (result is CallControlResult.Error) {
                 listener?.onFailed("telecom action failed: ${result.errorCode}")
             } else if (action == CallAction.Answer) {
                 // App-initiated answer succeeded — onAnswer won't fire for this,
@@ -538,9 +544,6 @@ object CallManager {
                 onHold = true
                 VoipForegroundServiceController.onCallHeld(true)
                 listener?.onHoldChanged(true)
-            } else if (action is CallAction.Disconnect) {
-                listener?.onEnded(causeToReason(action.cause))
-                this@processActions.cancel()
             }
         }
     }
@@ -553,9 +556,10 @@ object CallManager {
     }
 
     /** Post-answer side effects shared by external (onAnswer) and app-initiated answers. */
+    @Synchronized
     private fun handleAnswered() {
         cancelRingTimeout()
-        if (pendingAnswerRequestId != null) return
+        if (!hasActiveCall || answered || pendingAnswerRequestId != null) return
         answered = true
         callNotificationManager.stopVibration()
         appContext?.let { LockScreenController.onCallAnswered(it) }

@@ -24,14 +24,14 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 @interface CallKitManager ()
 @property(nonatomic, strong) CXCallController *callController;
 @property(nonatomic, strong) CXProvider *provider;
-@property(nonatomic, strong) NSUUID *currentCallUUID;
-@property(nonatomic, assign) BOOL isCallAnswered;
-@property(nonatomic, assign) BOOL isOutgoingCall;
-@property(nonatomic, assign) BOOL isCallOnHold;
-@property(nonatomic, copy, nullable) NSString *pendingAnswerRequestId;
-@property(nonatomic, copy, nullable) dispatch_block_t ringTimeoutBlock;
-@property(nonatomic, strong) NSUUID *waitingCallUUID;
-@property(nonatomic, copy, nullable) dispatch_block_t waitingRingTimeoutBlock;
+@property(strong) NSUUID *currentCallUUID;
+@property(assign) BOOL isCallAnswered;
+@property(assign) BOOL isOutgoingCall;
+@property(assign) BOOL isCallOnHold;
+@property(copy, nullable) NSString *pendingAnswerRequestId;
+@property(copy, nullable) dispatch_block_t ringTimeoutBlock;
+@property(strong) NSUUID *waitingCallUUID;
+@property(copy, nullable) dispatch_block_t waitingRingTimeoutBlock;
 @property(nonatomic, assign) NSTimeInterval incomingCallTimeout;
 @property(nonatomic, assign) NSTimeInterval outgoingCallTimeout;
 @property(nonatomic, assign) NSTimeInterval fulfillAnswerTimeout;
@@ -86,6 +86,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)startCallWithDisplayName:(NSString *)displayName handle:(NSString *)handle isVideo:(BOOL)isVideo {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self startCallWithDisplayName:displayName handle:handle isVideo:isVideo];
+        });
+        return;
+    }
     if (self.currentCallUUID != nil || self.waitingCallUUID != nil) {
         NSLog(@"[CallKitManager] Call already in progress");
         return;
@@ -134,11 +140,16 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 - (IncomingCallSlot)reportIncomingCallWithDisplayName:(NSString *)displayName
                                                handle:(NSString *)handle
                                               isVideo:(BOOL)isVideo {
-    if (self.currentCallUUID != nil) {
-        if (!self.isCallAnswered || self.waitingCallUUID != nil) {
-            [self reportTransientIncomingCallAndEndWithDisplayName:displayName handle:handle isVideo:isVideo];
-            return IncomingCallSlotRejected;
-        }
+    if (!NSThread.isMainThread) {
+        __block IncomingCallSlot slot;
+        dispatch_sync(dispatch_get_main_queue(), ^{
+            slot = [self reportIncomingCallWithDisplayName:displayName handle:handle isVideo:isVideo];
+        });
+        return slot;
+    }
+    if (self.waitingCallUUID != nil || (self.currentCallUUID != nil && !self.isCallAnswered)) {
+        [self reportTransientIncomingCallAndEndWithDisplayName:displayName handle:handle isVideo:isVideo];
+        return IncomingCallSlotRejected;
     }
 
     BOOL becomesWaiting = self.currentCallUUID != nil;
@@ -180,10 +191,10 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
                                    if (becomesWaiting) {
                                        [strongSelf cleanupWaitingCall];
                                    } else {
-                                       strongSelf.currentCallUUID = nil;
                                        if (strongSelf.onCallFailed) {
                                            strongSelf.onCallFailed(error.localizedDescription);
                                        }
+                                       [strongSelf cleanupCurrentCall];
                                    }
                                    return;
                                }
@@ -254,6 +265,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)endCallWithReason:(NSString *)reason {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self endCallWithReason:reason];
+        });
+        return;
+    }
     if (self.currentCallUUID == nil) {
         NSLog(@"[CallKitManager] No active call to end");
         return;
@@ -294,6 +311,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)reportOutgoingCallConnected {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self reportOutgoingCallConnected];
+        });
+        return;
+    }
     NSUUID *uuid = self.currentCallUUID;
     if (uuid == nil || !self.isOutgoingCall) {
         NSLog(@"[CallKitManager] No outgoing call to report as connected");
@@ -307,6 +330,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)setCallHeld:(BOOL)onHold {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setCallHeld:onHold];
+        });
+        return;
+    }
     NSUUID *uuid = self.currentCallUUID;
     if (uuid == nil) {
         NSLog(@"[CallKitManager] No active call to set held");
@@ -324,6 +353,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)setMuted:(BOOL)muted {
+    if (!NSThread.isMainThread) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self setMuted:muted];
+        });
+        return;
+    }
     NSUUID *uuid = self.currentCallUUID;
     if (uuid == nil) {
         NSLog(@"[CallKitManager] No active call to set muted");
