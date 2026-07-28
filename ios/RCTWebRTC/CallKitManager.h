@@ -21,17 +21,17 @@ typedef NS_ENUM(NSInteger, IncomingCallSlot) {
 
 @interface CallKitManager : NSObject<CXProviderDelegate>
 
-@property(nonatomic, copy) CallKitVoidCallback onCallStarted;
-@property(nonatomic, copy) CallKitStringCallback onCallAnswered;
-@property(nonatomic, copy) CallKitStringCallback onCallEnded;
-@property(nonatomic, copy) CallKitStringCallback onCallFailed;
-@property(nonatomic, copy) CallKitBoolCallback onCallMuted;
-@property(nonatomic, copy) CallKitBoolCallback onCallHeld;
-@property(nonatomic, readonly) BOOL hasActiveCall;
-@property(nonatomic, readonly) BOOL isCallAnswered;
-@property(nonatomic, readonly) BOOL isOutgoingCall;
-@property(nonatomic, readonly) BOOL isCallOnHold;
-@property(nonatomic, readonly, nullable) NSString *pendingAnswerRequestId;
+@property(copy) CallKitVoidCallback onCallStarted;
+@property(copy) CallKitStringCallback onCallAnswered;
+@property(copy) CallKitStringCallback onCallEnded;
+@property(copy) CallKitStringCallback onCallFailed;
+@property(copy) CallKitBoolCallback onCallMuted;
+@property(copy) CallKitBoolCallback onCallHeld;
+@property(readonly) BOOL hasActiveCall;
+@property(readonly) BOOL isCallAnswered;
+@property(readonly) BOOL isOutgoingCall;
+@property(readonly) BOOL isCallOnHold;
+@property(readonly, nullable) NSString *pendingAnswerRequestId;
 
 + (instancetype)shared;
 
