@@ -78,7 +78,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
 
     // Core-Telecom (native call UX) and VoIP push bridging
     private final TelecomController telecomController;
-    private final VoipController voipController;
+    private final VoIPController voipController;
 
     public WebRTCModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -148,7 +148,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         audioOutputManager = new AudioOutputManager(this, reactContext);
 
         telecomController = new TelecomController(this, reactContext, audioOutputManager);
-        voipController = new VoipController(this);
+        voipController = new VoIPController(this);
         telecomController.attach();
         voipController.attach();
     }
@@ -1826,7 +1826,7 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
-    public void getVoipToken(Promise promise) {
+    public void getVoIPToken(Promise promise) {
         voipController.resolveToken(promise);
     }
 

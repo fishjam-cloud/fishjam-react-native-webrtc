@@ -55,7 +55,7 @@ class CallNotificationManager {
          * Accepts `android:resource="@drawable/…"` or `android:value="drawable_name"`.
          * Resolved from the manifest so it works even when the app is killed.
          */
-        private const val KEY_NOTIFICATION_ICON = "VoipNotificationIcon"
+        private const val KEY_NOTIFICATION_ICON = "VoIPNotificationIcon"
 
         // Distinct request codes so the PendingIntents don't collapse into one.
         private const val RC_ANSWER = 1

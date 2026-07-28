@@ -18,20 +18,20 @@ import com.google.firebase.messaging.RemoteMessage
  * when the app is backgrounded or killed, and gets the temporary foreground-service
  * start exemption) with `roomName` / `displayName` / `isVideo`. We report the call
  * to Core-Telecom immediately so it rings without needing JS, and hand the room
- * details to [VoipPushRegistry] for the JS layer.
+ * details to [VoIPPushRegistry] for the JS layer.
  *
  * ## Coexistence with other push-notification libraries
  *
  * Android delivers every FCM message to a single `MESSAGING_EVENT` service per app,
  * so this service also acts as a relay: messages that are not VoIP pushes (no
  * `fishjam: "voip-incoming"` discriminator) — and every token callback — are handed
- * to the app's other messaging service, named by a `VoipFallbackMessagingService`
+ * to the app's other messaging service, named by a `VoIPFallbackMessagingService`
  * manifest meta-data entry (the Expo config plugin fills it in automatically for
  * known libraries).
  * The fallback runs its real native code, so its killed-state behavior is preserved.
  *
  * Apps that need full control can instead register their own service and call
- * [handleVoipMessage] / [handleNewToken] from it.
+ * [handleVoIPMessage] / [handleNewToken] from it.
  */
 class PushNotificationService : FirebaseMessagingService() {
     // firebase-messaging 25.x delivers tokens through two distinct events with no
@@ -54,7 +54,7 @@ class PushNotificationService : FirebaseMessagingService() {
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
-        if (handleVoipMessage(this, message)) return
+        if (handleVoIPMessage(this, message)) return
         forwardMessageToFallback(this, message)
     }
 
@@ -75,7 +75,7 @@ class PushNotificationService : FirebaseMessagingService() {
         private const val TAG = "PushNotificationService"
 
         /** `<meta-data>` key naming the messaging service non-VoIP traffic is relayed to. */
-        const val FALLBACK_META_KEY = "VoipFallbackMessagingService"
+        const val FALLBACK_META_KEY = "VoIPFallbackMessagingService"
 
         /**
          * Explicit payload discriminator: a data message is ours if it carries
@@ -96,7 +96,7 @@ class PushNotificationService : FirebaseMessagingService() {
          * `false` for any other message, which the caller should route to its own
          * notification handling.
          */
-        fun handleVoipMessage(context: Context, message: RemoteMessage): Boolean {
+        fun handleVoIPMessage(context: Context, message: RemoteMessage): Boolean {
             val data = message.data
             if (data[DISCRIMINATOR_KEY] != VOIP_INCOMING) {
                 return false
@@ -110,33 +110,33 @@ class PushNotificationService : FirebaseMessagingService() {
             val handle = data["handle"]?.takeIf { it.isNotEmpty() } ?: displayName
             val isVideo = data["isVideo"]?.toBoolean() ?: false
             val avatarUrl = data["avatarUrl"]?.takeIf { it.isNotEmpty() }
-            val incoming = VoipPushRegistry.Incoming(roomName, displayName, handle, isVideo, avatarUrl)
+            val incoming = VoIPPushRegistry.Incoming(roomName, displayName, handle, isVideo, avatarUrl)
             val appContext = context.applicationContext
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 when (CallManager.reportIncomingCall(appContext, displayName, handle, isVideo, avatarUrl)) {
                     IncomingCallSlot.CURRENT -> {
                         warmUpReact(appContext)
-                        VoipPushRegistry.reportIncoming(incoming)
+                        VoIPPushRegistry.reportIncoming(incoming)
                     }
                     IncomingCallSlot.WAITING -> {
                         warmUpReact(appContext)
-                        VoipPushRegistry.bufferWaitingIncoming(incoming)
+                        VoIPPushRegistry.bufferWaitingIncoming(incoming)
                     }
                     IncomingCallSlot.REJECTED -> {
-                        VoipPushRegistry.reportRejectedIncoming(incoming)
+                        VoIPPushRegistry.reportRejectedIncoming(incoming)
                     }
                 }
             } else {
                 warmUpReact(appContext)
-                VoipPushRegistry.reportIncoming(incoming)
+                VoIPPushRegistry.reportIncoming(incoming)
             }
             return true
         }
 
         /** Records a fresh FCM token for VoIP; call from a custom service's `onNewToken`. */
         fun handleNewToken(token: String) {
-            VoipPushRegistry.updateToken(token)
+            VoIPPushRegistry.updateToken(token)
         }
 
         private fun forwardMessageToFallback(context: Context, message: RemoteMessage) {

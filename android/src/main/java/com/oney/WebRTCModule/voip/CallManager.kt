@@ -191,7 +191,7 @@ object CallManager {
         waitingAvatarBitmap = null
         callNotificationManager.cancelWaiting(ctx.applicationContext)
         notifyWaitingEnded(ctx)
-        VoipPushRegistry.discardWaitingIncoming()
+        VoIPPushRegistry.discardWaitingIncoming()
     }
 
     @Synchronized
@@ -217,7 +217,7 @@ object CallManager {
 
         scope.launch {
             previousJob?.join()
-            VoipPushRegistry.revealWaitingIncoming()
+            VoIPPushRegistry.revealWaitingIncoming()
             register(ctx, displayName, handle, isVideo, CallAttributesCompat.DIRECTION_INCOMING, avatarUrl)
             answer()
             launchHostApp(ctx.applicationContext)
@@ -342,9 +342,9 @@ object CallManager {
     private fun loadTimeouts(context: Context) {
         if (timeoutsLoaded) return
         timeoutsLoaded = true
-        incomingCallTimeoutMs = readTimeoutMs(context, "VoipIncomingCallTimeout", DEFAULT_INCOMING_CALL_TIMEOUT_MS)
-        outgoingCallTimeoutMs = readTimeoutMs(context, "VoipOutgoingCallTimeout", DEFAULT_OUTGOING_CALL_TIMEOUT_MS)
-        fulfillAnswerTimeoutMs = readTimeoutMs(context, "VoipFulfillAnswerTimeout", DEFAULT_FULFILL_ANSWER_TIMEOUT_MS)
+        incomingCallTimeoutMs = readTimeoutMs(context, "VoIPIncomingCallTimeout", DEFAULT_INCOMING_CALL_TIMEOUT_MS)
+        outgoingCallTimeoutMs = readTimeoutMs(context, "VoIPOutgoingCallTimeout", DEFAULT_OUTGOING_CALL_TIMEOUT_MS)
+        fulfillAnswerTimeoutMs = readTimeoutMs(context, "VoIPFulfillAnswerTimeout", DEFAULT_FULFILL_ANSWER_TIMEOUT_MS)
     }
 
     /** Reads a manifest meta-data value in seconds; returns milliseconds. */
@@ -423,12 +423,12 @@ object CallManager {
                         answered = true
                         cancelRingTimeout()
                         onHold = false
-                        VoipForegroundServiceController.onCallHeld(false)
+                        VoIPForegroundServiceController.onCallHeld(false)
                         listener?.onHoldChanged(false)
                     },
                     onSetInactive = {
                         onHold = true
-                        VoipForegroundServiceController.onCallHeld(true)
+                        VoIPForegroundServiceController.onCallHeld(true)
                         listener?.onHoldChanged(true)
                     }
                 ) {
@@ -497,9 +497,9 @@ object CallManager {
                     channel.close()
                     audioOutputManager?.setTelecomOwnsRouting(false)
                     LockScreenController.onCallEnded()
-                    VoipForegroundServiceController.onCallEnded()
+                    VoIPForegroundServiceController.onCallEnded()
                     callNotificationManager.cancel(ctx.applicationContext)
-                    VoipPushRegistry.clearPending()
+                    VoIPPushRegistry.clearPending()
                     // Dismiss IncomingCallActivity if the call ended before the
                     // user acted (remote hangup, timeout, answered elsewhere).
                     ctx.applicationContext.sendBroadcast(
@@ -538,11 +538,11 @@ object CallManager {
                 // Activate also reports an outgoing call as connected, so this can
                 // emit false before a call was ever held.
                 onHold = false
-                VoipForegroundServiceController.onCallHeld(false)
+                VoIPForegroundServiceController.onCallHeld(false)
                 listener?.onHoldChanged(false)
             } else if (action == CallAction.Hold) {
                 onHold = true
-                VoipForegroundServiceController.onCallHeld(true)
+                VoIPForegroundServiceController.onCallHeld(true)
                 listener?.onHoldChanged(true)
             }
         }
@@ -590,11 +590,11 @@ object CallManager {
     }
 
     private fun showConnectingNotification() {
-        VoipForegroundServiceController.onCallConnecting(displayName, videoCall)
+        VoIPForegroundServiceController.onCallConnecting(displayName, videoCall)
     }
 
     private fun showOngoingNotification() {
-        VoipForegroundServiceController.onCallConnected(displayName, videoCall)
+        VoIPForegroundServiceController.onCallConnected(displayName, videoCall)
     }
 
     private fun CallEndpointCompat.toWritableMap(): WritableMap = Arguments.createMap().apply {

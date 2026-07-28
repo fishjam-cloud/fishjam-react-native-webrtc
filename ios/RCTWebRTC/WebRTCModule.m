@@ -146,7 +146,7 @@ RCT_EXPORT_MODULE();
         kEventCallKitActionPerformed,
         kEventAudioOutputChanged,
         kEventLivestreamStatusChanged,
-        kEventVoipPush
+        kEventVoIPPush
     ];
 }
 

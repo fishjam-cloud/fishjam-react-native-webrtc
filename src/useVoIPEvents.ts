@@ -10,13 +10,13 @@ import {
     getPendingAnswerRequestId,
     getPendingCallIntent,
     getPendingIncomingCall,
-    getVoipToken,
-    type VoipCallIntent,
+    getVoIPToken,
+    type VoIPCallIntent,
 } from './VoIP';
 import { useCallKitEvent } from './useCallKit';
 
 // If you don't provide displayName it will default to incoming call, isVideo to false
-export type VoipIncomingPayload = {
+export type VoIPIncomingPayload = {
     roomName: string;
     displayName: string;
     /**
@@ -36,14 +36,14 @@ export type VoipIncomingPayload = {
 };
 
 export type VoIPEventHandlers = {
-    onIncoming?: (payload: VoipIncomingPayload) => void;
+    onIncoming?: (payload: VoIPIncomingPayload) => void;
     onAnswered?: (requestId: string) => void;
     onEnded?: (reason?: CallEndedReason) => void;
     onRegistered?: (token: string) => void;
     onHeldChanged?: (onHold: boolean) => void;
     onMuteChanged?: (muted: boolean) => void;
-    onCallIntent?: (intent: VoipCallIntent) => void;
-    onWaitingCallDeclined?: (payload: VoipIncomingPayload) => void;
+    onCallIntent?: (intent: VoIPCallIntent) => void;
+    onWaitingCallDeclined?: (payload: VoIPIncomingPayload) => void;
 };
 
 const assertRoomName = (raw: unknown): string => {
@@ -98,24 +98,24 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
                 assertRoomName(payload.incoming);
 
                 handlersRef.current.onIncoming?.(
-                    payload.incoming as VoipIncomingPayload,
+                    payload.incoming as VoIPIncomingPayload,
                 );
             }
             if ('waitingDeclined' in payload) {
                 assertRoomName(payload.waitingDeclined);
 
                 handlersRef.current.onWaitingCallDeclined?.(
-                    payload.waitingDeclined as VoipIncomingPayload,
+                    payload.waitingDeclined as VoIPIncomingPayload,
                 );
             }
             if ('callIntent' in payload) {
-                const intent = payload.callIntent as VoipCallIntent;
+                const intent = payload.callIntent as VoIPCallIntent;
                 handlersRef.current.onCallIntent?.(intent);
                 clearPendingCallIntent();
             }
         });
 
-        getVoipToken().then((token) => {
+        getVoIPToken().then((token) => {
             if (token) {
                 handlersRef.current.onRegistered?.(token);
             }
@@ -126,7 +126,7 @@ const useVoIPEventsIos = (handlers: VoIPEventHandlers): void => {
             try {
                 assertRoomName(pendingCall);
                 handlersRef.current.onIncoming?.(
-                    pendingCall as unknown as VoipIncomingPayload,
+                    pendingCall as unknown as VoIPIncomingPayload,
                 );
 
                 const requestId = getPendingAnswerRequestId();
@@ -199,19 +199,19 @@ const useVoIPEventsAndroid = (handlers: VoIPEventHandlers): void => {
                 assertRoomName(payload.incoming);
 
                 handlersRef.current.onIncoming?.(
-                    payload.incoming as VoipIncomingPayload,
+                    payload.incoming as VoIPIncomingPayload,
                 );
             }
             if ('waitingDeclined' in payload) {
                 assertRoomName(payload.waitingDeclined);
 
                 handlersRef.current.onWaitingCallDeclined?.(
-                    payload.waitingDeclined as VoipIncomingPayload,
+                    payload.waitingDeclined as VoIPIncomingPayload,
                 );
             }
         });
 
-        getVoipToken().then((token) => {
+        getVoIPToken().then((token) => {
             if (token) {
                 handlersRef.current.onRegistered?.(token);
             }
@@ -222,7 +222,7 @@ const useVoIPEventsAndroid = (handlers: VoIPEventHandlers): void => {
             try {
                 assertRoomName(pendingCall);
                 handlersRef.current.onIncoming?.(
-                    pendingCall as unknown as VoipIncomingPayload,
+                    pendingCall as unknown as VoIPIncomingPayload,
                 );
 
                 const requestId = getPendingAnswerRequestId();

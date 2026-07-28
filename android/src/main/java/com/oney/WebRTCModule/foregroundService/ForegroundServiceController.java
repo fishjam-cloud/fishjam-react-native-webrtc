@@ -12,7 +12,7 @@ import androidx.core.content.ContextCompat;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
-import com.oney.WebRTCModule.voip.VoipForegroundRequest;
+import com.oney.WebRTCModule.voip.VoIPForegroundRequest;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +32,7 @@ public class ForegroundServiceController {
     private boolean screenSharingAllowed = false;
     private boolean screenShareActive = false;
 
-    private VoipForegroundRequest voipRequest = VoipForegroundRequest.INACTIVE;
+    private VoIPForegroundRequest voipRequest = VoIPForegroundRequest.INACTIVE;
 
     private String channelId = "com.fishjam.foregroundservice.channel";
     private String channelName = "Fishjam Notifications";
@@ -116,18 +116,18 @@ public class ForegroundServiceController {
         applyState();
     }
 
-    public synchronized void setVoipRequest(VoipForegroundRequest request) {
+    public synchronized void setVoIPRequest(VoIPForegroundRequest request) {
         voipRequest = request;
         applyState();
     }
 
-    public synchronized void setVoipHeld(boolean held) {
+    public synchronized void setVoIPHeld(boolean held) {
         if (!voipRequest.isActive()) return;
         voipRequest = voipRequest.withHeld(held);
         applyState();
     }
 
-    public synchronized VoipForegroundRequest getVoipRequest() {
+    public synchronized VoIPForegroundRequest getVoIPRequest() {
         return voipRequest;
     }
 

@@ -4,7 +4,7 @@
 #import <WebRTC/RTCAudioSession.h>
 #import "DialtonePlayer.h"
 #import "FulfillRequestManager.h"
-#import "VoipManager.h"
+#import "VoIPManager.h"
 
 static const NSTimeInterval kDefaultIncomingCallTimeout = 45;
 static const NSTimeInterval kDefaultOutgoingCallTimeout = 60;
@@ -57,14 +57,14 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
         providerConfiguration.maximumCallsPerCallGroup = 1;
         providerConfiguration.maximumCallGroups = 2;
         providerConfiguration.includesCallsInRecents =
-            [[NSBundle.mainBundle objectForInfoDictionaryKey:@"FishjamVoipEnabled"] boolValue];
+            [[NSBundle.mainBundle objectForInfoDictionaryKey:@"FishjamVoIPEnabled"] boolValue];
 
         _provider = [[CXProvider alloc] initWithConfiguration:providerConfiguration];
         [_provider setDelegate:self queue:nil];
         _callController = [[CXCallController alloc] init];
-        _incomingCallTimeout = timeoutFromInfoPlist(@"VoipIncomingCallTimeout", kDefaultIncomingCallTimeout);
-        _outgoingCallTimeout = timeoutFromInfoPlist(@"VoipOutgoingCallTimeout", kDefaultOutgoingCallTimeout);
-        _fulfillAnswerTimeout = timeoutFromInfoPlist(@"VoipFulfillAnswerTimeout", kDefaultFulfillAnswerTimeout);
+        _incomingCallTimeout = timeoutFromInfoPlist(@"VoIPIncomingCallTimeout", kDefaultIncomingCallTimeout);
+        _outgoingCallTimeout = timeoutFromInfoPlist(@"VoIPOutgoingCallTimeout", kDefaultOutgoingCallTimeout);
+        _fulfillAnswerTimeout = timeoutFromInfoPlist(@"VoIPFulfillAnswerTimeout", kDefaultFulfillAnswerTimeout);
     }
     return self;
 }
@@ -449,7 +449,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     self.isCallOnHold = NO;
     self.pendingAnswerRequestId = nil;
     [[FulfillRequestManager shared] cancelAll];
-    [[VoipManager shared] clearPendingIncomingCall];
+    [[VoIPManager shared] clearPendingIncomingCall];
 }
 
 - (void)cleanupWaitingCall {
@@ -458,7 +458,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     if (self.currentCallUUID != nil) {
         [self reportCallCapabilitiesForUUID:self.currentCallUUID supportsHolding:YES];
     }
-    [[VoipManager shared] discardPendingSecondIncomingCall];
+    [[VoIPManager shared] discardPendingSecondIncomingCall];
 }
 
 /**
@@ -484,7 +484,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     self.isOutgoingCall = NO;
     self.isCallOnHold = NO;
     [self reportCallCapabilitiesForUUID:promoted supportsHolding:YES];
-    [[VoipManager shared] revealPendingSecondIncomingCall];
+    [[VoIPManager shared] revealPendingSecondIncomingCall];
 }
 
 #pragma mark - CXProviderDelegate

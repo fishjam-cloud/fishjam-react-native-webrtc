@@ -20,12 +20,12 @@ import {
 
 const { WebRTCModule } = NativeModules;
 
-export function getVoipToken(): Promise<string | null> {
+export function getVoIPToken(): Promise<string | null> {
     if (Platform.OS === 'ios') {
-        const token = WebRTCModule.getVoipToken();
+        const token = WebRTCModule.getVoIPToken();
         return Promise.resolve(typeof token === 'string' ? token : null);
     }
-    return WebRTCModule.getVoipToken().then((token: unknown) =>
+    return WebRTCModule.getVoIPToken().then((token: unknown) =>
         typeof token === 'string' ? token : null,
     );
 }
@@ -41,7 +41,7 @@ export function clearPendingIncomingCall(): void {
     WebRTCModule.clearPendingIncomingCall();
 }
 
-export type VoipCallIntent = {
+export type VoIPCallIntent = {
     /** Stable id of the party to call back - the handle originally reported to CallKit. */
     handle: string;
     /** Label iOS showed for the entry. Falls back to `handle` when there is no separate label. */
@@ -49,7 +49,7 @@ export type VoipCallIntent = {
     isVideo: boolean;
 };
 
-export function getPendingCallIntent(): VoipCallIntent | null {
+export function getPendingCallIntent(): VoIPCallIntent | null {
     if (Platform.OS !== 'ios') {
         return null;
     }
@@ -66,7 +66,7 @@ export function getPendingCallIntent(): VoipCallIntent | null {
     ) {
         return null;
     }
-    return value as VoipCallIntent;
+    return value as VoIPCallIntent;
 }
 
 export function clearPendingCallIntent(): void {

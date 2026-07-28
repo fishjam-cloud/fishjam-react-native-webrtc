@@ -68,12 +68,12 @@ import {
     getPendingAnswerRequestId,
     getPendingCallIntent,
     getPendingIncomingCall,
-    getVoipToken,
+    getVoIPToken,
     isCallHeld,
     reportOutgoingCallConnected,
     setCallHeld,
     setCallMuted,
-    type VoipCallIntent,
+    type VoIPCallIntent,
 } from './VoIP';
 import {
     AudioDeviceType,
@@ -126,7 +126,7 @@ import {
 import {
     useVoIPEvents,
     type VoIPEventHandlers,
-    type VoipIncomingPayload,
+    type VoIPIncomingPayload,
 } from './useVoIPEvents';
 import { Event, EventTarget } from './vendor/event-target-shim';
 import writeLivestreamCredentials, {
@@ -154,7 +154,7 @@ export {
     getPendingAnswerRequestId,
     getPendingCallIntent,
     getPendingIncomingCall,
-    getVoipToken,
+    getVoIPToken,
     mediaDevices,
     MediaStream,
     MediaStreamTrack,
@@ -237,8 +237,8 @@ export {
     type UseAudioOutputResult,
     type UseTelecomResult,
     type VoIPEventHandlers,
-    type VoipCallIntent,
-    type VoipIncomingPayload,
+    type VoIPCallIntent,
+    type VoIPIncomingPayload,
 };
 
 declare const global: any;

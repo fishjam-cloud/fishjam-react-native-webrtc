@@ -1,54 +1,54 @@
 #import "WebRTCModule+PushKit.h"
 
-#import "VoipManager.h"
+#import "VoIPManager.h"
 
 @implementation WebRTCModule (PushKit)
 
 - (void)startObservingPushKit {
-    VoipManager *push = [VoipManager shared];
+    VoIPManager *push = [VoIPManager shared];
     __weak typeof(self) weakSelf = self;
 
     push.onTokenUpdated = ^(NSString *token) {
-        [weakSelf sendEventWithName:kEventVoipPush body:@{@"registered" : token ?: @""}];
+        [weakSelf sendEventWithName:kEventVoIPPush body:@{@"registered" : token ?: @""}];
     };
 
     push.onIncomingPush = ^(NSDictionary *payload) {
-        [weakSelf sendEventWithName:kEventVoipPush body:@{@"incoming" : payload ?: @{}}];
+        [weakSelf sendEventWithName:kEventVoIPPush body:@{@"incoming" : payload ?: @{}}];
     };
     push.onWaitingCallDeclined = ^(NSDictionary *payload) {
-        [weakSelf sendEventWithName:kEventVoipPush body:@{@"waitingDeclined" : payload ?: @{}}];
+        [weakSelf sendEventWithName:kEventVoIPPush body:@{@"waitingDeclined" : payload ?: @{}}];
     };
     push.onCallIntent = ^(NSDictionary *intent) {
-        [weakSelf sendEventWithName:kEventVoipPush body:@{@"callIntent" : intent ?: @{}}];
+        [weakSelf sendEventWithName:kEventVoIPPush body:@{@"callIntent" : intent ?: @{}}];
     };
 }
 
 - (void)stopObservingPushKit {
-    VoipManager *push = [VoipManager shared];
+    VoIPManager *push = [VoIPManager shared];
     push.onTokenUpdated = nil;
     push.onIncomingPush = nil;
     push.onWaitingCallDeclined = nil;
     push.onCallIntent = nil;
 }
 
-RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getVoipToken) {
-    return [VoipManager shared].token ?: [NSNull null];
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getVoIPToken) {
+    return [VoIPManager shared].token ?: [NSNull null];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getPendingIncomingCall) {
-    return [VoipManager shared].pendingIncomingCall ?: [NSNull null];
+    return [VoIPManager shared].pendingIncomingCall ?: [NSNull null];
 }
 
 RCT_EXPORT_METHOD(clearPendingIncomingCall) {
-    [[VoipManager shared] clearPendingIncomingCall];
+    [[VoIPManager shared] clearPendingIncomingCall];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getPendingCallIntent) {
-    return [VoipManager shared].pendingCallIntent ?: [NSNull null];
+    return [VoIPManager shared].pendingCallIntent ?: [NSNull null];
 }
 
 RCT_EXPORT_METHOD(clearPendingCallIntent) {
-    [[VoipManager shared] clearPendingCallIntent];
+    [[VoIPManager shared] clearPendingCallIntent];
 }
 
 @end

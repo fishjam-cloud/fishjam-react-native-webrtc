@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 
-@interface VoipManager : NSObject
+@interface VoIPManager : NSObject
 @property(copy, readonly, nullable) NSString *token;
 @property(copy, readonly, nullable) NSDictionary *pendingIncomingCall;
 @property(copy, readonly, nullable) NSDictionary *pendingCallIntent;

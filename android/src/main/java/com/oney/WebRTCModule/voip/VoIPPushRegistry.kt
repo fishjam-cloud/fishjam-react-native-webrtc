@@ -8,7 +8,7 @@ import com.google.firebase.installations.FirebaseInstallations
  * React instance alive, e.g. a push received while the app is killed) and the
  * JS layer.
  */
-object VoipPushRegistry {
+object VoIPPushRegistry {
     data class Incoming(
         val roomName: String,
         val displayName: String,
@@ -18,8 +18,8 @@ object VoipPushRegistry {
     )
 
     interface Listener {
-        fun onVoipToken(token: String)
-        fun onVoipIncoming(incoming: Incoming)
+        fun onVoIPToken(token: String)
+        fun onVoIPIncoming(incoming: Incoming)
         fun onWaitingCallDeclined(incoming: Incoming)
     }
 
@@ -48,7 +48,7 @@ object VoipPushRegistry {
             return
         }
         token = newToken
-        listener?.onVoipToken(newToken)
+        listener?.onVoIPToken(newToken)
     }
 
     @Synchronized
@@ -80,7 +80,7 @@ object VoipPushRegistry {
     @Synchronized
     fun reportIncoming(incoming: Incoming) {
         pendingIncoming = incoming
-        listener?.onVoipIncoming(incoming)
+        listener?.onVoIPIncoming(incoming)
     }
 
     @Synchronized

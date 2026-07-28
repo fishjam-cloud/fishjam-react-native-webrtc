@@ -1,9 +1,9 @@
-#import "VoipManager.h"
+#import "VoIPManager.h"
 #import <Intents/Intents.h>
 #import <PushKit/PushKit.h>
 #import "CallKitManager.h"
 
-@interface VoipManager ()<PKPushRegistryDelegate>
+@interface VoIPManager ()<PKPushRegistryDelegate>
 @property(nonatomic, strong) PKPushRegistry *registry;
 @property(nonatomic, strong) dispatch_queue_t registryQueue;
 @property(copy, readwrite, nullable) NSString *token;
@@ -12,13 +12,13 @@
 @property(copy, nullable) NSDictionary *pendingSecondIncomingCall;
 @end
 
-@implementation VoipManager
+@implementation VoIPManager
 
 + (instancetype)shared {
-    static VoipManager *sharedInstance = nil;
+    static VoIPManager *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sharedInstance = [[VoipManager alloc] init];
+        sharedInstance = [[VoIPManager alloc] init];
     });
 
     return sharedInstance;

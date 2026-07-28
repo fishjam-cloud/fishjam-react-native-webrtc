@@ -13,7 +13,7 @@ import android.util.Log
  * Every method is a graceful no-op on failure, so callers never need to guard.
  */
 object DialtonePlayer {
-    private const val TAG = "FishjamVoip.Dialtone"
+    private const val TAG = "FishjamVoIP.Dialtone"
 
     /** ToneGenerator volume (0-100). */
     private const val TONE_VOLUME = 80

@@ -25,7 +25,7 @@ import kotlin.math.min
  * and callers fall back to the initials avatar.
  */
 object AvatarLoader {
-    private const val TAG = "FishjamVoip.Avatar"
+    private const val TAG = "FishjamVoIP.Avatar"
     private const val TIMEOUT_MS = 5000
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())

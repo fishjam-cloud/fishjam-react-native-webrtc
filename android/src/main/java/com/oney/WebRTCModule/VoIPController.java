@@ -3,29 +3,29 @@ package com.oney.WebRTCModule;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.WritableMap;
-import com.oney.WebRTCModule.voip.VoipPushRegistry;
+import com.oney.WebRTCModule.voip.VoIPPushRegistry;
 
-final class VoipController implements VoipPushRegistry.Listener {
+final class VoIPController implements VoIPPushRegistry.Listener {
     private final WebRTCModule webRTCModule;
 
-    VoipController(WebRTCModule webRTCModule) {
+    VoIPController(WebRTCModule webRTCModule) {
         this.webRTCModule = webRTCModule;
     }
 
     void attach() {
-        VoipPushRegistry.INSTANCE.setListener(this);
+        VoIPPushRegistry.INSTANCE.setListener(this);
     }
 
     void detach() {
-        VoipPushRegistry.INSTANCE.setListener(null);
+        VoIPPushRegistry.INSTANCE.setListener(null);
     }
 
     void resolveToken(Promise promise) {
-        VoipPushRegistry.INSTANCE.resolveToken(promise);
+        VoIPPushRegistry.INSTANCE.resolveToken(promise);
     }
 
     WritableMap getPendingIncomingCall() {
-        VoipPushRegistry.Incoming incoming = VoipPushRegistry.INSTANCE.pending();
+        VoIPPushRegistry.Incoming incoming = VoIPPushRegistry.INSTANCE.pending();
         if (incoming == null) {
             return null;
         }
@@ -39,18 +39,18 @@ final class VoipController implements VoipPushRegistry.Listener {
     }
 
     void clearPendingIncomingCall() {
-        VoipPushRegistry.INSTANCE.clearPending();
+        VoIPPushRegistry.INSTANCE.clearPending();
     }
 
     @Override
-    public void onVoipToken(String token) {
+    public void onVoIPToken(String token) {
         WritableMap body = Arguments.createMap();
         body.putString("registered", token);
         webRTCModule.sendEvent("voipPushEvent", body);
     }
 
     @Override
-    public void onVoipIncoming(VoipPushRegistry.Incoming incoming) {
+    public void onVoIPIncoming(VoIPPushRegistry.Incoming incoming) {
         WritableMap payload = Arguments.createMap();
         payload.putString("roomName", incoming.getRoomName());
         payload.putString("displayName", incoming.getDisplayName());
@@ -63,7 +63,7 @@ final class VoipController implements VoipPushRegistry.Listener {
     }
 
     @Override
-    public void onWaitingCallDeclined(VoipPushRegistry.Incoming incoming) {
+    public void onWaitingCallDeclined(VoIPPushRegistry.Incoming incoming) {
         WritableMap payload = Arguments.createMap();
         payload.putString("roomName", incoming.getRoomName());
         payload.putString("displayName", incoming.getDisplayName());
