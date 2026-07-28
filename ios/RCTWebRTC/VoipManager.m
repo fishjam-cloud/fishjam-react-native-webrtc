@@ -89,27 +89,29 @@
     }
     dict[@"handle"] = handle;
 
-    IncomingCallSlot slot = [[CallKitManager shared] reportIncomingCallWithDisplayName:displayName
-                                                                                handle:handle
-                                                                               isVideo:isVideo];
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        IncomingCallSlot slot = [[CallKitManager shared] reportIncomingCallWithDisplayName:displayName
+                                                                                    handle:handle
+                                                                                   isVideo:isVideo];
 
-    switch (slot) {
-        case IncomingCallSlotRejected:
-            if (self.onWaitingCallDeclined) {
-                self.onWaitingCallDeclined(dict ?: @{});
-            }
-            break;
-        case IncomingCallSlotCurrent:
-            // Buffer the payload if the app was cold-launched and JS side hasn't yet loaded
-            self.pendingIncomingCall = dict;
-            if (self.onIncomingPush) {
-                self.onIncomingPush(dict ?: @{});
-            }
-            break;
-        case IncomingCallSlotWaiting:
-            [self bufferPendingSecondIncomingCall:dict ?: @{}];
-            break;
-    }
+        switch (slot) {
+            case IncomingCallSlotRejected:
+                if (self.onWaitingCallDeclined) {
+                    self.onWaitingCallDeclined(dict ?: @{});
+                }
+                break;
+            case IncomingCallSlotCurrent:
+                // Buffer the payload if the app was cold-launched and JS side hasn't yet loaded
+                self.pendingIncomingCall = dict;
+                if (self.onIncomingPush) {
+                    self.onIncomingPush(dict ?: @{});
+                }
+                break;
+            case IncomingCallSlotWaiting:
+                [self bufferPendingSecondIncomingCall:dict ?: @{}];
+                break;
+        }
+    });
 
     completion();
 }
