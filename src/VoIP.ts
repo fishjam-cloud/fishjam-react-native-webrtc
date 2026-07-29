@@ -1,0 +1,143 @@
+import { NativeModules, Platform } from 'react-native';
+
+import {
+    failIncomingCallConnected as failCallKitAnswer,
+    fulfillIncomingCallConnected as fulfillCallKitAnswer,
+    getPendingAnswerRequestId as getPendingCallKitAnswerRequestId,
+    isCallKitCallHeld,
+    reportOutgoingCallConnected as reportCallKitOutgoingCallConnected,
+    setCallKitCallHeld,
+    setCallKitMuted,
+} from './CallKit';
+import {
+    failTelecomCallAnswered,
+    fulfillTelecomCallAnswered,
+    getPendingAnswerRequestId as getPendingTelecomAnswerRequestId,
+    isTelecomCallHeld,
+    reportTelecomCallConnected,
+    setTelecomCallHeld,
+} from './Telecom';
+
+const { WebRTCModule } = NativeModules;
+
+export function getVoIPToken(): Promise<string | null> {
+    if (Platform.OS === 'ios') {
+        const token = WebRTCModule.getVoIPToken();
+        return Promise.resolve(typeof token === 'string' ? token : null);
+    }
+    return WebRTCModule.getVoIPToken().then((token: unknown) =>
+        typeof token === 'string' ? token : null,
+    );
+}
+
+export function getPendingIncomingCall(): Record<string, unknown> | null {
+    const call = WebRTCModule.getPendingIncomingCall();
+    return call && typeof call === 'object'
+        ? (call as Record<string, unknown>)
+        : null;
+}
+
+export function clearPendingIncomingCall(): void {
+    WebRTCModule.clearPendingIncomingCall();
+}
+
+export type VoIPCallIntent = {
+    /** Stable id of the party to call back - the handle originally reported to CallKit. */
+    handle: string;
+    /** Label iOS showed for the entry. Falls back to `handle` when there is no separate label. */
+    displayName: string;
+    isVideo: boolean;
+};
+
+export function getPendingCallIntent(): VoIPCallIntent | null {
+    if (Platform.OS !== 'ios') {
+        return null;
+    }
+    const intent: unknown = WebRTCModule.getPendingCallIntent();
+    if (!intent || typeof intent !== 'object') {
+        return null;
+    }
+
+    const value = intent as Record<string, unknown>;
+    if (
+        typeof value.handle !== 'string' ||
+        typeof value.displayName !== 'string' ||
+        typeof value.isVideo !== 'boolean'
+    ) {
+        return null;
+    }
+    return value as VoIPCallIntent;
+}
+
+export function clearPendingCallIntent(): void {
+    if (Platform.OS === 'ios') {
+        WebRTCModule.clearPendingCallIntent();
+    }
+}
+
+/**
+ * Resolves the parked native answer action once incoming-call media is live.
+ * Returns false when the request has already timed out or been resolved.
+ */
+export function fulfillIncomingCallConnected(
+    requestId: string,
+): Promise<boolean> {
+    return Platform.OS === 'ios'
+        ? fulfillCallKitAnswer(requestId)
+        : fulfillTelecomCallAnswered(requestId);
+}
+
+/**
+ * Aborts the parked native answer action. Safe to call after it has timed out.
+ */
+export function failIncomingCallConnected(requestId: string): Promise<void> {
+    return Platform.OS === 'ios'
+        ? failCallKitAnswer(requestId)
+        : failTelecomCallAnswered(requestId);
+}
+
+/** Returns the answer request that is still awaiting media, if any. */
+export function getPendingAnswerRequestId(): string | null {
+    return Platform.OS === 'ios'
+        ? getPendingCallKitAnswerRequestId()
+        : getPendingTelecomAnswerRequestId();
+}
+
+/**
+ * Reports that an outgoing call's media is connected — the remote party answered.
+ * Until this is called, the OS shows the call as "Calling…" / "Dialing…" and no
+ * call timer runs. No-op for incoming calls, or when there is no active outgoing
+ * call.
+ */
+export function reportOutgoingCallConnected(): Promise<void> {
+    return Platform.OS === 'ios'
+        ? reportCallKitOutgoingCallConnected()
+        : reportTelecomCallConnected();
+}
+
+/**
+ * Asks the OS to hold or resume the current call. The system decides and reports back
+ * through `onHeldChanged`, so treat that event — not this call returning — as the point
+ * the call is actually held. No-op when there is no active call.
+ */
+export function setCallHeld(onHold: boolean): Promise<void> {
+    return Platform.OS === 'ios'
+        ? setCallKitCallHeld(onHold)
+        : setTelecomCallHeld(onHold);
+}
+
+/**
+ * Drives the system mute state so the OS call UI reflects an in-app mute, and lets
+ * the mute round-trip back through `onMuteChanged`.
+ */
+export function setCallMuted(muted: boolean): Promise<void> {
+    return Platform.OS === 'ios' ? setCallKitMuted(muted) : Promise.resolve();
+}
+
+/**
+ * Whether the OS currently has the call on hold. Useful on mount, when no `onHeldChanged`
+ * event has been seen yet.
+ */
+export function isCallHeld(): boolean {
+    return Platform.OS === 'ios' ? isCallKitCallHeld() : isTelecomCallHeld();
+}

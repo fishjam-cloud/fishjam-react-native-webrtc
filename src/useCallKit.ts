@@ -6,14 +6,19 @@ import {
     CallKitConfig,
     endCallKitSession,
     hasActiveCallKitSession,
+    isCallKitCallHeld,
+    setCallKitCallHeld,
     startCallKitSession,
 } from './CallKit';
 import { addListener, removeListener } from './EventEmitter';
+import type { CallEndedReason } from './Telecom';
 
 export type UseCallKitResult = {
     startCallKitSession: (config: CallKitConfig) => Promise<void>;
-    endCallKitSession: () => Promise<void>;
+    endCallKitSession: (reason?: CallEndedReason) => Promise<void>;
     getCallKitSessionStatus: () => Promise<boolean>;
+    setCallHeld: (onHold: boolean) => Promise<void>;
+    isHeld: () => boolean;
 };
 
 function useCallKitIos(): UseCallKitResult {
@@ -26,27 +31,37 @@ function useCallKitIos(): UseCallKitResult {
         }
     }, []);
 
-    const endCallKitSessionCb = useCallback(async () => {
-        try {
-            await endCallKitSession();
-        } catch (error) {
-            console.error('Failed to end CallKit session:', error);
-            throw error;
-        }
-    }, []);
+    const endCallKitSessionCb = useCallback(
+        async (reason?: CallEndedReason) => {
+            try {
+                await endCallKitSession(reason);
+            } catch (error) {
+                console.error('Failed to end CallKit session:', error);
+                throw error;
+            }
+        },
+        [],
+    );
 
     const getCallKitSessionStatus = useCallback(async () => {
         return hasActiveCallKitSession();
     }, []);
+    const setCallHeld = useCallback(
+        (onHold: boolean) => setCallKitCallHeld(onHold),
+        [],
+    );
+    const isHeld = useCallback(() => isCallKitCallHeld(), []);
 
     return {
         startCallKitSession: startCallKitSessionCb,
         endCallKitSession: endCallKitSessionCb,
         getCallKitSessionStatus,
+        setCallHeld,
+        isHeld,
     };
 }
 
-const useCallKitServiceIos = (config: CallKitConfig) => {
+const useCallKitServiceIos = (config: Omit<CallKitConfig, 'handle'>) => {
     const { displayName, isVideo } = config;
     const { startCallKitSession, endCallKitSession } = useCallKitIos();
 

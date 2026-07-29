@@ -18,6 +18,7 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
+import com.oney.WebRTCModule.voip.CallManager;
 
 import java.util.List;
 
@@ -35,6 +36,12 @@ public class AudioOutputManager {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     // Guarded by `this`. Single in-flight selection — a new request supersedes any prior one.
     private PendingSelect pending;
+    // Guarded by `this`. In-flight telecom endpoint selection, resolved when
+    // onTelecomAudioStateChanged reports the target as current.
+    private PendingTelecomSelect telecomPending;
+
+    private volatile WritableMap cachedTelecomCurrent;
+    private volatile boolean telecomOwnsRouting = false;
 
     private static final class PendingSelect {
         final Promise promise;
@@ -46,6 +53,18 @@ public class AudioOutputManager {
             this.promise = promise;
             this.targetDeviceId = targetDeviceId;
             this.targetType = targetType;
+            this.timeoutTask = timeoutTask;
+        }
+    }
+
+    private static final class PendingTelecomSelect {
+        final Promise promise;
+        final String targetId;
+        final Runnable timeoutTask;
+
+        PendingTelecomSelect(Promise promise, String targetId, Runnable timeoutTask) {
+            this.promise = promise;
+            this.targetId = targetId;
             this.timeoutTask = timeoutTask;
         }
     }
@@ -134,6 +153,11 @@ public class AudioOutputManager {
     }
 
     public void getAvailableAudioOutputs(Promise promise) {
+        if (telecomOwnsRouting && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            promise.resolve(CallManager.INSTANCE.availableEndpointsSnapshot());
+            return;
+        }
+
         WritableArray result = Arguments.createArray();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -160,7 +184,11 @@ public class AudioOutputManager {
     }
 
     public void getCurrentAudioOutput(Promise promise) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // https://developer.android.com/develop/connectivity/telecom/voip-app/telecom#manage-call-audio-endpoints
+        if (telecomOwnsRouting) {
+            WritableMap current = cachedTelecomCurrent;
+            promise.resolve(current != null ? current.copy() : null);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             AudioDeviceInfo device = audioManager.getCommunicationDevice();
             if (device != null) {
                 promise.resolve(serializeAudioDevice(device));
@@ -205,6 +233,11 @@ public class AudioOutputManager {
     }
 
     public void selectAudioOutput(String deviceIdStr, Promise promise) {
+        if (telecomOwnsRouting) {
+            selectTelecomAudioOutput(deviceIdStr, promise);
+            return;
+        }
+
         int deviceId;
         try {
             deviceId = Integer.parseInt(deviceIdStr);
@@ -250,6 +283,61 @@ public class AudioOutputManager {
             }
         } catch (Exception e) {
             failPending(e);
+        }
+    }
+
+    private void selectTelecomAudioOutput(String deviceId, Promise promise) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            promise.reject("E_AUDIO_OUTPUT_SELECT", "Telecom audio routing requires API 26+");
+            return;
+        }
+
+        synchronized (this) {
+            WritableMap current = cachedTelecomCurrent;
+            if (current != null && deviceId.equals(current.getString("id"))) {
+                promise.resolve(null);
+                return;
+            }
+
+            if (telecomPending != null) {
+                mainHandler.removeCallbacks(telecomPending.timeoutTask);
+                Promise old = telecomPending.promise;
+                telecomPending = null;
+                old.reject("E_AUDIO_OUTPUT_SUPERSEDED", "Superseded by newer selectAudioOutput call");
+            }
+            Runnable timeoutTask = this::timeoutTelecomPending;
+            telecomPending = new PendingTelecomSelect(promise, deviceId, timeoutTask);
+            mainHandler.postDelayed(timeoutTask, ROUTE_CHANGE_TIMEOUT_MS);
+        }
+
+        if (!CallManager.INSTANCE.selectEndpoint(deviceId)) {
+            synchronized (this) {
+                if (telecomPending == null || telecomPending.promise != promise) return;
+                mainHandler.removeCallbacks(telecomPending.timeoutTask);
+                telecomPending = null;
+            }
+            promise.reject("E_AUDIO_OUTPUT_SELECT", "Audio endpoint not available for ID: " + deviceId);
+        }
+    }
+
+    private void timeoutTelecomPending() {
+        synchronized (this) {
+            if (telecomPending == null) return;
+            mainHandler.removeCallbacks(telecomPending.timeoutTask);
+            Promise p = telecomPending.promise;
+            telecomPending = null;
+            p.reject("E_AUDIO_OUTPUT_TIMEOUT",
+                    String.format("Route change not confirmed within %dms", ROUTE_CHANGE_TIMEOUT_MS));
+        }
+    }
+
+    private void cancelTelecomPending(String reason) {
+        synchronized (this) {
+            if (telecomPending == null) return;
+            mainHandler.removeCallbacks(telecomPending.timeoutTask);
+            Promise p = telecomPending.promise;
+            telecomPending = null;
+            p.reject("E_AUDIO_OUTPUT_CANCELLED", reason);
         }
     }
 
@@ -444,6 +532,8 @@ public class AudioOutputManager {
     }
 
     private void emitOutputChangedEvent() {
+        if (telecomOwnsRouting) return;
+
         WritableMap params = Arguments.createMap();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -483,6 +573,34 @@ public class AudioOutputManager {
         }
         params.putArray("availableAudioOutputs", available);
 
+        webRTCModule.sendEvent("audioOutputChanged", params);
+    }
+
+    public void setTelecomOwnsRouting(boolean owns) {
+        telecomOwnsRouting = owns;
+        if (!owns) {
+            cancelTelecomPending("Telecom call ended");
+        }
+    }
+
+    public void onTelecomAudioStateChanged(WritableMap current, WritableArray available) {
+        cachedTelecomCurrent = current != null ? current.copy() : null;
+
+        synchronized (this) {
+            if (telecomPending != null && current != null && telecomPending.targetId.equals(current.getString("id"))) {
+                mainHandler.removeCallbacks(telecomPending.timeoutTask);
+                Promise p = telecomPending.promise;
+                telecomPending = null;
+                p.resolve(null);
+            }
+        }
+
+        WritableMap params = Arguments.createMap();
+        if (current != null)
+            params.putMap("currentAudioOutput", current);
+        else
+            params.putNull("currentAudioOutput");
+        params.putArray("availableAudioOutputs", available);
         webRTCModule.sendEvent("audioOutputChanged", params);
     }
 }

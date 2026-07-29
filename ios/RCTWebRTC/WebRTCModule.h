@@ -25,7 +25,7 @@ static NSString *const kEventCallKitActionPerformed = @"callKitActionPerformed";
 static NSString *const kEventAudioOutputChanged = @"audioOutputChanged";
 static NSString *const kEventLivestreamStatusChanged = @"livestreamStatusChanged";
 static NSString *const kMediaStreamVideoTracksChangedNotification = @"RTCMediaStreamVideoTracksChangedNotification";
-static NSString *const kEventVoipPush = @"voipPushEvent";
+static NSString *const kEventVoIPPush = @"voipPushEvent";
 
 @class FJAudioSinkBox;
 

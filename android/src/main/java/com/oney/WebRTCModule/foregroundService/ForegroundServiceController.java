@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReadableMap;
+import com.oney.WebRTCModule.voip.VoIPForegroundRequest;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,11 +25,14 @@ public class ForegroundServiceController {
     private static ForegroundServiceController instance;
 
     private ReactApplicationContext reactContext;
+    private Context appContext;
 
     private boolean cameraRequested = false;
     private boolean microphoneRequested = false;
     private boolean screenSharingAllowed = false;
     private boolean screenShareActive = false;
+
+    private VoIPForegroundRequest voipRequest = VoIPForegroundRequest.INACTIVE;
 
     private String channelId = "com.fishjam.foregroundservice.channel";
     private String channelName = "Fishjam Notifications";
@@ -50,6 +54,9 @@ public class ForegroundServiceController {
 
     public void setContext(ReactApplicationContext reactContext) {
         this.reactContext = reactContext;
+        if (reactContext != null) {
+            this.appContext = reactContext.getApplicationContext();
+        }
     }
 
     // Called by WebRTCForegroundService after startForeground() completes.
@@ -109,19 +116,37 @@ public class ForegroundServiceController {
         applyState();
     }
 
+    public synchronized void setVoIPRequest(VoIPForegroundRequest request) {
+        voipRequest = request;
+        applyState();
+    }
+
+    public synchronized void setVoIPHeld(boolean held) {
+        if (!voipRequest.isActive()) return;
+        voipRequest = voipRequest.withHeld(held);
+        applyState();
+    }
+
+    public synchronized VoIPForegroundRequest getVoIPRequest() {
+        return voipRequest;
+    }
+
     private void applyState() {
-        if (reactContext == null) return;
+        Context context = appContext != null ? appContext : reactContext;
+        if (context == null) return;
 
         boolean screenShareNeedsService = screenSharingAllowed && screenShareActive;
-        int[] types = buildForegroundServiceTypes(cameraRequested, microphoneRequested, screenShareNeedsService);
+        boolean cameraNeeded = cameraRequested || voipRequest.needsCamera();
+        boolean microphoneNeeded = microphoneRequested || voipRequest.needsMicrophone();
+        int[] types = buildForegroundServiceTypes(cameraNeeded, microphoneNeeded, screenShareNeedsService);
 
         if (types.length == 0 && !screenShareNeedsService) {
-            Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
-            reactContext.stopService(serviceIntent);
+            Intent serviceIntent = new Intent(context, WebRTCForegroundService.class);
+            context.stopService(serviceIntent);
             return;
         }
 
-        Intent serviceIntent = new Intent(reactContext, WebRTCForegroundService.class);
+        Intent serviceIntent = new Intent(context, WebRTCForegroundService.class);
         serviceIntent.putExtra("channelId", channelId);
         serviceIntent.putExtra("channelName", channelName);
         serviceIntent.putExtra("notificationTitle", notificationTitle);
@@ -132,9 +157,9 @@ public class ForegroundServiceController {
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                reactContext.startForegroundService(serviceIntent);
+                context.startForegroundService(serviceIntent);
             } else {
-                reactContext.startService(serviceIntent);
+                context.startService(serviceIntent);
             }
         } catch (RuntimeException e) {
             Log.e(TAG, "Failed to start foreground service", e);
@@ -167,7 +192,9 @@ public class ForegroundServiceController {
     }
 
     private boolean hasPermission(String permission) {
-        return ContextCompat.checkSelfPermission(reactContext, permission)
+        Context context = appContext != null ? appContext : reactContext;
+        return context != null
+                && ContextCompat.checkSelfPermission(context, permission)
                 == android.content.pm.PackageManager.PERMISSION_GRANTED;
     }
 }

@@ -16,7 +16,13 @@ import {
     type AudioExtractionOptions,
     type AudioTrackData,
 } from './AudioExtraction';
-import { type CallKitAction, type CallKitConfig } from './CallKit';
+import {
+    type CallKitAction,
+    type CallKitConfig,
+    isCallKitCallHeld,
+    setCallKitCallHeld,
+    setCallKitMuted,
+} from './CallKit';
 import { setupNativeEvents } from './EventEmitter';
 import Logger from './Logger';
 import mediaDevices from './MediaDevices';
@@ -24,11 +30,6 @@ import MediaStream from './MediaStream';
 import MediaStreamTrack, { type MediaTrackSettings } from './MediaStreamTrack';
 import MediaStreamTrackEvent from './MediaStreamTrackEvent';
 import permissions from './Permissions';
-import {
-    clearPendingIncomingCall,
-    getPendingIncomingCall,
-    getVoipToken,
-} from './PushKit';
 import RTCAudioSession from './RTCAudioSession';
 import RTCCertificate from './RTCCertificate';
 import RTCErrorEvent from './RTCErrorEvent';
@@ -51,6 +52,29 @@ import RTCRtpTransceiver from './RTCRtpTransceiver';
 import RTCSessionDescription from './RTCSessionDescription';
 import RTCView, { type RTCPIPOptions, type RTCVideoViewProps } from './RTCView';
 import ScreenCapturePickerView from './ScreenCapturePickerView';
+import {
+    type CallEndedReason,
+    type TelecomConfig,
+    type TelecomEvent,
+    type TelecomEventType,
+    isTelecomCallHeld,
+    setTelecomCallHeld,
+} from './Telecom';
+import {
+    clearPendingCallIntent,
+    clearPendingIncomingCall,
+    failIncomingCallConnected,
+    fulfillIncomingCallConnected,
+    getPendingAnswerRequestId,
+    getPendingCallIntent,
+    getPendingIncomingCall,
+    getVoIPToken,
+    isCallHeld,
+    reportOutgoingCallConnected,
+    setCallHeld,
+    setCallMuted,
+    type VoIPCallIntent,
+} from './VoIP';
 import {
     AudioDeviceType,
     AudioOutputManager,
@@ -95,9 +119,14 @@ import {
     type LivestreamStatusInfo,
 } from './useLivestreamStatus';
 import {
+    useTelecom,
+    useTelecomEvent,
+    type UseTelecomResult,
+} from './useTelecom';
+import {
     useVoIPEvents,
     type VoIPEventHandlers,
-    type VoipIncomingPayload,
+    type VoIPIncomingPayload,
 } from './useVoIPEvents';
 import { Event, EventTarget } from './vendor/event-target-shim';
 import writeLivestreamCredentials, {
@@ -112,15 +141,20 @@ setupNativeEvents();
 export {
     AudioDeviceType,
     AudioOutputManager,
+    clearPendingCallIntent,
     clearPendingIncomingCall,
     createCustomAudioTrack,
     createCustomVideoBufferPool,
     createCustomVideoTrack,
     Event,
     EventTarget,
+    failIncomingCallConnected,
     forwardFrame,
+    fulfillIncomingCallConnected,
+    getPendingAnswerRequestId,
+    getPendingCallIntent,
     getPendingIncomingCall,
-    getVoipToken,
+    getVoIPToken,
     mediaDevices,
     MediaStream,
     MediaStreamTrack,
@@ -130,6 +164,10 @@ export {
     pushAudioSamples,
     pushFrame,
     registerGlobals,
+    reportOutgoingCallConnected,
+    isCallHeld,
+    isCallKitCallHeld,
+    isTelecomCallHeld,
     RTCAudioSession,
     RTCCertificate,
     RTCErrorEvent,
@@ -147,18 +185,26 @@ export {
     startAudioExtraction,
     startPIP,
     stopPIP,
+    setCallHeld,
+    setCallKitCallHeld,
+    setCallKitMuted,
+    setCallMuted,
+    setTelecomCallHeld,
     useAudioOutput,
     useCallKit,
     useCallKitEvent,
     useCallKitService,
     useForegroundService,
     useLivestreamStatus,
+    useTelecom,
+    useTelecomEvent,
     useVoIPEvents,
     writeLivestreamCredentials,
     type AudioDevice,
     type AudioExtractionOptions,
     type AudioOutputChangedInfo,
     type AudioTrackData,
+    type CallEndedReason,
     type CallKitAction,
     type CallKitConfig,
     type CustomAudioSink,
@@ -185,9 +231,14 @@ export {
     type RTCRtpEncodingParametersInit,
     type RTCRtpSendParametersInit,
     type RTCVideoViewProps,
+    type TelecomConfig,
+    type TelecomEvent,
+    type TelecomEventType,
     type UseAudioOutputResult,
+    type UseTelecomResult,
     type VoIPEventHandlers,
-    type VoipIncomingPayload,
+    type VoIPCallIntent,
+    type VoIPIncomingPayload,
 };
 
 declare const global: any;

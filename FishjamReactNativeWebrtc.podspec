@@ -32,6 +32,9 @@ Pod::Spec.new do |s|
   # miniaudio conversion-only build. MA_NO_* must be global across all TUs
   # (miniaudio is not ABI-compatible across differing configs).
   s.pod_target_xcconfig = {
+    # Generate a Clang module map so Swift pods (e.g. FishjamExpoVoip) can
+    # `import FishjamReactNativeWebrtc`.
+    'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20',
     'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/common/cpp/vendor" "$(PODS_TARGET_SRCROOT)/common/cpp/fishjam-audio" "$(PODS_TARGET_SRCROOT)/common/cpp/fishjam-video"',
     'GCC_PREPROCESSOR_DEFINITIONS' =>
