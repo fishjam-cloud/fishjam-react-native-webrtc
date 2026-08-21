@@ -39,7 +39,9 @@ android {
                 // primary guard; weak linking is insurance so any future code path that loads
                 // the lib on an older device degrades gracefully instead of throwing
                 // UnsatisfiedLinkError.
-                arguments "-DANDROID_STL=c++_shared", "-DANDROID_WEAK_API_DEFS=ON"
+                // ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES links arm64-v8a/x86_64 with 16 KB page
+                // alignment (required by Google Play). Default on NDK r28+, opt-in on r27.
+                arguments "-DANDROID_STL=c++_shared", "-DANDROID_WEAK_API_DEFS=ON", "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
             }
         }
 
