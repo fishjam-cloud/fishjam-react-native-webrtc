@@ -216,7 +216,7 @@
             RTCVideoView *strongSelf = weakSelf;
             RCTDirectEventBlock callback = strongSelf.onPictureInPictureChange;
             if (callback) {
-                callback(@{ @"isActive" : @(isActive) });
+                callback(@{@"isActive" : @(isActive)});
             }
         };
     }
