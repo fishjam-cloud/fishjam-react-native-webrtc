@@ -15,4 +15,20 @@ CXX="${CXX:-c++}"
     common/cpp/fishjam-audio/tests/FJAudioFrameSchedulerTest.cpp \
     -o "$BUILD_DIR/FJAudioFrameSchedulerTest"
 
+"$CXX" -std=c++20 -Wall -Wextra -pthread \
+    -I common/cpp/fishjam-video \
+    common/cpp/fishjam-video/FJCameraFrameProcessorCore.cpp \
+    common/cpp/fishjam-video/tests/FJCameraFrameProcessorCoreTest.cpp \
+    -o "$BUILD_DIR/FJCameraFrameProcessorCoreTest"
+
+"$BUILD_DIR/FJCameraFrameProcessorCoreTest"
+
 "$BUILD_DIR/FJAudioFrameSchedulerTest"
+
+"$CXX" -std=c++20 -Wall -Wextra -pthread \
+    -I common/cpp/fishjam-video \
+    common/cpp/fishjam-video/FJCameraFrameProcessorCore.cpp \
+    common/cpp/fishjam-video/tests/FJCameraFrameProcessorCoreTest.cpp \
+    -o "$BUILD_DIR/FJCameraFrameProcessorCoreTest"
+
+"$BUILD_DIR/FJCameraFrameProcessorCoreTest"
