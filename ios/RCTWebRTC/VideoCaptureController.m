@@ -218,7 +218,10 @@
                     @"[VideoCaptureController] Reached elevated system pressure level: %@. Throttling frame rate.",
                     pressureLevel);
                 [self throttleFrameRateForDevice:device];
-            } else if (pressureLevel == AVCaptureSystemPressureLevelNominal) {
+            } else if (pressureLevel == AVCaptureSystemPressureLevelNominal ||
+                       pressureLevel == AVCaptureSystemPressureLevelFair) {
+                // Fair is the normal steady state after a Serious spell; without it the
+                // throttle would stay pinned until the device cooled all the way to Nominal.
                 RCTLogWarn(@"[VideoCaptureController] Restored normal system pressure level. Resetting frame rate to "
                            @"default.");
                 [self resetFrameRateForDevice:device];

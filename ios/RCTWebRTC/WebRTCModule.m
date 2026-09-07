@@ -12,6 +12,7 @@
 #import "RTCMediaStreamTrack+React.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModule.h"
+#import "WebRTCModule+CameraFrameProcessor.h"
 #import "WebRTCModuleOptions.h"
 
 @implementation WebRTCModule
@@ -21,6 +22,7 @@
 }
 
 - (void)dealloc {
+    [self fj_detachAllCameraFrameTaps];
     [self removeAudioRouteObserver];
     [self removeLivestreamStatusObserver];
 
