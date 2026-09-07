@@ -160,6 +160,11 @@ public class WebRTCView extends ViewGroup {
     private boolean onDimensionsChangeEnabled = false;
 
     /**
+     * The callback to be called when Picture in Picture state changes.
+     */
+    private boolean onPictureInPictureChangeEnabled = false;
+
+    /**
      * The PIP manager for this view (lazily initialized).
      */
     private PIPManager pipManager;
@@ -770,5 +775,32 @@ public class WebRTCView extends ViewGroup {
      */
     public void setOnDimensionsChange(boolean enabled) {
         this.onDimensionsChangeEnabled = enabled;
+    }
+
+    /**
+     * Sets whether the onPictureInPictureChange callback should be called.
+     *
+     * @param enabled Whether the callback should be enabled.
+     */
+    public void setOnPictureInPictureChange(boolean enabled) {
+        this.onPictureInPictureChangeEnabled = enabled;
+    }
+
+    public void notifyPictureInPictureChange(boolean isActive) {
+        if (!onPictureInPictureChangeEnabled) {
+            return;
+        }
+
+        post(() -> {
+            try {
+                ReactContext reactContext = (ReactContext) getContext();
+                WritableMap params = Arguments.createMap();
+                params.putBoolean("isActive", isActive);
+                reactContext.getJSModule(RCTEventEmitter.class)
+                        .receiveEvent(getId(), "onPictureInPictureChange", params);
+            } catch (Exception e) {
+                Log.e(TAG, "Error calling onPictureInPictureChange callback", e);
+            }
+        });
     }
 }

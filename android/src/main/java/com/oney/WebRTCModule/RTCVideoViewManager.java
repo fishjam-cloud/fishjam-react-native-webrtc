@@ -99,6 +99,11 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
         view.setOnDimensionsChange(onDimensionsChange);
     }
 
+    @ReactProp(name = "onPictureInPictureChange")
+    public void setOnPictureInPictureChange(WebRTCView view, boolean enabled) {
+        view.setOnPictureInPictureChange(enabled);
+    }
+
     /**
      * Sets the PIP options for this view.
      *
@@ -157,6 +162,9 @@ public class RTCVideoViewManager extends SimpleViewManager<WebRTCView> {
         Map<String, String> dimensionsChangeEvent = new HashMap<>();
         dimensionsChangeEvent.put("registrationName", "onDimensionsChange");
         eventTypeConstants.put("onDimensionsChange", dimensionsChangeEvent);
+        Map<String, String> pictureInPictureChangeEvent = new HashMap<>();
+        pictureInPictureChangeEvent.put("registrationName", "onPictureInPictureChange");
+        eventTypeConstants.put("onPictureInPictureChange", pictureInPictureChangeEvent);
         return eventTypeConstants;
     }
 

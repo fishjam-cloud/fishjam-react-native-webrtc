@@ -14,6 +14,7 @@ API_AVAILABLE(ios(15.0))
 @property(nonatomic, assign) BOOL stopAutomatically;
 @property(nonatomic, assign) BOOL allowsCameraInBackground;
 @property(nonatomic, assign) CGSize preferredSize;
+@property(nonatomic, copy) void (^onPictureInPictureChange)(BOOL isActive);
 
 - (instancetype)initWithSourceView:(UIView *)sourceView;
 - (void)togglePIP;

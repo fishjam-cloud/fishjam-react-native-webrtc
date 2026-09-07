@@ -68,6 +68,7 @@
 @property(nonatomic, weak) WebRTCModule *module;
 
 @property(nonatomic, copy) RCTDirectEventBlock onDimensionsChange;
+@property(nonatomic, copy) RCTDirectEventBlock onPictureInPictureChange;
 
 @end
 
@@ -210,6 +211,14 @@
     if (!_pipController) {
         _pipController = [[PIPController alloc] initWithSourceView:self];
         _pipController.videoTrack = _videoTrack;
+        __weak RTCVideoView *weakSelf = self;
+        _pipController.onPictureInPictureChange = ^(BOOL isActive) {
+            RTCVideoView *strongSelf = weakSelf;
+            RCTDirectEventBlock callback = strongSelf.onPictureInPictureChange;
+            if (callback) {
+                callback(@{@"isActive" : @(isActive)});
+            }
+        };
     }
 
     _pipController.startAutomatically = startAutomatically;
@@ -389,6 +398,7 @@ RCT_CUSTOM_VIEW_PROPERTY(objectFit, NSString *, RTCVideoView) {
 }
 
 RCT_EXPORT_VIEW_PROPERTY(onDimensionsChange, RCTDirectEventBlock)
+RCT_EXPORT_VIEW_PROPERTY(onPictureInPictureChange, RCTDirectEventBlock)
 
 RCT_CUSTOM_VIEW_PROPERTY(streamURL, NSString *, RTCVideoView) {
     if (!json) {

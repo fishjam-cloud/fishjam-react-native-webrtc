@@ -84,6 +84,17 @@ export interface RTCVideoViewProps extends ViewProps {
     onDimensionsChange?: (event: {
         nativeEvent: { width: number; height: number };
     }) => void;
+
+    /**
+     * Callback function that is called when this view enters or exits Picture in Picture.
+     *
+     * @param {Object} event - The event object containing the Picture in Picture state.
+     * @param {Object} event.nativeEvent - The native event data.
+     * @param {boolean} event.nativeEvent.isActive - Whether Picture in Picture is active.
+     */
+    onPictureInPictureChange?: (event: {
+        nativeEvent: { isActive: boolean };
+    }) => void;
 }
 
 export interface RTCPIPOptions {

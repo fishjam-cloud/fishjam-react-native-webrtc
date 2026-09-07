@@ -207,6 +207,9 @@
  */
 - (void)pictureInPictureControllerDidStartPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
     NSLog(@"%@", NSStringFromSelector(_cmd));  // Objective-C
+    if (self.onPictureInPictureChange) {
+        self.onPictureInPictureChange(YES);
+    }
 }
 
 /*!
@@ -240,6 +243,9 @@
  */
 - (void)pictureInPictureControllerDidStopPictureInPicture:(AVPictureInPictureController *)pictureInPictureController {
     NSLog(@"%@", NSStringFromSelector(_cmd));  // Objective-C
+    if (self.onPictureInPictureChange) {
+        self.onPictureInPictureChange(NO);
+    }
 }
 
 /*!

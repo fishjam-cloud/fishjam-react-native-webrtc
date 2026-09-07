@@ -151,6 +151,24 @@ public class PIPManager {
     public void setPreferredSize(int width, int height) {
         this.preferredWidth = width;
         this.preferredHeight = height;
+
+        WebRTCView webRTCView = webRTCViewRef.get();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && pictureInPictureParamsBuilder != null
+                && webRTCView != null) {
+            updateAspectRatio(webRTCView);
+            if (pipEnabled) {
+                updatePictureInPictureParams();
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private void updateAspectRatio(WebRTCView webRTCView) {
+        int width = preferredWidth > 0 ? preferredWidth : webRTCView.getWidth();
+        int height = preferredHeight > 0 ? preferredHeight : webRTCView.getHeight();
+        if (width > 0 && height > 0) {
+            pictureInPictureParamsBuilder.setAspectRatio(new Rational(width, height));
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.S)
@@ -188,11 +206,7 @@ public class PIPManager {
         }
 
         try {
-            int width = preferredWidth > 0 ? preferredWidth : webRTCView.getWidth();
-            int height = preferredHeight > 0 ? preferredHeight : webRTCView.getHeight();
-            if (width > 0 && height > 0) {
-                pictureInPictureParamsBuilder.setAspectRatio(new Rational(width, height));
-            }
+            updateAspectRatio(webRTCView);
             activity.enterPictureInPictureMode(pictureInPictureParamsBuilder.build());
         } catch (IllegalStateException e) {
             Log.e(TAG, "Failed to enter PiP mode", e);
@@ -204,6 +218,8 @@ public class PIPManager {
     }
 
     public void onPipEnter() {
+        setPipActive(true);
+
         if (rootView == null) {
             return;
         }
@@ -218,7 +234,6 @@ public class PIPManager {
             return;
         }
 
-        pipActive = true;
         hideAllRootViewChildren();
 
         pipContentContainer = new FrameLayout(webRTCView.getContext());
@@ -277,12 +292,13 @@ public class PIPManager {
     }
 
     public void onPipExit() {
+        setPipActive(false);
+
         if (rootView == null) {
             return;
         }
 
         WebRTCView webRTCView = webRTCViewRef.get();
-        pipActive = false;
 
         if (pipSurfaceViewRenderer != null) {
             final SurfaceViewRenderer renderer = pipSurfaceViewRenderer;
@@ -313,6 +329,18 @@ public class PIPManager {
         }
 
         restoreRootViewChildren();
+    }
+
+    private void setPipActive(boolean active) {
+        if (pipActive == active) {
+            return;
+        }
+
+        pipActive = active;
+        WebRTCView webRTCView = webRTCViewRef.get();
+        if (webRTCView != null) {
+            webRTCView.notifyPictureInPictureChange(active);
+        }
     }
 
     private void hideAllRootViewChildren() {
