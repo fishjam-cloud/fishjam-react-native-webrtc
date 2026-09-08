@@ -92,6 +92,8 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
 
     // The blit in progress between beginBlit and endBlit (GL thread only).
     int pendingSlot_ = -1;
+    bool loggedDetachedOffer_ = false;
+    bool loggedNoContext_ = false;
     uint64_t pendingToken_ = 0;
 };
 

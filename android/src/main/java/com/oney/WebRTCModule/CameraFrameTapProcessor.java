@@ -72,10 +72,22 @@ final class CameraFrameTapProcessor implements VideoProcessor {
 
     @Override
     public void onFrameCaptured(VideoFrame frame) {
-        VideoSink currentSink = sink;
-        if (currentSink != null) {
-            currentSink.onFrame(frame);
+        // Retain across the whole callback, mirroring VideoEffectProcessor: the source
+        // releases its reference as soon as onFrameCaptured returns, and the GL read of
+        // the buffer must stay valid until the blit is issued.
+        frame.retain();
+        try {
+            VideoSink currentSink = sink;
+            if (currentSink != null) {
+                currentSink.onFrame(frame);
+            }
+            blit(frame);
+        } finally {
+            frame.release();
         }
+    }
+
+    private void blit(VideoFrame frame) {
         if (released || !(frame.getBuffer() instanceof VideoFrame.TextureBuffer)) {
             return;
         }

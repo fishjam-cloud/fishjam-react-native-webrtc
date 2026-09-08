@@ -55,12 +55,23 @@ jint FJCameraFrameTap::beginBlit(jint width, jint height) {
         return -1;
     }
     FJCameraFrameProcessorCore::Offer offer = core_->offer();
+    if (offer.result == FJCameraFrameProcessorCore::OfferResult::Detached) {
+        if (!loggedDetachedOffer_) {
+            loggedDetachedOffer_ = true;
+            logWarning("camera frames arrive but no consumer is attached");
+        }
+        return -1;
+    }
     if (offer.result != FJCameraFrameProcessorCore::OfferResult::Accepted) {
         return -1;
     }
 
     EGLDisplay display = eglGetCurrentDisplay();
     if (display == EGL_NO_DISPLAY || eglGetCurrentContext() == EGL_NO_CONTEXT) {
+        if (!loggedNoContext_) {
+            loggedNoContext_ = true;
+            logWarning("no EGL context is current on the capture thread; frames cannot be blitted");
+        }
         core_->completed(offer.token);
         return -1;
     }
