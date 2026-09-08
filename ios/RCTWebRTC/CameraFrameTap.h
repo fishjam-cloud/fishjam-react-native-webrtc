@@ -21,7 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 //
 // RTCVideoCapturer.delegate is weak: whoever installs a tap must keep it alive
 // and must hand the capturer back to the track's source before letting go.
-@interface CameraFrameTap : NSObject <RTCVideoCapturerDelegate>
+@interface CameraFrameTap : NSObject<RTCVideoCapturerDelegate>
 
 @property(nonatomic, readonly, strong) RTCVideoSource *videoSource;
 

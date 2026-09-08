@@ -54,7 +54,9 @@ export interface CameraFrameProcessor {
 
 // Installed natively once the JSI binding is in place (see installCameraFrameProcessorJSI).
 declare const global: {
-    __fishjamWebrtcGetCameraFrameProcessor?: (trackId: string) => CameraFrameProcessor;
+    __fishjamWebrtcGetCameraFrameProcessor?: (
+        trackId: string,
+    ) => CameraFrameProcessor;
 };
 
 // The old architecture has no JSI-capable invoker, so the install may never
@@ -66,7 +68,9 @@ let installPromise: Promise<void> | null = null;
 function normalizeInstallError(cause: unknown): Error {
     if (cause instanceof Error) {
         return (cause as { code?: string }).code === 'E_NO_JSI'
-            ? new Error('Camera frame processing requires the New Architecture.')
+            ? new Error(
+                  'Camera frame processing requires the New Architecture.',
+              )
             : cause;
     }
     return new Error(`Camera frame processor install failed: ${String(cause)}`);
@@ -85,8 +89,12 @@ function ensureInstalled(): Promise<void> {
         }, INSTALL_TIMEOUT_MS);
     });
     const install = WebRTCModule.installCameraFrameProcessorJSI().then(() => {
-        if (typeof global.__fishjamWebrtcGetCameraFrameProcessor !== 'function') {
-            throw new Error('Camera frame processor binding was not installed.');
+        if (
+            typeof global.__fishjamWebrtcGetCameraFrameProcessor !== 'function'
+        ) {
+            throw new Error(
+                'Camera frame processor binding was not installed.',
+            );
         }
     });
     // A rejection after the timeout has no consumer left; log it instead of
@@ -112,7 +120,9 @@ function ensureInstalled(): Promise<void> {
  * Returns the frame processor for a local camera track. Whether the track
  * really is a camera track is checked natively when a consumer is attached.
  */
-export async function getCameraFrameProcessor(track: MediaStreamTrack): Promise<CameraFrameProcessor> {
+export async function getCameraFrameProcessor(
+    track: MediaStreamTrack,
+): Promise<CameraFrameProcessor> {
     if (track.kind !== 'video') {
         throw new Error('A camera frame processor needs a video track.');
     }

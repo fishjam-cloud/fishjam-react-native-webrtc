@@ -30,7 +30,7 @@ struct EglExtensions {
     // and checked individually.
     bool canImportImages() const {
         return eglGetNativeClientBufferANDROID != nullptr && eglCreateImageKHR != nullptr &&
-                glEGLImageTargetTexture2DOES != nullptr;
+               glEGLImageTargetTexture2DOES != nullptr;
     }
 };
 
