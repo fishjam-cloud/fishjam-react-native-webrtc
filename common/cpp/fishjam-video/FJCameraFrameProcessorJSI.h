@@ -45,7 +45,8 @@ class FJCameraFrameProcessorChannel : public std::enable_shared_from_this<FJCame
     struct Handlers {
         // Installs the tap on `trackId` and hands it `consumer`. Returns an empty
         // string on success, otherwise an error code (E_NOT_A_CAMERA_TRACK,
-        // E_VIDEO_EFFECTS_ACTIVE) that the channel throws to JS.
+        // E_VIDEO_EFFECTS_ACTIVE, E_ATTACH_FAILED, E_MODULE_GONE) that the
+        // channel throws to JS.
         std::function<std::string(const std::string &trackId,
                                   std::shared_ptr<fishjam::video::FJCameraFrameConsumer> consumer)>
             attach;
@@ -62,7 +63,8 @@ class FJCameraFrameProcessorChannel : public std::enable_shared_from_this<FJCame
     bool isInstalled() const { return installed_.load(); }
 
     void setHandlers(Handlers handlers);
-    Handlers handlers() const;
+    // Never null; an empty Handlers until setHandlers() runs.
+    std::shared_ptr<const Handlers> handlers() const;
 
    private:
     friend class CameraFrameProcessorHandle;
@@ -70,6 +72,6 @@ class FJCameraFrameProcessorChannel : public std::enable_shared_from_this<FJCame
 
     std::shared_ptr<facebook::react::CallInvoker> jsInvoker_;
     mutable std::mutex handlersMutex_;
-    Handlers handlers_;
+    std::shared_ptr<const Handlers> handlers_ = std::make_shared<const Handlers>();
     std::atomic<bool> installed_{false};
 };

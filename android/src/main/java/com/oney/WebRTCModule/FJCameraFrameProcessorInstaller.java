@@ -61,33 +61,45 @@ final class FJCameraFrameProcessorInstaller {
         }
     }
 
-    /** Returns an empty string on success, otherwise the error code thrown to JS. */
+    /** Never null: a failed hop becomes the {@code E_ATTACH_FAILED} code. */
     @DoNotStrip
-    private String attachCameraFrameTap(String trackId) {
-        String code = runOnExecutor(() -> getUserMediaImpl.attachCameraFrameTap(trackId));
-        return code == null ? "E_ATTACH_FAILED" : code;
+    private CameraFrameTapAttachment attachCameraFrameTap(String trackId) {
+        try {
+            return runOnExecutor(() -> getUserMediaImpl.attachCameraFrameTap(trackId));
+        } catch (Exception e) {
+            Log.w(TAG, "Attaching the camera frame tap to track " + trackId + " failed", e);
+            return CameraFrameTapAttachment.failed("E_ATTACH_FAILED");
+        }
     }
 
     @DoNotStrip
     private CameraFrameTapProcessor getCameraFrameTap(String trackId) {
-        return runOnExecutor(() -> getUserMediaImpl.getCameraFrameTap(trackId));
-    }
-
-    @DoNotStrip
-    private void detachCameraFrameTap(String trackId) {
-        runOnExecutor(() -> {
-            getUserMediaImpl.detachCameraFrameTap(trackId);
-            return null;
-        });
-    }
-
-    private <T> T runOnExecutor(Callable<T> callable) {
         try {
-            return ThreadUtils.submitToExecutor(callable).get(EXECUTOR_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return runOnExecutor(() -> getUserMediaImpl.getCameraFrameTap(trackId));
         } catch (Exception e) {
-            Log.w(TAG, "Camera frame tap call failed", e);
+            Log.w(TAG, "Looking up the camera frame tap of track " + trackId + " failed", e);
             return null;
         }
+    }
+
+    /**
+     * Stays no-throw: a failure here would surface inside JS teardown, where nothing can act on
+     * it. It is logged as an error instead, since a tap left on the source keeps blitting.
+     */
+    @DoNotStrip
+    private void detachCameraFrameTap(String trackId) {
+        try {
+            runOnExecutor(() -> {
+                getUserMediaImpl.detachCameraFrameTap(trackId);
+                return null;
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Detaching the camera frame tap from track " + trackId + " failed", e);
+        }
+    }
+
+    private <T> T runOnExecutor(Callable<T> callable) throws Exception {
+        return ThreadUtils.submitToExecutor(callable).get(EXECUTOR_TIMEOUT_SECONDS, TimeUnit.SECONDS);
     }
 
     @DoNotStrip

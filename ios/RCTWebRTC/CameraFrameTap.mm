@@ -107,7 +107,7 @@ static FJCameraPixelFormat FJPixelFormatOf(CVPixelBufferRef pixelBuffer) {
     id<RTCVideoFrameBuffer> buffer = frame.buffer;
     if (![buffer isKindOfClass:[RTCCVPixelBuffer class]]) {
         // Only the camera capturer's native buffers can be shared with a GPU.
-        _core->completed(offer.token);
+        _core->abandoned(offer.token);
         return;
     }
     CVPixelBufferRef pixelBuffer = ((RTCCVPixelBuffer *)buffer).pixelBuffer;

@@ -40,12 +40,17 @@ class FJCameraFrameProcessorCore {
         uint64_t token;
     };
 
+    // Invariants: offered == accepted + droppedBusy + droppedDetached, and
+    // accepted == completed + droppedUndeliverable + frames in flight.
     struct Statistics {
         uint64_t offered = 0;
         uint64_t accepted = 0;
         uint64_t droppedBusy = 0;
         uint64_t droppedDetached = 0;
         uint64_t completed = 0;
+        // Accepted by the gate but never reached the consumer: unsupported
+        // buffer type, no free GPU slot, consumer gone.
+        uint64_t droppedUndeliverable = 0;
     };
 
     // Starts a new attachment generation. Any frame still in flight from a
@@ -57,10 +62,16 @@ class FJCameraFrameProcessorCore {
 
     Offer offer();
     void completed(uint64_t token);
+    // Same gate effect as completed(), for an accepted frame the platform could
+    // not deliver to the consumer. Counts as droppedUndeliverable.
+    void abandoned(uint64_t token);
 
     Statistics statistics() const;
 
    private:
+    // Clears busy_ for a token of the current generation. Caller holds mutex_.
+    bool settleInFlight(uint64_t token);
+
     mutable std::mutex mutex_;
     bool attached_ = false;
     bool busy_ = false;

@@ -95,8 +95,10 @@ final class CustomVideoFrameDelivery {
      * A GPU render (Dawn/WebGPU) writes the buffer top-down, while WebRTC samples its textures
      * bottom-up (the SurfaceTexture convention its camera matrices assume), so the delivered
      * texture carries a vertical flip: the same flip a SurfaceTexture transform matrix carries.
+     * {@link CameraFrameTapProcessor} applies the same flip in the other direction. Shared as
+     * one instance: every WebRTC consumer copies the matrix before concatenating onto it.
      */
-    private static final Matrix TOP_DOWN_TEXTURE_MATRIX = createTopDownTextureMatrix();
+    static final Matrix TOP_DOWN_TEXTURE_MATRIX = createTopDownTextureMatrix();
 
     private static Matrix createTopDownTextureMatrix() {
         Matrix matrix = new Matrix();

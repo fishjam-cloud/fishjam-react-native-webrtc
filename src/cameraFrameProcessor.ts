@@ -15,10 +15,8 @@
  */
 import { NativeModules } from 'react-native';
 
-import Logger from './Logger';
 import type MediaStreamTrack from './MediaStreamTrack';
 
-const log = new Logger('cameraFrameProcessor');
 const { WebRTCModule } = NativeModules;
 
 /** Counters kept by the admission gate; every value is a frame count. */
@@ -28,6 +26,8 @@ export interface CameraFrameProcessorStatistics {
     readonly droppedBusy: number;
     readonly droppedDetached: number;
     readonly completed: number;
+    /** Admitted frames that never reached the consumer (unsupported buffer, no free GPU slot, consumer gone). */
+    readonly droppedUndeliverable: number;
 }
 
 /**
@@ -42,9 +42,11 @@ export interface CameraFrameConsumer {
 export interface CameraFrameProcessor {
     readonly trackId: string;
     /**
-     * Starts handing admitted frames to `consumer`. Throws with `code`
-     * `E_NOT_A_CAMERA_TRACK` when the track is not a local camera track, or
-     * `E_VIDEO_EFFECTS_ACTIVE` when native video effects hold the capturer.
+     * Starts handing admitted frames to `consumer`. Attaching again on the
+     * same track replaces the previous consumer (last attach wins). Throws
+     * with `code` `E_NOT_A_CAMERA_TRACK` when the track is not a local camera
+     * track, or `E_VIDEO_EFFECTS_ACTIVE` when native video effects hold the
+     * capturer.
      */
     attach(consumer: CameraFrameConsumer): void;
     /** Stops delivery and hands the capturer back to the track. Safe to repeat. */
@@ -59,11 +61,35 @@ declare const global: {
     ) => CameraFrameProcessor;
 };
 
-// The old architecture has no JSI-capable invoker, so the install may never
-// resolve — cap the wait and reject rather than hang.
+// The native install settles from the JS call invoker. If that invoker never
+// drains (the runtime is torn down mid-install) the promise never settles, so
+// cap the wait and reject rather than hang.
 const INSTALL_TIMEOUT_MS = 10_000;
 
 let installPromise: Promise<void> | null = null;
+
+function withInstallTimeout(install: Promise<void>): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(
+            () =>
+                reject(new Error('Camera frame processor install timed out.')),
+            INSTALL_TIMEOUT_MS,
+        );
+        install.then(resolve, reject).finally(() => clearTimeout(timeoutId));
+    });
+}
+
+function installBinding(): Promise<void> {
+    return WebRTCModule.installCameraFrameProcessorJSI().then(() => {
+        if (
+            typeof global.__fishjamWebrtcGetCameraFrameProcessor !== 'function'
+        ) {
+            throw new Error(
+                'Camera frame processor binding was not installed.',
+            );
+        }
+    });
+}
 
 function normalizeInstallError(cause: unknown): Error {
     if (cause instanceof Error) {
@@ -77,42 +103,12 @@ function normalizeInstallError(cause: unknown): Error {
 }
 
 function ensureInstalled(): Promise<void> {
-    if (installPromise) {
-        return installPromise;
-    }
-    let timeoutId!: ReturnType<typeof setTimeout>;
-    let timedOut = false;
-    const timeout = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-            timedOut = true;
-            reject(new Error('Camera frame processor install timed out.'));
-        }, INSTALL_TIMEOUT_MS);
-    });
-    const install = WebRTCModule.installCameraFrameProcessorJSI().then(() => {
-        if (
-            typeof global.__fishjamWebrtcGetCameraFrameProcessor !== 'function'
-        ) {
-            throw new Error(
-                'Camera frame processor binding was not installed.',
-            );
-        }
-    });
-    // A rejection after the timeout has no consumer left; log it instead of
-    // letting it surface as an unhandled rejection.
-    install.catch((cause: unknown) => {
-        if (timedOut) {
-            log.error(
-                'installCameraFrameProcessorJSI failed after the install timeout',
-                cause instanceof Error ? cause : new Error(String(cause)),
-            );
-        }
-    });
-    installPromise = Promise.race([install, timeout])
-        .finally(() => clearTimeout(timeoutId))
-        .catch((cause: unknown) => {
+    installPromise ??= withInstallTimeout(installBinding()).catch(
+        (cause: unknown) => {
             installPromise = null;
             throw normalizeInstallError(cause);
-        });
+        },
+    );
     return installPromise;
 }
 

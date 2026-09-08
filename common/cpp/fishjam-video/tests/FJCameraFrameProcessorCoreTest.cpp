@@ -114,6 +114,59 @@ void completingTwiceIsCountedOnce() {
     CHECK_EQ(core.statistics().completed, 1u);
 }
 
+void abandoningReopensTheGate() {
+    FJCameraFrameProcessorCore core;
+    core.attach();
+    auto undeliverable = core.offer();
+    CHECK(undeliverable.result == OfferResult::Accepted);
+    CHECK(core.offer().result == OfferResult::DroppedBusy);
+
+    core.abandoned(undeliverable.token);
+    CHECK(core.offer().result == OfferResult::Accepted);
+
+    auto stats = core.statistics();
+    CHECK_EQ(stats.droppedUndeliverable, 1u);
+    CHECK_EQ(stats.completed, 0u);
+}
+
+void aStaleAbandonIsIgnored() {
+    FJCameraFrameProcessorCore core;
+    core.attach();
+    auto stale = core.offer();
+    core.detach();
+    core.attach();
+
+    auto current = core.offer();
+    CHECK(current.result == OfferResult::Accepted);
+
+    core.abandoned(stale.token);
+    CHECK(core.offer().result == OfferResult::DroppedBusy);
+    CHECK_EQ(core.statistics().droppedUndeliverable, 0u);
+
+    // Abandoning after completing, or twice, counts nothing either.
+    core.completed(current.token);
+    core.abandoned(current.token);
+    CHECK_EQ(core.statistics().droppedUndeliverable, 0u);
+    CHECK_EQ(core.statistics().completed, 1u);
+}
+
+void acceptedFramesAreAllAccountedFor() {
+    FJCameraFrameProcessorCore core;
+    core.attach();
+
+    core.completed(core.offer().token);
+    core.abandoned(core.offer().token);
+    core.completed(core.offer().token);
+    auto inFlight = core.offer();
+    CHECK(inFlight.result == OfferResult::Accepted);
+
+    auto stats = core.statistics();
+    CHECK_EQ(stats.accepted, 4u);
+    CHECK_EQ(stats.completed, 2u);
+    CHECK_EQ(stats.droppedUndeliverable, 1u);
+    CHECK_EQ(stats.accepted, stats.completed + stats.droppedUndeliverable + 1u);
+}
+
 // The capture thread offers while the consumer thread completes. The core has no
 // threads of its own, so this asserts the invariant rather than any interleaving:
 // accepted frames are never more than completed frames plus the one in flight.
@@ -159,6 +212,9 @@ int main() {
     detachAbandonsTheFrameInFlight();
     aStaleCompletionCannotOpenTheGateTwice();
     completingTwiceIsCountedOnce();
+    abandoningReopensTheGate();
+    aStaleAbandonIsIgnored();
+    acceptedFramesAreAllAccountedFor();
     concurrentOffersNeverExceedOneInFlight();
 
     if (failures > 0) {

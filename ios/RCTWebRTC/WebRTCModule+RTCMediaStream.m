@@ -6,6 +6,7 @@
 #import <WebRTC/RTCVideoTrack.h>
 
 #import "RTCMediaStreamTrack+React.h"
+#import "WebRTCModule+CameraFrameProcessor.h"
 #import "WebRTCModule+RTCMediaStream.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModuleOptions.h"
@@ -719,6 +720,7 @@ RCT_EXPORT_METHOD(mediaStreamTrackRelease : (nonnull NSString *)trackID) {
     RTCMediaStreamTrack *track = self.localTracks[trackID];
     if (track) {
         track.isEnabled = NO;
+        [self fj_detachTrackIdOnWorkerQueue:trackID];
 #if !TARGET_OS_OSX
         if ([track.captureController isKindOfClass:[CustomVideoCaptureController class]]) {
             CustomVideoCaptureController *customController = (CustomVideoCaptureController *)track.captureController;
@@ -805,9 +807,27 @@ RCT_EXPORT_METHOD(mediaStreamTrackSetVideoEffects
     if (track == nil) {
         return;
     }
+    if ([self fj_hasCameraFrameTapForTrackId:trackID]) {
+        RCTLogWarn(@"mediaStreamTrackSetVideoEffects() refused: a camera frame processor is attached to track %@",
+                   trackID);
+        return;
+    }
+    if (![track.captureController isKindOfClass:[VideoCaptureController class]]) {
+        return;
+    }
 
     RTCVideoTrack *videoTrack = (RTCVideoTrack *)track;
     RTCVideoSource *videoSource = videoTrack.source;
+    RTCVideoCapturer *capturer = ((VideoCaptureController *)videoTrack.captureController).capturer;
+    if (capturer == nil) {
+        return;
+    }
+
+    if (names.count == 0) {
+        self.videoEffectProcessor = nil;
+        capturer.delegate = videoSource;
+        return;
+    }
 
     NSMutableArray *processors = [[NSMutableArray alloc] init];
     for (NSString *name in names) {
@@ -818,10 +838,6 @@ RCT_EXPORT_METHOD(mediaStreamTrackSetVideoEffects
     }
 
     self.videoEffectProcessor = [[VideoEffectProcessor alloc] initWithProcessors:processors videoSource:videoSource];
-
-    VideoCaptureController *vcc = (VideoCaptureController *)videoTrack.captureController;
-    RTCVideoCapturer *capturer = vcc.capturer;
-
     capturer.delegate = self.videoEffectProcessor;
 }
 

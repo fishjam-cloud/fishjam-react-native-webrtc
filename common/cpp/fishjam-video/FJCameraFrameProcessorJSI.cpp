@@ -16,6 +16,12 @@ const char *messageForCode(const std::string &code) {
     if (code == "E_VIDEO_EFFECTS_ACTIVE") {
         return "Native video effects are active on this track; clear them before attaching a frame processor.";
     }
+    if (code == "E_ATTACH_FAILED") {
+        return "Attaching the camera frame processor failed natively.";
+    }
+    if (code == "E_MODULE_GONE") {
+        return "The WebRTC module is gone.";
+    }
     return "Attaching the camera frame processor failed.";
 }
 
@@ -52,6 +58,7 @@ jsi::Object statisticsToObject(jsi::Runtime &rt, const FJCameraFrameProcessorCor
     object.setProperty(rt, "droppedBusy", static_cast<double>(statistics.droppedBusy));
     object.setProperty(rt, "droppedDetached", static_cast<double>(statistics.droppedDetached));
     object.setProperty(rt, "completed", static_cast<double>(statistics.completed));
+    object.setProperty(rt, "droppedUndeliverable", static_cast<double>(statistics.droppedUndeliverable));
     return object;
 }
 
@@ -83,11 +90,11 @@ jsi::Value CameraFrameProcessorHandle::get(jsi::Runtime &rt, const jsi::PropName
                                     "@fishjam-cloud/react-native-webrtc-worklets.");
                 }
                 auto handlers = channel->handlers();
-                if (!handlers.attach) {
+                if (!handlers->attach) {
                     throwCodedError(rt, "E_UNSUPPORTED_PLATFORM",
                                     "Camera frame processing is not available on this platform.");
                 }
-                std::string code = handlers.attach(trackId, std::move(consumer));
+                std::string code = handlers->attach(trackId, std::move(consumer));
                 if (!code.empty()) {
                     throwCodedError(rt, code, messageForCode(code));
                 }
@@ -100,8 +107,8 @@ jsi::Value CameraFrameProcessorHandle::get(jsi::Runtime &rt, const jsi::PropName
                 auto channel = owner.lock();
                 if (channel) {
                     auto handlers = channel->handlers();
-                    if (handlers.detach) {
-                        handlers.detach(trackId);
+                    if (handlers->detach) {
+                        handlers->detach(trackId);
                     }
                 }
                 return jsi::Value::undefined();
@@ -114,8 +121,8 @@ jsi::Value CameraFrameProcessorHandle::get(jsi::Runtime &rt, const jsi::PropName
                 FJCameraFrameProcessorCore::Statistics statistics;
                 if (channel) {
                     auto handlers = channel->handlers();
-                    if (handlers.statistics) {
-                        handlers.statistics(trackId, statistics);
+                    if (handlers->statistics) {
+                        handlers->statistics(trackId, statistics);
                     }
                 }
                 return statisticsToObject(rt, statistics);
@@ -157,11 +164,12 @@ void FJCameraFrameProcessorChannel::install(std::function<void()> onInstalled) {
 }
 
 void FJCameraFrameProcessorChannel::setHandlers(Handlers handlers) {
+    auto replacement = std::make_shared<const Handlers>(std::move(handlers));
     std::lock_guard<std::mutex> lock(handlersMutex_);
-    handlers_ = std::move(handlers);
+    handlers_ = std::move(replacement);
 }
 
-FJCameraFrameProcessorChannel::Handlers FJCameraFrameProcessorChannel::handlers() const {
+std::shared_ptr<const FJCameraFrameProcessorChannel::Handlers> FJCameraFrameProcessorChannel::handlers() const {
     std::lock_guard<std::mutex> lock(handlersMutex_);
     return handlers_;
 }

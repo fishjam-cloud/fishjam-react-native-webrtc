@@ -1101,6 +1101,10 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     /**
      * Lazily builds the camera-frame-processor JSI installer. Returns null when there is no JSI
      * CallInvoker (the old architecture). Same latching rationale as {@link #getVideoPushInstaller}.
+     *
+     * <p>A holder that is not a {@link CallInvokerHolderImpl} latches null on purpose: the holder
+     * type is fixed by the app's architecture, so retrying on a later call could not produce a
+     * different answer.
      */
     private synchronized FJCameraFrameProcessorInstaller getCameraFrameProcessorInstaller() {
         if (cameraFrameProcessorInstallerInitialized) {

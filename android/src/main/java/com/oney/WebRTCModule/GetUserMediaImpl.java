@@ -871,18 +871,18 @@ class GetUserMediaImpl {
 
     /**
      * Installs a {@link CameraFrameTapProcessor} on the camera track's {@code VideoSource} so a
-     * JSI consumer can receive its frames. Returns an empty string on success, otherwise the
-     * error code to throw to JS. Runs on the module executor.
+     * JSI consumer can receive its frames. Returns the installed tap, or the error code to throw
+     * to JS. Runs on the module executor.
      */
-    String attachCameraFrameTap(String trackId) {
+    CameraFrameTapAttachment attachCameraFrameTap(String trackId) {
         TrackPrivate track = tracks.get(trackId);
         if (track == null || !(track.videoCaptureController instanceof CameraCaptureController)
                 || !(track.mediaSource instanceof VideoSource)) {
-            return "E_NOT_A_CAMERA_TRACK";
+            return CameraFrameTapAttachment.failed("E_NOT_A_CAMERA_TRACK");
         }
         if (track.videoEffectProcessor != null) {
             // Both want the source's single processor slot; composing them is not defined.
-            return "E_VIDEO_EFFECTS_ACTIVE";
+            return CameraFrameTapAttachment.failed("E_VIDEO_EFFECTS_ACTIVE");
         }
         if (track.cameraFrameTap == null) {
             CameraFrameTapProcessor tap = new CameraFrameTapProcessor(
@@ -890,7 +890,7 @@ class GetUserMediaImpl {
             track.cameraFrameTap = tap;
             ((VideoSource) track.mediaSource).setVideoProcessor(tap);
         }
-        return "";
+        return CameraFrameTapAttachment.attached(track.cameraFrameTap);
     }
 
     /** The tap installed on {@code trackId}, or null. Runs on the module executor. */
@@ -899,7 +899,16 @@ class GetUserMediaImpl {
         return track == null ? null : track.cameraFrameTap;
     }
 
-    /** Removes the tap from {@code trackId}, if any. Runs on the module executor. */
+    /**
+     * Removes the tap from {@code trackId}, if any. Runs on the module executor.
+     *
+     * <p>This blocks twice in a row: {@link CameraFrameTapProcessor#release} waits for the
+     * capture thread, which in turn waits (in native {@code releaseGl}) for the consumer to
+     * release the frames it still holds. The consumer releases frames on its own worklet
+     * thread, never on the JS thread that started the detach, so neither wait can deadlock.
+     * The Java wait must be at least as long as the native drain wait, otherwise the executor
+     * would move on while the capture thread is still draining.
+     */
     void detachCameraFrameTap(String trackId) {
         TrackPrivate track = tracks.get(trackId);
         if (track != null) {

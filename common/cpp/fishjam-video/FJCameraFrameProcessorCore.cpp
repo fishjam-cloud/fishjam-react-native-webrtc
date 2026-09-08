@@ -39,16 +39,29 @@ FJCameraFrameProcessorCore::Offer FJCameraFrameProcessorCore::offer() {
 
 void FJCameraFrameProcessorCore::completed(uint64_t token) {
     std::lock_guard<std::mutex> lock(mutex_);
-    // A completion from a previous attachment says nothing about the frame the
+    if (settleInFlight(token)) {
+        statistics_.completed++;
+    }
+}
+
+void FJCameraFrameProcessorCore::abandoned(uint64_t token) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (settleInFlight(token)) {
+        statistics_.droppedUndeliverable++;
+    }
+}
+
+bool FJCameraFrameProcessorCore::settleInFlight(uint64_t token) {
+    // A report from a previous attachment says nothing about the frame the
     // current one may already have in flight.
     if (token != generation_) {
-        return;
+        return false;
     }
     if (!busy_) {
-        return;
+        return false;
     }
     busy_ = false;
-    statistics_.completed++;
+    return true;
 }
 
 FJCameraFrameProcessorCore::Statistics FJCameraFrameProcessorCore::statistics() const {

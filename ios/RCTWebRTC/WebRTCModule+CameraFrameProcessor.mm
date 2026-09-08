@@ -17,6 +17,7 @@
 #import "FJCameraFrameProcessorJSI.h"
 #import "RTCMediaStreamTrack+React.h"
 #import "VideoCaptureController.h"
+#import "VideoEffectProcessor.h"
 #import "WebRTCModule+RTCMediaStream.h"
 
 #include <memory>
@@ -66,7 +67,8 @@ using fishjam::video::FJCameraFrameConsumer;
 }
 
 // trackId -> tap. Strong values: the tap is the capturer's (weak) delegate, so
-// this dictionary is what keeps it alive. Accessed on the worker queue only.
+// this dictionary is what keeps it alive. Accessed on the worker queue, or from
+// dealloc once nothing queued can reference the module any more.
 - (NSMutableDictionary<NSString *, CameraFrameTap *> *)fj_cameraFrameTaps {
     static const void *key = &key;
     @synchronized(self) {
@@ -101,7 +103,7 @@ using fishjam::video::FJCameraFrameConsumer;
             errorCode = @"E_NOT_A_CAMERA_TRACK";
             return;
         }
-        if (self.videoEffectProcessor != nil) {
+        if ([captureController.capturer.delegate isKindOfClass:[VideoEffectProcessor class]]) {
             // Both want to be the capturer's delegate; composing them is not defined.
             errorCode = @"E_VIDEO_EFFECTS_ACTIVE";
             return;
@@ -119,21 +121,10 @@ using fishjam::video::FJCameraFrameConsumer;
     return errorCode;
 }
 
+// Runs on the JS thread inside `detach()`.
 - (void)fj_detachTrackId:(NSString *)trackId {
     dispatch_sync(self.workerQueue, ^{
-        NSMutableDictionary<NSString *, CameraFrameTap *> *taps = [self fj_cameraFrameTaps];
-        CameraFrameTap *tap = taps[trackId];
-        if (tap == nil) {
-            return;
-        }
-        [taps removeObjectForKey:trackId];
-        [tap detachConsumer];
-        // Hand the capturer back to the track's own source, never to a cached delegate.
-        RTCMediaStreamTrack *track = self.localTracks[trackId];
-        VideoCaptureController *captureController = [self fj_cameraCaptureControllerForTrack:track];
-        if (captureController != nil) {
-            captureController.capturer.delegate = ((RTCVideoTrack *)track).source;
-        }
+        [self fj_detachTrackIdOnWorkerQueue:trackId];
     });
 }
 
@@ -155,19 +146,37 @@ using fishjam::video::FJCameraFrameConsumer;
 
 #endif
 
-- (void)fj_detachAllCameraFrameTaps {
+- (BOOL)fj_hasCameraFrameTapForTrackId:(NSString *)trackId {
+#if !TARGET_OS_TV && !TARGET_OS_OSX
+    return [self fj_cameraFrameTaps][trackId] != nil;
+#else
+    return NO;
+#endif
+}
+
+- (void)fj_detachTrackIdOnWorkerQueue:(NSString *)trackId {
 #if !TARGET_OS_TV && !TARGET_OS_OSX
     NSMutableDictionary<NSString *, CameraFrameTap *> *taps = [self fj_cameraFrameTaps];
-    for (NSString *trackId in [taps allKeys]) {
-        CameraFrameTap *tap = taps[trackId];
-        [tap detachConsumer];
-        RTCMediaStreamTrack *track = self.localTracks[trackId];
-        VideoCaptureController *captureController = [self fj_cameraCaptureControllerForTrack:track];
-        if (captureController != nil) {
-            captureController.capturer.delegate = tap.videoSource;
-        }
+    CameraFrameTap *tap = taps[trackId];
+    if (tap == nil) {
+        return;
     }
-    [taps removeAllObjects];
+    [taps removeObjectForKey:trackId];
+    [tap detachConsumer];
+    // Hand the capturer back to the track's own source, never to a cached delegate.
+    RTCMediaStreamTrack *track = self.localTracks[trackId];
+    VideoCaptureController *captureController = [self fj_cameraCaptureControllerForTrack:track];
+    if (captureController != nil) {
+        captureController.capturer.delegate = ((RTCVideoTrack *)track).source;
+    }
+#endif
+}
+
+- (void)fj_detachAllCameraFrameTaps {
+#if !TARGET_OS_TV && !TARGET_OS_OSX
+    for (NSString *trackId in [[self fj_cameraFrameTaps] allKeys]) {
+        [self fj_detachTrackIdOnWorkerQueue:trackId];
+    }
 #endif
 }
 

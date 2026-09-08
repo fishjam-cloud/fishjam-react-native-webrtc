@@ -14,6 +14,9 @@ namespace fishjam::video {
 namespace {
 
 constexpr const char *kLogTag = "WebRTCModule";
+// The consumer releases frames on its worklet thread, so releaseGl can wait for
+// it here on the GL thread. CameraFrameTapProcessor.RELEASE_TIMEOUT_MS (the
+// Java wait for releaseGl itself) must be at least this long.
 constexpr auto kReleaseDrainTimeout = std::chrono::seconds(2);
 
 void logWarning(const char *message) {
@@ -72,32 +75,24 @@ jint FJCameraFrameTap::beginBlit(jint width, jint height) {
             loggedNoContext_ = true;
             logWarning("no EGL context is current on the capture thread; frames cannot be blitted");
         }
-        core_->completed(offer.token);
+        core_->abandoned(offer.token);
         return -1;
     }
 
-    std::lock_guard<std::mutex> lock(slotState_->mutex);
-    int chosen = -1;
-    for (int step = 0; step < kSlotCount; ++step) {
-        int candidate = (slotState_->nextSlot + step) % kSlotCount;
-        if (!slotState_->slots[candidate].inUse) {
-            chosen = candidate;
-            break;
-        }
-    }
-    if (chosen < 0) {
-        core_->completed(offer.token);
+    const int slotIndex = acquireSlot();
+    if (slotIndex < 0) {
+        core_->abandoned(offer.token);
         return -1;
     }
-    Slot &slot = slotState_->slots[chosen];
+    // The slot is marked in use, so a consumer release running concurrently
+    // cannot touch it while its buffer is (re)built here outside the lock.
+    Slot &slot = slotState_->slots[slotIndex];
     if (!prepareSlot(slot, width, height, display)) {
-        core_->completed(offer.token);
+        releaseSlot(*slotState_, slotIndex);
+        core_->abandoned(offer.token);
         return -1;
     }
-    slot.inUse = true;
-    slotState_->inFlight += 1;
-    slotState_->nextSlot = (chosen + 1) % kSlotCount;
-    pendingSlot_ = chosen;
+    pendingSlot_ = slotIndex;
     pendingToken_ = offer.token;
     return static_cast<jint>(slot.framebuffer);
 }
@@ -110,48 +105,74 @@ void FJCameraFrameTap::endBlit(jint rotationDegrees, jboolean isFrontCamera, jlo
     const uint64_t token = pendingToken_;
     pendingSlot_ = -1;
 
-    EGLDisplay display = eglGetCurrentDisplay();
-    const int32_t acquireFence = createAcquireFence(display);
-
-    uint64_t nativeBuffer = 0;
-    int32_t width = 0;
-    int32_t height = 0;
-    {
-        std::lock_guard<std::mutex> lock(slotState_->mutex);
-        const Slot &slot = slotState_->slots[slotIndex];
-        nativeBuffer = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(slot.buffer));
-        width = slot.width;
-        height = slot.height;
-    }
-
-    std::shared_ptr<SlotState> slotState = slotState_;
-    std::shared_ptr<FJCameraFrameProcessorCore> core = core_;
-    auto frame = std::make_shared<FJCameraFrame>(
-        nativeBuffer, width, height, static_cast<int32_t>(rotationDegrees), isFrontCamera == JNI_TRUE,
-        static_cast<int64_t>(timestampNanoseconds), FJCameraPixelFormat::RGBA8, acquireFence,
-        [slotState, core, slotIndex, token, acquireFence]() {
-            if (acquireFence >= 0) {
-                close(acquireFence);
-            }
-            {
-                std::lock_guard<std::mutex> lock(slotState->mutex);
-                slotState->slots[slotIndex].inUse = false;
-                slotState->inFlight -= 1;
-            }
-            slotState->released.notify_all();
-            core->completed(token);
-        });
-
     std::shared_ptr<FJCameraFrameConsumer> consumer;
     {
         std::lock_guard<std::mutex> lock(consumerMutex_);
         consumer = consumer_;
     }
-    if (consumer) {
-        consumer->onFrame(std::move(frame));
+    if (!consumer) {
+        releaseSlot(*slotState_, slotIndex);
+        core_->abandoned(token);
+        return;
     }
-    // Without a consumer the frame is dropped here and its release callback
-    // reopens the gate.
+
+    const int32_t acquireFence = createAcquireFence(eglGetCurrentDisplay());
+    const Slot &slot = slotState_->slots[slotIndex];
+    const auto nativeBuffer = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(slot.buffer));
+
+    std::shared_ptr<SlotState> slotState = slotState_;
+    std::shared_ptr<FJCameraFrameProcessorCore> core = core_;
+    auto frame = std::make_shared<FJCameraFrame>(nativeBuffer,
+                                                 slot.width,
+                                                 slot.height,
+                                                 static_cast<int32_t>(rotationDegrees),
+                                                 isFrontCamera == JNI_TRUE,
+                                                 static_cast<int64_t>(timestampNanoseconds),
+                                                 FJCameraPixelFormat::RGBA8,
+                                                 acquireFence,
+                                                 [slotState, core, slotIndex, token, acquireFence]() {
+                                                     if (acquireFence >= 0) {
+                                                         close(acquireFence);
+                                                     }
+                                                     releaseSlot(*slotState, slotIndex);
+                                                     core->completed(token);
+                                                 });
+    consumer->onFrame(std::move(frame));
+}
+
+void FJCameraFrameTap::abortBlit() {
+    if (pendingSlot_ < 0) {
+        return;
+    }
+    const int slotIndex = pendingSlot_;
+    const uint64_t token = pendingToken_;
+    pendingSlot_ = -1;
+    releaseSlot(*slotState_, slotIndex);
+    core_->abandoned(token);
+}
+
+int FJCameraFrameTap::acquireSlot() {
+    std::lock_guard<std::mutex> lock(slotState_->mutex);
+    for (int step = 0; step < kSlotCount; ++step) {
+        const int candidate = (slotState_->nextSlot + step) % kSlotCount;
+        Slot &slot = slotState_->slots[candidate];
+        if (!slot.inUse) {
+            slot.inUse = true;
+            slotState_->inFlight += 1;
+            slotState_->nextSlot = (candidate + 1) % kSlotCount;
+            return candidate;
+        }
+    }
+    return -1;
+}
+
+void FJCameraFrameTap::releaseSlot(SlotState &slotState, int slotIndex) {
+    {
+        std::lock_guard<std::mutex> lock(slotState.mutex);
+        slotState.slots[slotIndex].inUse = false;
+        slotState.inFlight -= 1;
+    }
+    slotState.released.notify_all();
 }
 
 void FJCameraFrameTap::releaseGl() {
@@ -202,9 +223,10 @@ bool FJCameraFrameTap::prepareSlot(Slot &slot, int32_t width, int32_t height, EG
 
     EGLClientBuffer clientBuffer = extensions.eglGetNativeClientBufferANDROID(slot.buffer);
     const EGLint imageAttributes[] = {EGL_NONE};
-    slot.image = clientBuffer == nullptr ? EGL_NO_IMAGE_KHR
-                                         : extensions.eglCreateImageKHR(display, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID,
-                                                                        clientBuffer, imageAttributes);
+    slot.image = clientBuffer == nullptr
+                     ? EGL_NO_IMAGE_KHR
+                     : extensions.eglCreateImageKHR(
+                           display, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID, clientBuffer, imageAttributes);
     if (slot.image == EGL_NO_IMAGE_KHR) {
         destroySlot(slot, display);
         if (!slot.loggedFailure) {
@@ -235,9 +257,11 @@ bool FJCameraFrameTap::prepareSlot(Slot &slot, int32_t width, int32_t height, EG
     if (textureError != GL_NO_ERROR || framebufferStatus != GL_FRAMEBUFFER_COMPLETE) {
         if (!slot.loggedFailure) {
             slot.loggedFailure = true;
-            __android_log_print(ANDROID_LOG_WARN, kLogTag,
+            __android_log_print(ANDROID_LOG_WARN,
+                                kLogTag,
                                 "CameraFrameTap: slot setup failed (glError=0x%x, framebufferStatus=0x%x)",
-                                textureError, framebufferStatus);
+                                textureError,
+                                framebufferStatus);
         }
         destroySlot(slot, display);
         return false;
@@ -291,6 +315,12 @@ int32_t FJCameraFrameTap::createAcquireFence(EGLDisplay display) {
             }
         }
     }
+    if (!loggedNoNativeFence_) {
+        loggedNoNativeFence_ = true;
+        logWarning(
+            "EGL_ANDROID_native_fence_sync unavailable; every camera frame now stalls the capture thread "
+            "in glFinish until the GPU finished the blit");
+    }
     glFinish();
     return -1;
 }
@@ -300,6 +330,7 @@ void FJCameraFrameTap::registerNatives() {
         makeNativeMethod("initHybrid", FJCameraFrameTap::initHybrid),
         makeNativeMethod("beginBlit", FJCameraFrameTap::beginBlit),
         makeNativeMethod("endBlit", FJCameraFrameTap::endBlit),
+        makeNativeMethod("abortBlit", FJCameraFrameTap::abortBlit),
         makeNativeMethod("releaseGl", FJCameraFrameTap::releaseGl),
     });
 }

@@ -15,7 +15,8 @@
 // guarantees this by posting every native call onto that handler.
 //
 // The functions used here are EGL/GLES *extensions*, not part of the core NDK
-// link surface, so they are resolved at runtime via eglGetProcAddress:
+// link surface, so they are resolved at runtime via eglGetProcAddress into the
+// table declared in custom_video_gl.h (shared with the camera frame tap):
 //   - eglGetNativeClientBufferANDROID   (EGL_ANDROID_get_native_client_buffer)
 //   - eglCreateImageKHR / eglDestroyImageKHR (EGL_KHR_image_base)
 //   - glEGLImageTargetTexture2DOES      (GL_OES_EGL_image)
@@ -73,30 +74,8 @@ namespace {
 
 constexpr EGLTimeKHR kFenceWaitTimeoutNs = 2'000'000'000ULL;
 
-// Local aliases of the shared extension table (custom_video_gl.h), kept so the
-// entry points below read as before. Resolved once on first use from the GL
-// thread (where an EGL display/context are current).
-PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC eglGetNativeClientBufferANDROIDFn = nullptr;
-PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHRFn = nullptr;
-PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHRFn = nullptr;
-PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOESFn = nullptr;
-PFNEGLCREATESYNCKHRPROC eglCreateSyncKHRFn = nullptr;
-PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHRFn = nullptr;
-PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHRFn = nullptr;
-
-// Copies the shared table into the local aliases. Like every entry point here
-// it assumes the single shared-context GL thread and is NOT thread-safe off it.
-bool resolveExtensions() {
-    const fishjam::video::gl::EglExtensions &extensions = fishjam::video::gl::eglExtensions();
-    eglGetNativeClientBufferANDROIDFn = extensions.eglGetNativeClientBufferANDROID;
-    eglCreateImageKHRFn = extensions.eglCreateImageKHR;
-    eglDestroyImageKHRFn = extensions.eglDestroyImageKHR;
-    glEGLImageTargetTexture2DOESFn = extensions.glEGLImageTargetTexture2DOES;
-    eglCreateSyncKHRFn = extensions.eglCreateSyncKHR;
-    eglClientWaitSyncKHRFn = extensions.eglClientWaitSyncKHR;
-    eglDestroySyncKHRFn = extensions.eglDestroySyncKHR;
-    return extensions.canImportImages();
-}
+using fishjam::video::gl::EglExtensions;
+using fishjam::video::gl::eglExtensions;
 
 }  // namespace
 
@@ -118,7 +97,8 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
     if (ahbHandle == 0) {
         return nullptr;
     }
-    if (!resolveExtensions()) {
+    const EglExtensions &extensions = eglExtensions();
+    if (!extensions.canImportImages()) {
         return nullptr;
     }
 
@@ -135,7 +115,7 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
     }
 
     AHardwareBuffer* buffer = reinterpret_cast<AHardwareBuffer*>(ahbHandle);
-    EGLClientBuffer clientBuffer = eglGetNativeClientBufferANDROIDFn(buffer);
+    EGLClientBuffer clientBuffer = extensions.eglGetNativeClientBufferANDROID(buffer);
     if (clientBuffer == nullptr) {
         return nullptr;
     }
@@ -144,7 +124,7 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
     // there are no separate contents to preserve (EGL_IMAGE_PRESERVED_KHR buys
     // nothing here, and strict drivers can fail creation over unsupported attribs).
     const EGLint imageAttribs[] = {EGL_NONE};
-    EGLImageKHR eglImage = eglCreateImageKHRFn(display, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID,
+    EGLImageKHR eglImage = extensions.eglCreateImageKHR(display, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID,
                                                clientBuffer, imageAttribs);
     if (eglImage == EGL_NO_IMAGE_KHR) {
         return nullptr;
@@ -163,20 +143,19 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeImportAhbToOesTexture(
     glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glEGLImageTargetTexture2DOESFn(GL_TEXTURE_EXTERNAL_OES,
-                                   static_cast<GLeglImageOES>(eglImage));
+    extensions.glEGLImageTargetTexture2DOES(GL_TEXTURE_EXTERNAL_OES, static_cast<GLeglImageOES>(eglImage));
     GLenum glError = glGetError();
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
     if (glError != GL_NO_ERROR) {
         glDeleteTextures(1, &texId);
-        eglDestroyImageKHRFn(display, eglImage);
+        extensions.eglDestroyImageKHR(display, eglImage);
         return nullptr;
     }
 
     jlongArray result = env->NewLongArray(2);
     if (result == nullptr) {
         glDeleteTextures(1, &texId);
-        eglDestroyImageKHRFn(display, eglImage);
+        extensions.eglDestroyImageKHR(display, eglImage);
         return nullptr;
     }
     jlong values[2] = {reinterpret_cast<jlong>(eglImage), static_cast<jlong>(texId)};
@@ -214,8 +193,8 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
     if (fenceFd < 0) {
         return JNI_TRUE;  // no-fence fallback
     }
-    if (!resolveExtensions() || eglCreateSyncKHRFn == nullptr ||
-            eglClientWaitSyncKHRFn == nullptr) {
+    const EglExtensions &extensions = eglExtensions();
+    if (extensions.eglCreateSyncKHR == nullptr || extensions.eglClientWaitSyncKHR == nullptr) {
         close(fenceFd);
         return JNI_FALSE;
     }
@@ -229,7 +208,7 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
     // EGL takes ownership of the fd on success and closes it when the sync is
     // destroyed; on failure ownership stays with us, so we close it ourselves.
     const EGLint syncAttribs[] = {EGL_SYNC_NATIVE_FENCE_FD_ANDROID, fenceFd, EGL_NONE};
-    EGLSyncKHR sync = eglCreateSyncKHRFn(display, EGL_SYNC_NATIVE_FENCE_ANDROID, syncAttribs);
+    EGLSyncKHR sync = extensions.eglCreateSyncKHR(display, EGL_SYNC_NATIVE_FENCE_ANDROID, syncAttribs);
     if (sync == EGL_NO_SYNC_KHR) {
         close(fenceFd);
         return JNI_FALSE;
@@ -239,9 +218,9 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeWaitSyncFd(
     // signals, but only up to kFenceWaitTimeoutNs so teardown cannot hang
     // forever on a bad or never-signaled fence. Timed-out frames are dropped.
     EGLint waitStatus =
-            eglClientWaitSyncKHRFn(display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, kFenceWaitTimeoutNs);
-    if (eglDestroySyncKHRFn != nullptr) {
-        eglDestroySyncKHRFn(display, sync);
+            extensions.eglClientWaitSyncKHR(display, sync, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR, kFenceWaitTimeoutNs);
+    if (extensions.eglDestroySyncKHR != nullptr) {
+        extensions.eglDestroySyncKHR(display, sync);
     }
     return waitStatus == EGL_CONDITION_SATISFIED_KHR ? JNI_TRUE : JNI_FALSE;
 }
@@ -266,9 +245,9 @@ Java_com_oney_WebRTCModule_CustomVideoFrameDelivery_nativeReleaseImportedTexture
         GLuint id = static_cast<GLuint>(texId);
         glDeleteTextures(1, &id);
     }
-    if (eglImageHandle != 0 && display != EGL_NO_DISPLAY && resolveExtensions() &&
-            eglDestroyImageKHRFn != nullptr) {
-        eglDestroyImageKHRFn(display, reinterpret_cast<EGLImageKHR>(eglImageHandle));
+    const EglExtensions &extensions = eglExtensions();
+    if (eglImageHandle != 0 && display != EGL_NO_DISPLAY && extensions.eglDestroyImageKHR != nullptr) {
+        extensions.eglDestroyImageKHR(display, reinterpret_cast<EGLImageKHR>(eglImageHandle));
     }
 }
 

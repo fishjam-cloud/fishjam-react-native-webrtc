@@ -48,18 +48,16 @@ final class CameraFrameTapProcessor implements VideoProcessor {
     // consumer (Dawn) reads the blitted buffer top-down, so the blit flips vertically: the same
     // flip YuvConverter applies before its own draw, which makes the buffer match the pixels the
     // raw track encodes.
-    private final Matrix topDownFlip = new Matrix();
+    private static final Matrix TOP_DOWN_FLIP = CustomVideoFrameDelivery.TOP_DOWN_TEXTURE_MATRIX;
 
-    private VideoSink sink;
+    // Written by the source thread, read on the capture thread.
+    private volatile VideoSink sink;
     private GlRectDrawer drawer;
     private volatile boolean released;
 
     CameraFrameTapProcessor(CameraCaptureController captureController, SurfaceTextureHelper surfaceTextureHelper) {
         this.captureController = captureController;
         this.glHandler = surfaceTextureHelper.getHandler();
-        topDownFlip.preTranslate(0.5f, 0.5f);
-        topDownFlip.preScale(1f, -1f);
-        topDownFlip.preTranslate(-0.5f, -0.5f);
         mHybridData = initHybrid();
     }
 
@@ -119,24 +117,41 @@ final class CameraFrameTapProcessor implements VideoProcessor {
         VideoFrame.TextureBuffer textureBuffer = (VideoFrame.TextureBuffer) frame.getBuffer();
         int width = textureBuffer.getWidth();
         int height = textureBuffer.getHeight();
+        if (drawer == null) {
+            drawer = new GlRectDrawer();
+        }
         int framebuffer = beginBlit(width, height);
         if (framebuffer < 0) {
             return;
         }
-        if (drawer == null) {
-            drawer = new GlRectDrawer();
-        }
+        // beginBlit reserved a slot and closed the admission gate; a draw that throws must
+        // still hand both back, otherwise every later frame is dropped as busy.
+        boolean drawn = false;
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
         GLES20.glViewport(0, 0, width, height);
-        VideoFrameDrawer.drawTexture(drawer, textureBuffer, topDownFlip, width, height, 0, 0, width, height);
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
-        endBlit(frame.getRotation(), captureController.isFrontFacing(), frame.getTimestampNs());
+        try {
+            VideoFrameDrawer.drawTexture(drawer, textureBuffer, TOP_DOWN_FLIP, width, height, 0, 0, width, height);
+            drawn = true;
+        } finally {
+            if (drawn) {
+                endBlit(frame.getRotation(), captureController.isFrontFacing(), frame.getTimestampNs());
+            } else {
+                abortBlit();
+            }
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
+        }
     }
 
     /**
      * Frees the GL resources on the capture thread. Blocks the caller (the module executor)
      * until that ran, bounded by {@link #RELEASE_TIMEOUT_MS}. Must be called after the
      * processor was removed from the {@code VideoSource}, so no frame is being blitted.
+     *
+     * <p>The capture thread itself waits inside {@code releaseGl} for the consumer to release
+     * its in-flight frames, which happens on the consumer's worklet thread (never the JS thread
+     * that triggered the detach). {@link #RELEASE_TIMEOUT_MS} must therefore stay at least as
+     * long as the native drain timeout ({@code kReleaseDrainTimeout} in FJCameraFrameTap.cpp),
+     * so this wait covers the nested one.
      */
     void release() {
         released = true;
@@ -173,6 +188,10 @@ final class CameraFrameTapProcessor implements VideoProcessor {
 
     @DoNotStrip
     private native void endBlit(int rotationDegrees, boolean isFrontCamera, long timestampNanoseconds);
+
+    /** Gives the slot reserved by {@code beginBlit} back without delivering anything. */
+    @DoNotStrip
+    private native void abortBlit();
 
     @DoNotStrip
     private native void releaseGl();

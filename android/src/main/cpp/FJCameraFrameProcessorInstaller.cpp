@@ -6,6 +6,26 @@ namespace jni = facebook::jni;
 
 namespace fishjam::video {
 
+namespace {
+
+// Mirror of com.oney.WebRTCModule.CameraFrameTapAttachment, read by field.
+struct CameraFrameTapAttachment : jni::JavaClass<CameraFrameTapAttachment> {
+    static constexpr auto kJavaDescriptor = "Lcom/oney/WebRTCModule/CameraFrameTapAttachment;";
+
+    std::string errorCode() const {
+        static const auto field = javaClassStatic()->getField<jstring>("errorCode");
+        jni::local_ref<jstring> value = getFieldValue(field);
+        return value ? value->toStdString() : std::string();
+    }
+
+    jni::local_ref<FJCameraFrameTap::javaobject> tap() const {
+        static const auto field = javaClassStatic()->getField<FJCameraFrameTap::javaobject>("tap");
+        return getFieldValue(field);
+    }
+};
+
+}  // namespace
+
 FJCameraFrameProcessorInstaller::FJCameraFrameProcessorInstaller(jni::alias_ref<jhybridobject> javaThis,
                                                                  std::shared_ptr<FJCameraFrameProcessorChannel> channel)
     : javaPart_(jni::make_global(javaThis)), channel_(std::move(channel)) {
@@ -16,18 +36,20 @@ FJCameraFrameProcessorInstaller::FJCameraFrameProcessorInstaller(jni::alias_ref<
     FJCameraFrameProcessorChannel::Handlers handlers;
     handlers.attach = [javaPart](const std::string &trackId, std::shared_ptr<FJCameraFrameConsumer> consumer) {
         static const auto attachCameraFrameTap =
-            javaPart->getClass()->getMethod<jstring(jni::alias_ref<jstring>)>("attachCameraFrameTap");
-        static const auto getCameraFrameTap =
-            javaPart->getClass()->getMethod<FJCameraFrameTap::javaobject(jni::alias_ref<jstring>)>(
-                "getCameraFrameTap");
-        jni::local_ref<jstring> errorCode = attachCameraFrameTap(javaPart, jni::make_jstring(trackId));
-        std::string code = errorCode ? errorCode->toStdString() : std::string("E_ATTACH_FAILED");
+            javaPart->getClass()->getMethod<CameraFrameTapAttachment::javaobject(jni::alias_ref<jstring>)>(
+                "attachCameraFrameTap");
+        jni::local_ref<CameraFrameTapAttachment::javaobject> attachment =
+            attachCameraFrameTap(javaPart, jni::make_jstring(trackId));
+        if (!attachment) {
+            return std::string("E_ATTACH_FAILED");
+        }
+        std::string code = attachment->errorCode();
         if (!code.empty()) {
             return code;
         }
-        jni::local_ref<FJCameraFrameTap::javaobject> tap = getCameraFrameTap(javaPart, jni::make_jstring(trackId));
+        jni::local_ref<FJCameraFrameTap::javaobject> tap = attachment->tap();
         if (!tap) {
-            return std::string("E_NOT_A_CAMERA_TRACK");
+            return std::string("E_ATTACH_FAILED");
         }
         tap->cthis()->attachConsumer(std::move(consumer));
         return std::string();
@@ -39,8 +61,7 @@ FJCameraFrameProcessorInstaller::FJCameraFrameProcessorInstaller(jni::alias_ref<
     };
     handlers.statistics = [javaPart](const std::string &trackId, FJCameraFrameProcessorCore::Statistics &out) {
         static const auto getCameraFrameTap =
-            javaPart->getClass()->getMethod<FJCameraFrameTap::javaobject(jni::alias_ref<jstring>)>(
-                "getCameraFrameTap");
+            javaPart->getClass()->getMethod<FJCameraFrameTap::javaobject(jni::alias_ref<jstring>)>("getCameraFrameTap");
         jni::local_ref<FJCameraFrameTap::javaobject> tap = getCameraFrameTap(javaPart, jni::make_jstring(trackId));
         if (!tap) {
             return false;

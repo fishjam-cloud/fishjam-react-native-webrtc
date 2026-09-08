@@ -8,9 +8,11 @@
 // consumer as an FJCameraFrame, together with a native fence that signals once
 // the GPU finished the copy.
 //
-// Threads: beginBlit / endBlit / releaseGl run on the SurfaceTextureHelper GL
-// thread only. Frame releases arrive from the consumer's thread and only touch
-// the slot bookkeeping, never GL or JNI.
+// Threads: beginBlit / endBlit / abortBlit / releaseGl run on the
+// SurfaceTextureHelper GL thread only, so a slot's buffer and GL objects are
+// GL-thread state and need no lock. Frame releases arrive from the consumer's
+// thread and only touch the in-use bookkeeping under SlotState::mutex, never GL
+// or JNI.
 #pragma once
 
 #include <android/hardware_buffer.h>
@@ -50,6 +52,9 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
     jint beginBlit(jint width, jint height);
     // GL thread, after the render into the framebuffer returned by beginBlit.
     void endBlit(jint rotationDegrees, jboolean isFrontCamera, jlong timestampNanoseconds);
+    // GL thread, instead of endBlit when the render failed: frees the slot and
+    // reopens the gate without delivering anything.
+    void abortBlit();
     // GL thread. Waits (bounded) for in-flight frames, then frees every slot.
     void releaseGl();
 
@@ -63,6 +68,7 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
         GLuint framebuffer = 0;
         int32_t width = 0;
         int32_t height = 0;
+        // Guarded by SlotState::mutex; everything above is GL-thread state.
         bool inUse = false;
         bool loggedFailure = false;
     };
@@ -79,6 +85,11 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
 
     explicit FJCameraFrameTap(facebook::jni::alias_ref<jhybridobject> javaThis);
 
+    // Marks the next free slot in use and returns its index, or -1 when every
+    // slot is held by the consumer.
+    int acquireSlot();
+    // Marks a slot free again. Any thread.
+    static void releaseSlot(SlotState &slotState, int slotIndex);
     bool prepareSlot(Slot &slot, int32_t width, int32_t height, EGLDisplay display);
     void destroySlot(Slot &slot, EGLDisplay display);
     int32_t createAcquireFence(EGLDisplay display);
@@ -90,10 +101,11 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
     mutable std::mutex consumerMutex_;
     std::shared_ptr<FJCameraFrameConsumer> consumer_;
 
-    // The blit in progress between beginBlit and endBlit (GL thread only).
+    // The blit in progress between beginBlit and endBlit/abortBlit (GL thread only).
     int pendingSlot_ = -1;
     bool loggedDetachedOffer_ = false;
     bool loggedNoContext_ = false;
+    bool loggedNoNativeFence_ = false;
     uint64_t pendingToken_ = 0;
 };
 
