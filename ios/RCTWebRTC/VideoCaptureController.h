@@ -10,6 +10,8 @@
 @property(nonatomic, readonly, strong) AVCaptureDeviceFormat *selectedFormat;
 @property(nonatomic, readonly, assign) int frameRate;
 @property(nonatomic, assign) BOOL enableMultitaskingCameraAccess;
+// Whether the active device faces the user. Read per frame by the camera frame tap.
+@property(nonatomic, readonly, assign) BOOL usingFrontCamera;
 
 - (instancetype)initWithCapturer:(RTCCameraVideoCapturer *)capturer andConstraints:(NSDictionary *)constraints;
 - (void)startCapture;

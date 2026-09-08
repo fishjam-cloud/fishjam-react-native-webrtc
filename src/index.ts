@@ -274,3 +274,10 @@ function registerGlobals(): void {
     global.RTCRtpSender = RTCRtpSender;
     global.RTCErrorEvent = RTCErrorEvent;
 }
+
+export {
+    getCameraFrameProcessor,
+    type CameraFrameConsumer,
+    type CameraFrameProcessor,
+    type CameraFrameProcessorStatistics,
+} from './cameraFrameProcessor';

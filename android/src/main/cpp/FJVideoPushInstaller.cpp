@@ -1,5 +1,8 @@
 #include "FJVideoPushInstaller.h"
 
+#include "FJCameraFrameProcessorInstaller.h"
+#include "FJCameraFrameTap.h"
+
 // facebook::jni::ThreadScope is declared in <fbjni/detail/Environment.h>, pulled
 // in transitively by <fbjni/fbjni.h> (included from FJVideoPushInstaller.h).
 
@@ -71,5 +74,9 @@ void FJVideoPushInstaller::registerNatives() {
 }  // namespace fishjam
 
 JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *) {
-    return facebook::jni::initialize(vm, [] { fishjam::FJVideoPushInstaller::registerNatives(); });
+    return facebook::jni::initialize(vm, [] {
+        fishjam::FJVideoPushInstaller::registerNatives();
+        fishjam::video::FJCameraFrameTap::registerNatives();
+        fishjam::video::FJCameraFrameProcessorInstaller::registerNatives();
+    });
 }

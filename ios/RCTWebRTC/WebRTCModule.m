@@ -10,6 +10,7 @@
 #import "CustomVideoCaptureController.h"
 #import "H264BackgroundSafeEncoderFactory.h"
 #import "RTCMediaStreamTrack+React.h"
+#import "WebRTCModule+CameraFrameProcessor.h"
 #import "WebRTCModule+RTCPeerConnection.h"
 #import "WebRTCModule.h"
 #import "WebRTCModuleOptions.h"
@@ -21,6 +22,7 @@
 }
 
 - (void)dealloc {
+    [self fj_detachAllCameraFrameTaps];
     [self removeAudioRouteObserver];
     [self removeLivestreamStatusObserver];
 

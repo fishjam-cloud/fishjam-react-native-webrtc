@@ -36,7 +36,7 @@ Pod::Spec.new do |s|
     # `import FishjamReactNativeWebrtc`.
     'DEFINES_MODULE' => 'YES',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20',
-    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/common/cpp/vendor" "$(PODS_TARGET_SRCROOT)/common/cpp/fishjam-audio" "$(PODS_TARGET_SRCROOT)/common/cpp/fishjam-video"',
+    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/common/cpp/vendor" "$(PODS_TARGET_SRCROOT)/common/cpp/fishjam-audio" "$(PODS_TARGET_SRCROOT)/common/cpp/fishjam-video" "$(PODS_TARGET_SRCROOT)/common/cpp/fishjam-video/public"',
     'GCC_PREPROCESSOR_DEFINITIONS' =>
       'MA_NO_DEVICE_IO=1 MA_NO_DECODING=1 MA_NO_ENCODING=1 MA_NO_GENERATION=1 ' \
       'MA_NO_RESOURCE_MANAGER=1 MA_NO_NODE_GRAPH=1 $(inherited)',
