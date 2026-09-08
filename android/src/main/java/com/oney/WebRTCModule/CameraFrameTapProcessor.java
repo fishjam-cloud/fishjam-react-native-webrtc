@@ -44,10 +44,11 @@ final class CameraFrameTapProcessor implements VideoProcessor {
 
     private final CameraCaptureController captureController;
     private final Handler glHandler;
-    // GL writes the framebuffer bottom-up and the GPU consumer (Dawn) reads the buffer
-    // top-down, and the frame's rotation is applied afterwards; the net effect on the
-    // published image is a half turn, which this matrix undoes in texture space.
-    private final Matrix halfTurn = new Matrix();
+    // The camera texture samples bottom-up (its transform matrix targets GL), while the GPU
+    // consumer (Dawn) reads the blitted buffer top-down, so the blit flips vertically: the same
+    // flip YuvConverter applies before its own draw, which makes the buffer match the pixels the
+    // raw track encodes.
+    private final Matrix topDownFlip = new Matrix();
 
     private VideoSink sink;
     private GlRectDrawer drawer;
@@ -56,9 +57,9 @@ final class CameraFrameTapProcessor implements VideoProcessor {
     CameraFrameTapProcessor(CameraCaptureController captureController, SurfaceTextureHelper surfaceTextureHelper) {
         this.captureController = captureController;
         this.glHandler = surfaceTextureHelper.getHandler();
-        halfTurn.preTranslate(0.5f, 0.5f);
-        halfTurn.preRotate(180f);
-        halfTurn.preTranslate(-0.5f, -0.5f);
+        topDownFlip.preTranslate(0.5f, 0.5f);
+        topDownFlip.preScale(1f, -1f);
+        topDownFlip.preTranslate(-0.5f, -0.5f);
         mHybridData = initHybrid();
     }
 
@@ -127,7 +128,7 @@ final class CameraFrameTapProcessor implements VideoProcessor {
         }
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
         GLES20.glViewport(0, 0, width, height);
-        VideoFrameDrawer.drawTexture(drawer, textureBuffer, halfTurn, width, height, 0, 0, width, height);
+        VideoFrameDrawer.drawTexture(drawer, textureBuffer, topDownFlip, width, height, 0, 0, width, height);
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
         endBlit(frame.getRotation(), captureController.isFrontFacing(), frame.getTimestampNs());
     }

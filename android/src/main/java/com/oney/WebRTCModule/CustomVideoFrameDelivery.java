@@ -91,8 +91,20 @@ final class CustomVideoFrameDelivery {
      */
     private final ConcurrentHashMap<Long, Integer> outstandingForwardedAhbs = new ConcurrentHashMap<>();
 
-    /** Identity transform: the WebGPU render already produced an upright RGBA image. */
-    private static final Matrix IDENTITY_MATRIX = new Matrix();
+    /**
+     * A GPU render (Dawn/WebGPU) writes the buffer top-down, while WebRTC samples its textures
+     * bottom-up (the SurfaceTexture convention its camera matrices assume), so the delivered
+     * texture carries a vertical flip: the same flip a SurfaceTexture transform matrix carries.
+     */
+    private static final Matrix TOP_DOWN_TEXTURE_MATRIX = createTopDownTextureMatrix();
+
+    private static Matrix createTopDownTextureMatrix() {
+        Matrix matrix = new Matrix();
+        matrix.preTranslate(0.5f, 0.5f);
+        matrix.preScale(1f, -1f);
+        matrix.preTranslate(-0.5f, -0.5f);
+        return matrix;
+    }
 
     CustomVideoFrameDelivery(VideoSource videoSource, long[] bufferHandles, int width, int height) {
         this.videoSource = videoSource;
@@ -237,7 +249,7 @@ final class CustomVideoFrameDelivery {
                 height,
                 VideoFrame.TextureBuffer.Type.OES,
                 textureId,
-                IDENTITY_MATRIX,
+                TOP_DOWN_TEXTURE_MATRIX,
                 glHandler,
                 yuvConverter,
                 /* releaseCallback */ () -> {});
@@ -351,7 +363,7 @@ final class CustomVideoFrameDelivery {
                 dimensions[1],
                 VideoFrame.TextureBuffer.Type.OES,
                 textureId,
-                IDENTITY_MATRIX,
+                TOP_DOWN_TEXTURE_MATRIX,
                 glHandler,
                 yuvConverter,
                 () -> releaseForwardedFrame(eglImage, textureId, ahbHandle));
