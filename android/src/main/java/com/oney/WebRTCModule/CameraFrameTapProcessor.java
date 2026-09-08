@@ -14,6 +14,7 @@ import org.webrtc.SurfaceTextureHelper;
 import org.webrtc.VideoFrame;
 import org.webrtc.VideoFrameDrawer;
 import org.webrtc.VideoProcessor;
+import org.webrtc.VideoProcessor.FrameAdaptationParameters;
 import org.webrtc.VideoSink;
 
 import java.util.concurrent.CountDownLatch;
@@ -43,7 +44,10 @@ final class CameraFrameTapProcessor implements VideoProcessor {
 
     private final CameraCaptureController captureController;
     private final Handler glHandler;
-    private final Matrix verticalFlip = new Matrix();
+    // GL writes the framebuffer bottom-up and the GPU consumer (Dawn) reads the buffer
+    // top-down, and the frame's rotation is applied afterwards; the net effect on the
+    // published image is a half turn, which this matrix undoes in texture space.
+    private final Matrix halfTurn = new Matrix();
 
     private VideoSink sink;
     private GlRectDrawer drawer;
@@ -52,10 +56,9 @@ final class CameraFrameTapProcessor implements VideoProcessor {
     CameraFrameTapProcessor(CameraCaptureController captureController, SurfaceTextureHelper surfaceTextureHelper) {
         this.captureController = captureController;
         this.glHandler = surfaceTextureHelper.getHandler();
-        // Same flip YuvConverter applies: GL renders bottom-up, the consumer reads top-down.
-        verticalFlip.preTranslate(0.5f, 0.5f);
-        verticalFlip.preScale(1f, -1f);
-        verticalFlip.preTranslate(-0.5f, -0.5f);
+        halfTurn.preTranslate(0.5f, 0.5f);
+        halfTurn.preRotate(180f);
+        halfTurn.preTranslate(-0.5f, -0.5f);
         mHybridData = initHybrid();
     }
 
@@ -70,11 +73,32 @@ final class CameraFrameTapProcessor implements VideoProcessor {
         this.sink = sink;
     }
 
+    /**
+     * The source calls this form. Its adaptation step marks a frame as dropped whenever
+     * nothing consumes the raw track (for example once the app renders the processed track
+     * instead), which would starve the tap. So the tap always blits the unadapted capture
+     * frame and forwards downstream only what the source itself would have forwarded.
+     */
+    @Override
+    public void onFrameCaptured(VideoFrame frame, FrameAdaptationParameters parameters) {
+        frame.retain();
+        try {
+            VideoFrame adaptedFrame = VideoProcessor.applyFrameAdaptationParameters(frame, parameters);
+            if (adaptedFrame != null) {
+                VideoSink currentSink = sink;
+                if (currentSink != null) {
+                    currentSink.onFrame(adaptedFrame);
+                }
+                adaptedFrame.release();
+            }
+            blit(frame);
+        } finally {
+            frame.release();
+        }
+    }
+
     @Override
     public void onFrameCaptured(VideoFrame frame) {
-        // Retain across the whole callback, mirroring VideoEffectProcessor: the source
-        // releases its reference as soon as onFrameCaptured returns, and the GL read of
-        // the buffer must stay valid until the blit is issued.
         frame.retain();
         try {
             VideoSink currentSink = sink;
@@ -103,7 +127,7 @@ final class CameraFrameTapProcessor implements VideoProcessor {
         }
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
         GLES20.glViewport(0, 0, width, height);
-        VideoFrameDrawer.drawTexture(drawer, textureBuffer, verticalFlip, width, height, 0, 0, width, height);
+        VideoFrameDrawer.drawTexture(drawer, textureBuffer, halfTurn, width, height, 0, 0, width, height);
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
         endBlit(frame.getRotation(), captureController.isFrontFacing(), frame.getTimestampNs());
     }
