@@ -90,12 +90,10 @@ static FJCameraPixelFormat FJPixelFormatOf(CVPixelBufferRef pixelBuffer) {
     // The camera track first: it keeps flowing whatever the processor does.
     [self.videoSource capturer:capturer didCaptureVideoFrame:frame];
 
-    std::shared_ptr<FJCameraFrameConsumer> consumer;
-    {
-        std::lock_guard<std::mutex> lock(_consumerMutex);
-        consumer = _consumer;
-    }
-    if (!consumer) {
+    // Held through delivery: a detach arriving now waits for onFrame to return,
+    // and a detach that already ran leaves no consumer to offer the frame to.
+    std::lock_guard<std::mutex> lock(_consumerMutex);
+    if (!_consumer) {
         return;
     }
 
@@ -124,7 +122,7 @@ static FJCameraPixelFormat FJPixelFormatOf(CVPixelBufferRef pixelBuffer) {
             CVPixelBufferRelease(pixelBuffer);
             core->completed(token);
         });
-    consumer->onFrame(std::move(cameraFrame));
+    _consumer->onFrame(std::move(cameraFrame));
 }
 
 @end

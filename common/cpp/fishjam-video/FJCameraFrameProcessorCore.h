@@ -41,7 +41,9 @@ class FJCameraFrameProcessorCore {
     };
 
     // Invariants: offered == accepted + droppedBusy + droppedDetached, and
-    // accepted == completed + droppedUndeliverable + frames in flight.
+    // accepted == completed + droppedUndeliverable + frames in flight, except
+    // that a frame in flight when detach() or attach() runs settles as a stale
+    // token and is counted in neither completed nor droppedUndeliverable.
     struct Statistics {
         uint64_t offered = 0;
         uint64_t accepted = 0;

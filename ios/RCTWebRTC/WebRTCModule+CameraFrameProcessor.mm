@@ -67,8 +67,9 @@ using fishjam::video::FJCameraFrameConsumer;
 }
 
 // trackId -> tap. Strong values: the tap is the capturer's (weak) delegate, so
-// this dictionary is what keeps it alive. Accessed on the worker queue, or from
-// dealloc once nothing queued can reference the module any more.
+// this dictionary is what keeps it alive. Read and written from any thread under
+// @synchronized(taps); the capturer and track it points at are still only
+// mutated on the worker queue.
 - (NSMutableDictionary<NSString *, CameraFrameTap *> *)fj_cameraFrameTaps {
     static const void *key = &key;
     @synchronized(self) {
@@ -109,11 +110,14 @@ using fishjam::video::FJCameraFrameConsumer;
             return;
         }
         NSMutableDictionary<NSString *, CameraFrameTap *> *taps = [self fj_cameraFrameTaps];
-        CameraFrameTap *tap = taps[trackId];
-        if (tap == nil) {
-            tap = [[CameraFrameTap alloc] initWithVideoSource:((RTCVideoTrack *)track).source
-                                            captureController:captureController];
-            taps[trackId] = tap;
+        CameraFrameTap *tap;
+        @synchronized(taps) {
+            tap = taps[trackId];
+            if (tap == nil) {
+                tap = [[CameraFrameTap alloc] initWithVideoSource:((RTCVideoTrack *)track).source
+                                                captureController:captureController];
+                taps[trackId] = tap;
+            }
         }
         captureController.capturer.delegate = tap;
         [tap attachConsumer:consumer];
@@ -128,27 +132,30 @@ using fishjam::video::FJCameraFrameConsumer;
     });
 }
 
+// Runs on the JS thread inside `statistics()`. Deliberately no worker-queue hop:
+// that queue is parked while the camera starts or stops, and the counters are
+// safe to read from anywhere.
 - (BOOL)fj_statisticsForTrackId:(NSString *)trackId into:(FJCameraFrameProcessorCore::Statistics &)statistics {
-    __block BOOL found = NO;
-    __block FJCameraFrameProcessorCore::Statistics snapshot;
-    dispatch_sync(self.workerQueue, ^{
-        CameraFrameTap *tap = [self fj_cameraFrameTaps][trackId];
-        if (tap != nil) {
-            snapshot = [tap statistics];
-            found = YES;
-        }
-    });
-    if (found) {
-        statistics = snapshot;
+    NSMutableDictionary<NSString *, CameraFrameTap *> *taps = [self fj_cameraFrameTaps];
+    CameraFrameTap *tap;
+    @synchronized(taps) {
+        tap = taps[trackId];
     }
-    return found;
+    if (tap == nil) {
+        return NO;
+    }
+    statistics = [tap statistics];
+    return YES;
 }
 
 #endif
 
 - (BOOL)fj_hasCameraFrameTapForTrackId:(NSString *)trackId {
 #if !TARGET_OS_TV && !TARGET_OS_OSX
-    return [self fj_cameraFrameTaps][trackId] != nil;
+    NSMutableDictionary<NSString *, CameraFrameTap *> *taps = [self fj_cameraFrameTaps];
+    @synchronized(taps) {
+        return taps[trackId] != nil;
+    }
 #else
     return NO;
 #endif
@@ -157,11 +164,14 @@ using fishjam::video::FJCameraFrameConsumer;
 - (void)fj_detachTrackIdOnWorkerQueue:(NSString *)trackId {
 #if !TARGET_OS_TV && !TARGET_OS_OSX
     NSMutableDictionary<NSString *, CameraFrameTap *> *taps = [self fj_cameraFrameTaps];
-    CameraFrameTap *tap = taps[trackId];
+    CameraFrameTap *tap;
+    @synchronized(taps) {
+        tap = taps[trackId];
+        [taps removeObjectForKey:trackId];
+    }
     if (tap == nil) {
         return;
     }
-    [taps removeObjectForKey:trackId];
     [tap detachConsumer];
     // Hand the capturer back to the track's own source, never to a cached delegate.
     RTCMediaStreamTrack *track = self.localTracks[trackId];
@@ -174,7 +184,12 @@ using fishjam::video::FJCameraFrameConsumer;
 
 - (void)fj_detachAllCameraFrameTaps {
 #if !TARGET_OS_TV && !TARGET_OS_OSX
-    for (NSString *trackId in [[self fj_cameraFrameTaps] allKeys]) {
+    NSMutableDictionary<NSString *, CameraFrameTap *> *taps = [self fj_cameraFrameTaps];
+    NSArray<NSString *> *trackIds;
+    @synchronized(taps) {
+        trackIds = taps.allKeys;
+    }
+    for (NSString *trackId in trackIds) {
         [self fj_detachTrackIdOnWorkerQueue:trackId];
     }
 #endif

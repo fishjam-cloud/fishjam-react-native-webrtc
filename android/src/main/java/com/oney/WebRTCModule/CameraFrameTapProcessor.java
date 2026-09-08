@@ -127,9 +127,9 @@ final class CameraFrameTapProcessor implements VideoProcessor {
         // beginBlit reserved a slot and closed the admission gate; a draw that throws must
         // still hand both back, otherwise every later frame is dropped as busy.
         boolean drawn = false;
-        GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
-        GLES20.glViewport(0, 0, width, height);
         try {
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, framebuffer);
+            GLES20.glViewport(0, 0, width, height);
             VideoFrameDrawer.drawTexture(drawer, textureBuffer, TOP_DOWN_FLIP, width, height, 0, 0, width, height);
             drawn = true;
         } finally {
@@ -144,14 +144,10 @@ final class CameraFrameTapProcessor implements VideoProcessor {
 
     /**
      * Frees the GL resources on the capture thread. Blocks the caller (the module executor)
-     * until that ran, bounded by {@link #RELEASE_TIMEOUT_MS}. Must be called after the
+     * until that ran, bounded by {@link #RELEASE_TIMEOUT_MS}, which only covers the posted
+     * cleanup: native {@code releaseGl} does not wait for the consumer, because a frame the
+     * consumer still holds owns its own reference to the buffer. Must be called after the
      * processor was removed from the {@code VideoSource}, so no frame is being blitted.
-     *
-     * <p>The capture thread itself waits inside {@code releaseGl} for the consumer to release
-     * its in-flight frames, which happens on the consumer's worklet thread (never the JS thread
-     * that triggered the detach). {@link #RELEASE_TIMEOUT_MS} must therefore stay at least as
-     * long as the native drain timeout ({@code kReleaseDrainTimeout} in FJCameraFrameTap.cpp),
-     * so this wait covers the nested one.
      */
     void release() {
         released = true;

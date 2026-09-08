@@ -3,8 +3,6 @@
 #include <android/log.h>
 #include <unistd.h>
 
-#include <chrono>
-
 #include "custom_video_gl.h"
 
 namespace jni = facebook::jni;
@@ -14,10 +12,6 @@ namespace fishjam::video {
 namespace {
 
 constexpr const char *kLogTag = "WebRTCModule";
-// The consumer releases frames on its worklet thread, so releaseGl can wait for
-// it here on the GL thread. CameraFrameTapProcessor.RELEASE_TIMEOUT_MS (the
-// Java wait for releaseGl itself) must be at least this long.
-constexpr auto kReleaseDrainTimeout = std::chrono::seconds(2);
 
 void logWarning(const char *message) {
     __android_log_print(ANDROID_LOG_WARN, kLogTag, "CameraFrameTap: %s", message);
@@ -35,17 +29,15 @@ jni::local_ref<FJCameraFrameTap::jhybriddata> FJCameraFrameTap::initHybrid(jni::
 }
 
 void FJCameraFrameTap::attachConsumer(std::shared_ptr<FJCameraFrameConsumer> consumer) {
-    {
-        std::lock_guard<std::mutex> lock(consumerMutex_);
-        consumer_ = std::move(consumer);
-    }
+    std::lock_guard<std::mutex> lock(consumerMutex_);
+    consumer_ = std::move(consumer);
     core_->attach();
 }
 
 void FJCameraFrameTap::detachConsumer() {
-    core_->detach();
     std::lock_guard<std::mutex> lock(consumerMutex_);
     consumer_.reset();
+    core_->detach();
 }
 
 FJCameraFrameProcessorCore::Statistics FJCameraFrameTap::statistics() const {
@@ -105,39 +97,50 @@ void FJCameraFrameTap::endBlit(jint rotationDegrees, jboolean isFrontCamera, jlo
     const uint64_t token = pendingToken_;
     pendingSlot_ = -1;
 
-    std::shared_ptr<FJCameraFrameConsumer> consumer;
-    {
-        std::lock_guard<std::mutex> lock(consumerMutex_);
-        consumer = consumer_;
-    }
-    if (!consumer) {
+    // Held through delivery: a detach that lands now waits for onFrame to
+    // return, and one that already landed left consumer_ empty.
+    std::lock_guard<std::mutex> lock(consumerMutex_);
+    if (!consumer_) {
         releaseSlot(*slotState_, slotIndex);
         core_->abandoned(token);
         return;
     }
 
-    const int32_t acquireFence = createAcquireFence(eglGetCurrentDisplay());
+    const std::optional<int32_t> acquireFence = createAcquireFence(eglGetCurrentDisplay());
+    if (!acquireFence) {
+        releaseSlot(*slotState_, slotIndex);
+        core_->abandoned(token);
+        return;
+    }
+
     const Slot &slot = slotState_->slots[slotIndex];
-    const auto nativeBuffer = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(slot.buffer));
+    AHardwareBuffer *buffer = slot.buffer;
+    if (__builtin_available(android 26, *)) {
+        AHardwareBuffer_acquire(buffer);
+    }
+    const auto nativeBuffer = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(buffer));
+    const int32_t acquireFenceFileDescriptor = *acquireFence;
 
     std::shared_ptr<SlotState> slotState = slotState_;
     std::shared_ptr<FJCameraFrameProcessorCore> core = core_;
-    auto frame = std::make_shared<FJCameraFrame>(nativeBuffer,
-                                                 slot.width,
-                                                 slot.height,
-                                                 static_cast<int32_t>(rotationDegrees),
-                                                 isFrontCamera == JNI_TRUE,
-                                                 static_cast<int64_t>(timestampNanoseconds),
-                                                 FJCameraPixelFormat::RGBA8,
-                                                 acquireFence,
-                                                 [slotState, core, slotIndex, token, acquireFence]() {
-                                                     if (acquireFence >= 0) {
-                                                         close(acquireFence);
-                                                     }
-                                                     releaseSlot(*slotState, slotIndex);
-                                                     core->completed(token);
-                                                 });
-    consumer->onFrame(std::move(frame));
+    auto frame =
+        std::make_shared<FJCameraFrame>(nativeBuffer,
+                                        slot.width,
+                                        slot.height,
+                                        static_cast<int32_t>(rotationDegrees),
+                                        isFrontCamera == JNI_TRUE,
+                                        static_cast<int64_t>(timestampNanoseconds),
+                                        FJCameraPixelFormat::RGBA8,
+                                        acquireFenceFileDescriptor,
+                                        [slotState, core, slotIndex, token, acquireFenceFileDescriptor, buffer]() {
+                                            close(acquireFenceFileDescriptor);
+                                            if (__builtin_available(android 26, *)) {
+                                                AHardwareBuffer_release(buffer);
+                                            }
+                                            releaseSlot(*slotState, slotIndex);
+                                            core->completed(token);
+                                        });
+    consumer_->onFrame(std::move(frame));
 }
 
 void FJCameraFrameTap::abortBlit() {
@@ -158,7 +161,6 @@ int FJCameraFrameTap::acquireSlot() {
         Slot &slot = slotState_->slots[candidate];
         if (!slot.inUse) {
             slot.inUse = true;
-            slotState_->inFlight += 1;
             slotState_->nextSlot = (candidate + 1) % kSlotCount;
             return candidate;
         }
@@ -167,21 +169,14 @@ int FJCameraFrameTap::acquireSlot() {
 }
 
 void FJCameraFrameTap::releaseSlot(SlotState &slotState, int slotIndex) {
-    {
-        std::lock_guard<std::mutex> lock(slotState.mutex);
-        slotState.slots[slotIndex].inUse = false;
-        slotState.inFlight -= 1;
-    }
-    slotState.released.notify_all();
+    std::lock_guard<std::mutex> lock(slotState.mutex);
+    slotState.slots[slotIndex].inUse = false;
 }
 
 void FJCameraFrameTap::releaseGl() {
+    detachConsumer();
     pendingSlot_ = -1;
     EGLDisplay display = eglGetCurrentDisplay();
-    std::unique_lock<std::mutex> lock(slotState_->mutex);
-    if (!slotState_->released.wait_for(lock, kReleaseDrainTimeout, [this] { return slotState_->inFlight == 0; })) {
-        logWarning("timed out waiting for the consumer to release the last frame; freeing slots anyway");
-    }
     for (Slot &slot : slotState_->slots) {
         destroySlot(slot, display);
     }
@@ -269,6 +264,7 @@ bool FJCameraFrameTap::prepareSlot(Slot &slot, int32_t width, int32_t height, EG
 
     slot.width = width;
     slot.height = height;
+    slot.loggedFailure = false;
     return true;
 }
 
@@ -298,31 +294,33 @@ void FJCameraFrameTap::destroySlot(Slot &slot, EGLDisplay display) {
     slot.height = 0;
 }
 
-// Returns a sync file descriptor that signals when the GPU has finished every
-// command issued so far on this context, or -1 after a CPU-side glFinish when
-// native fences are unavailable.
-int32_t FJCameraFrameTap::createAcquireFence(EGLDisplay display) {
+std::optional<int32_t> FJCameraFrameTap::createAcquireFence(EGLDisplay display) {
     const gl::EglExtensions &extensions = gl::eglExtensions();
-    if (display != EGL_NO_DISPLAY && extensions.eglCreateSyncKHR != nullptr &&
-        extensions.eglDupNativeFenceFDANDROID != nullptr && extensions.eglDestroySyncKHR != nullptr) {
-        EGLSyncKHR sync = extensions.eglCreateSyncKHR(display, EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr);
-        if (sync != EGL_NO_SYNC_KHR) {
-            glFlush();
-            EGLint fileDescriptor = extensions.eglDupNativeFenceFDANDROID(display, sync);
-            extensions.eglDestroySyncKHR(display, sync);
-            if (fileDescriptor >= 0) {
-                return fileDescriptor;
-            }
+    const bool hasNativeFenceSync = display != EGL_NO_DISPLAY && extensions.eglCreateSyncKHR != nullptr &&
+                                    extensions.eglDupNativeFenceFDANDROID != nullptr &&
+                                    extensions.eglDestroySyncKHR != nullptr;
+    EGLSyncKHR sync = hasNativeFenceSync ? extensions.eglCreateSyncKHR(display, EGL_SYNC_NATIVE_FENCE_ANDROID, nullptr)
+                                         : EGL_NO_SYNC_KHR;
+    if (sync == EGL_NO_SYNC_KHR) {
+        if (!loggedNoNativeFence_) {
+            loggedNoNativeFence_ = true;
+            logWarning(
+                "EGL_ANDROID_native_fence_sync unavailable; this device has no native fence sync, so camera frames "
+                "will not be processed");
         }
+        return std::nullopt;
     }
-    if (!loggedNoNativeFence_) {
-        loggedNoNativeFence_ = true;
-        logWarning(
-            "EGL_ANDROID_native_fence_sync unavailable; every camera frame now stalls the capture thread "
-            "in glFinish until the GPU finished the blit");
+    glFlush();
+    const EGLint fileDescriptor = extensions.eglDupNativeFenceFDANDROID(display, sync);
+    extensions.eglDestroySyncKHR(display, sync);
+    if (fileDescriptor < 0) {
+        if (!loggedNoNativeFence_) {
+            loggedNoNativeFence_ = true;
+            logWarning("eglDupNativeFenceFDANDROID failed; camera frames will not be processed");
+        }
+        return std::nullopt;
     }
-    glFinish();
-    return -1;
+    return fileDescriptor;
 }
 
 void FJCameraFrameTap::registerNatives() {

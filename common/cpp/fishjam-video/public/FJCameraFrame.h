@@ -83,8 +83,11 @@ class FJCameraFrame {
 class FJCameraFrameConsumer {
    public:
     virtual ~FJCameraFrameConsumer() = default;
-    // Called on the camera's capture thread for every admitted frame. Must return
-    // promptly; the frame stays valid until the consumer drops its reference.
+    // Called on the camera's capture thread for every admitted frame, while the
+    // JS thread may be blocked inside a synchronous attach or detach that waits
+    // for this call to return. Must therefore never block on, or wait for, the JS
+    // thread. Schedule the work elsewhere and return; the frame stays valid until
+    // the consumer drops its reference.
     virtual void onFrame(std::shared_ptr<FJCameraFrame> frame) = 0;
 };
 

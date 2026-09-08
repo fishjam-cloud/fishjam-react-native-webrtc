@@ -902,12 +902,10 @@ class GetUserMediaImpl {
     /**
      * Removes the tap from {@code trackId}, if any. Runs on the module executor.
      *
-     * <p>This blocks twice in a row: {@link CameraFrameTapProcessor#release} waits for the
-     * capture thread, which in turn waits (in native {@code releaseGl}) for the consumer to
-     * release the frames it still holds. The consumer releases frames on its own worklet
-     * thread, never on the JS thread that started the detach, so neither wait can deadlock.
-     * The Java wait must be at least as long as the native drain wait, otherwise the executor
-     * would move on while the capture thread is still draining.
+     * <p>{@link CameraFrameTapProcessor#release} blocks (bounded) until the capture thread
+     * freed the tap's GL resources. It does not wait for the consumer: a frame the consumer
+     * still holds keeps its buffer alive with its own reference and releases it later on the
+     * consumer's own thread.
      */
     void detachCameraFrameTap(String trackId) {
         TrackPrivate track = tracks.get(trackId);

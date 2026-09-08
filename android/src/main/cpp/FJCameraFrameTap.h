@@ -8,11 +8,20 @@
 // consumer as an FJCameraFrame, together with a native fence that signals once
 // the GPU finished the copy.
 //
+// Ownership: every delivered frame holds its own AHardwareBuffer reference, so
+// the buffer outlives the slot it came from. releaseGl frees the slots' GL
+// objects and the slots' own buffer references at once, without waiting for the
+// consumer; a frame still in flight keeps its buffer alive and, on release,
+// only touches the shared SlotState bookkeeping.
+//
 // Threads: beginBlit / endBlit / abortBlit / releaseGl run on the
 // SurfaceTextureHelper GL thread only, so a slot's buffer and GL objects are
 // GL-thread state and need no lock. Frame releases arrive from the consumer's
-// thread and only touch the in-use bookkeeping under SlotState::mutex, never GL
-// or JNI.
+// thread and only touch the slot bookkeeping under SlotState::mutex, never GL,
+// JNI, or the Slot::buffer field (a frame drops its own buffer reference
+// instead). Delivery happens under consumerMutex_, so
+// a detach waits for an onFrame in progress and no frame reaches a consumer
+// that was detached before the blit finished.
 #pragma once
 
 #include <android/hardware_buffer.h>
@@ -23,10 +32,10 @@
 #include <GLES2/gl2.h>
 
 #include <array>
-#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "FJCameraFrame.h"
 #include "FJCameraFrameProcessorCore.h"
@@ -41,7 +50,9 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
     static facebook::jni::local_ref<jhybriddata> initHybrid(facebook::jni::alias_ref<jhybridobject> javaThis);
     static void registerNatives();
 
-    // Consumer side, called from the JSI handlers (JS thread).
+    // Consumer side, called from the JSI handlers (JS thread); detachConsumer
+    // also runs from releaseGl on the GL thread. Lock order is consumerMutex_
+    // then the core's mutex, never the reverse.
     void attachConsumer(std::shared_ptr<FJCameraFrameConsumer> consumer);
     void detachConsumer();
     FJCameraFrameProcessorCore::Statistics statistics() const;
@@ -55,7 +66,9 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
     // GL thread, instead of endBlit when the render failed: frees the slot and
     // reopens the gate without delivering anything.
     void abortBlit();
-    // GL thread. Waits (bounded) for in-flight frames, then frees every slot.
+    // GL thread. Detaches the consumer, then frees every slot's GL objects and
+    // buffer reference immediately; frames the consumer still holds stay valid
+    // through their own reference.
     void releaseGl();
 
    private:
@@ -77,10 +90,8 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
     // arrives after the Java peer is gone still finds live bookkeeping.
     struct SlotState {
         std::mutex mutex;
-        std::condition_variable released;
         std::array<Slot, kSlotCount> slots;
         int nextSlot = 0;
-        int inFlight = 0;
     };
 
     explicit FJCameraFrameTap(facebook::jni::alias_ref<jhybridobject> javaThis);
@@ -92,7 +103,10 @@ class FJCameraFrameTap : public facebook::jni::HybridClass<FJCameraFrameTap> {
     static void releaseSlot(SlotState &slotState, int slotIndex);
     bool prepareSlot(Slot &slot, int32_t width, int32_t height, EGLDisplay display);
     void destroySlot(Slot &slot, EGLDisplay display);
-    int32_t createAcquireFence(EGLDisplay display);
+    // A sync file descriptor that signals when the GPU finished every command
+    // issued so far on this context, or nullopt when the device has no native
+    // fence sync.
+    std::optional<int32_t> createAcquireFence(EGLDisplay display);
 
     facebook::jni::global_ref<javaobject> javaPart_;
     std::shared_ptr<FJCameraFrameProcessorCore> core_;
