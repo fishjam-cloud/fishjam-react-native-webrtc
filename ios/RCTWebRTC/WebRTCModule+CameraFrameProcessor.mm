@@ -208,10 +208,6 @@ RCT_REMAP_METHOD(installCameraFrameProcessorJSI,
         return (bool)[strongSelf fj_statisticsForTrackId:[NSString stringWithUTF8String:trackId.c_str()] into:out];
     };
     box->channel->setHandlers(std::move(handlers));
-    if (box->channel->isInstalled()) {
-        resolve(nil);
-        return;
-    }
     box->channel->install([resolve]() { resolve(nil); });
 #endif
 }

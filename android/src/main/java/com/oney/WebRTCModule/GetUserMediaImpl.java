@@ -852,12 +852,58 @@ class GetUserMediaImpl {
                                 .filter(Objects::nonNull)
                                 .collect(Collectors.toList());
 
+                if (track.cameraFrameTap != null) {
+                    Log.w(TAG, "Ignoring video effects: a camera frame processor is attached to track " + trackId);
+                    return;
+                }
                 VideoEffectProcessor videoEffectProcessor = new VideoEffectProcessor(processors, surfaceTextureHelper);
+                track.videoEffectProcessor = videoEffectProcessor;
                 videoSource.setVideoProcessor(videoEffectProcessor);
 
             } else {
-                videoSource.setVideoProcessor(null);
+                track.videoEffectProcessor = null;
+                if (track.cameraFrameTap == null) {
+                    videoSource.setVideoProcessor(null);
+                }
             }
+        }
+    }
+
+    /**
+     * Installs a {@link CameraFrameTapProcessor} on the camera track's {@code VideoSource} so a
+     * JSI consumer can receive its frames. Returns an empty string on success, otherwise the
+     * error code to throw to JS. Runs on the module executor.
+     */
+    String attachCameraFrameTap(String trackId) {
+        TrackPrivate track = tracks.get(trackId);
+        if (track == null || !(track.videoCaptureController instanceof CameraCaptureController)
+                || !(track.mediaSource instanceof VideoSource)) {
+            return "E_NOT_A_CAMERA_TRACK";
+        }
+        if (track.videoEffectProcessor != null) {
+            // Both want the source's single processor slot; composing them is not defined.
+            return "E_VIDEO_EFFECTS_ACTIVE";
+        }
+        if (track.cameraFrameTap == null) {
+            CameraFrameTapProcessor tap = new CameraFrameTapProcessor(
+                    (CameraCaptureController) track.videoCaptureController, track.surfaceTextureHelper);
+            track.cameraFrameTap = tap;
+            ((VideoSource) track.mediaSource).setVideoProcessor(tap);
+        }
+        return "";
+    }
+
+    /** The tap installed on {@code trackId}, or null. Runs on the module executor. */
+    CameraFrameTapProcessor getCameraFrameTap(String trackId) {
+        TrackPrivate track = tracks.get(trackId);
+        return track == null ? null : track.cameraFrameTap;
+    }
+
+    /** Removes the tap from {@code trackId}, if any. Runs on the module executor. */
+    void detachCameraFrameTap(String trackId) {
+        TrackPrivate track = tracks.get(trackId);
+        if (track != null) {
+            track.releaseCameraFrameTap();
         }
     }
 
@@ -891,6 +937,15 @@ class GetUserMediaImpl {
         private final boolean reusableSTH;
 
         /**
+         * The video-effects processor installed by {@link #setVideoEffects}, if any. It and the
+         * camera frame tap compete for the {@code VideoSource}'s single processor slot.
+         */
+        private VideoProcessor videoEffectProcessor;
+
+        /** The camera frame tap installed by {@link #attachCameraFrameTap}, if any. */
+        private CameraFrameTapProcessor cameraFrameTap;
+
+        /**
          * Whether this object has been disposed or not.
          */
         private boolean disposed;
@@ -909,6 +964,19 @@ class GetUserMediaImpl {
             this.surfaceTextureHelper = surfaceTextureHelper;
             this.reusableSTH = reusableSTH;
             this.disposed = false;
+        }
+
+        /** Removes the camera frame tap from the source and frees its GL resources. */
+        void releaseCameraFrameTap() {
+            if (cameraFrameTap == null) {
+                return;
+            }
+            CameraFrameTapProcessor tap = cameraFrameTap;
+            cameraFrameTap = null;
+            if (mediaSource instanceof VideoSource) {
+                ((VideoSource) mediaSource).setVideoProcessor(null);
+            }
+            tap.release();
         }
 
         public void dispose() {
@@ -943,6 +1011,8 @@ class GetUserMediaImpl {
                     disposed = true;
                     return;
                 }
+
+                releaseCameraFrameTap();
 
                 if (videoCaptureController != null) {
                     if (videoCaptureController.stopCapture()) {

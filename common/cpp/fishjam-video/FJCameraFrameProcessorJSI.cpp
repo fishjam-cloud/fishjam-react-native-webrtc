@@ -135,20 +135,21 @@ void FJCameraFrameProcessorChannel::install(std::function<void()> onInstalled) {
         if (!self) {
             return;
         }
-        if (!self->installed_.exchange(true)) {
-            jsi::PropNameID globalName = jsi::PropNameID::forAscii(rt, "__fishjamWebrtcGetCameraFrameProcessor");
-            rt.global().setProperty(
-                rt, globalName,
-                jsi::Function::createFromHostFunction(
-                    rt, globalName, 1,
-                    [weakSelf](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args, size_t count) -> jsi::Value {
-                        auto self = weakSelf.lock();
-                        if (!self || count == 0 || !args[0].isString()) {
-                            return jsi::Value::undefined();
-                        }
-                        return self->getProcessor(rt, args[0].getString(rt).utf8(rt));
-                    }));
-        }
+        // Always (re)define the global: a JS reload replaces the runtime while
+        // this channel survives on Android, so the new runtime needs it again.
+        jsi::PropNameID globalName = jsi::PropNameID::forAscii(rt, "__fishjamWebrtcGetCameraFrameProcessor");
+        rt.global().setProperty(
+            rt, globalName,
+            jsi::Function::createFromHostFunction(
+                rt, globalName, 1,
+                [weakSelf](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args, size_t count) -> jsi::Value {
+                    auto self = weakSelf.lock();
+                    if (!self || count == 0 || !args[0].isString()) {
+                        return jsi::Value::undefined();
+                    }
+                    return self->getProcessor(rt, args[0].getString(rt).utf8(rt));
+                }));
+        self->installed_.store(true);
         if (onInstalled) {
             onInstalled();
         }

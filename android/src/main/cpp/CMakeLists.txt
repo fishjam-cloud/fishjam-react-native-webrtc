@@ -114,6 +114,13 @@ add_library(webrtc-custom-video-track
     "${CMAKE_CURRENT_SOURCE_DIR}/custom_video_gl.cpp"
     "${FJ_COMMON_CPP_DIR}/fishjam-video/FJVideoPushJSI.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/FJVideoPushInstaller.cpp"
+    # Camera frame tap: admission core + JSI channel shared with iOS, the
+    # per-track tap that copies camera frames into AHardwareBuffers, and the
+    # fbjni installer of `__fishjamWebrtcGetCameraFrameProcessor`.
+    "${FJ_COMMON_CPP_DIR}/fishjam-video/FJCameraFrameProcessorCore.cpp"
+    "${FJ_COMMON_CPP_DIR}/fishjam-video/FJCameraFrameProcessorJSI.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FJCameraFrameTap.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/FJCameraFrameProcessorInstaller.cpp"
 )
 
 set_target_properties(webrtc-custom-video-track PROPERTIES
@@ -124,6 +131,7 @@ set_target_properties(webrtc-custom-video-track PROPERTIES
 target_include_directories(webrtc-custom-video-track
     PRIVATE
     "${FJ_COMMON_CPP_DIR}/fishjam-video"
+    "${FJ_COMMON_CPP_DIR}/fishjam-video/public"
 )
 
 # ReactAndroid / fbjni prefab packages are already located above (for the audio

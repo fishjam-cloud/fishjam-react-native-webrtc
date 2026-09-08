@@ -37,6 +37,7 @@ class FJCameraFrame {
                   bool isFrontCamera,
                   int64_t timestampNanoseconds,
                   FJCameraPixelFormat pixelFormat,
+                  int32_t acquireFenceFileDescriptor,
                   Release release)
         : nativeBuffer(nativeBuffer),
           width(width),
@@ -45,6 +46,7 @@ class FJCameraFrame {
           isFrontCamera(isFrontCamera),
           timestampNanoseconds(timestampNanoseconds),
           pixelFormat(pixelFormat),
+          acquireFenceFileDescriptor(acquireFenceFileDescriptor),
           release_(std::move(release)) {}
 
     ~FJCameraFrame() {
@@ -68,6 +70,11 @@ class FJCameraFrame {
     // Capture time on the platform's monotonic clock.
     const int64_t timestampNanoseconds;
     const FJCameraPixelFormat pixelFormat;
+    // Android: a sync file descriptor that signals when the GPU has finished
+    // writing `nativeBuffer`; -1 when the buffer is already complete (always -1
+    // on iOS). The frame owns it and closes it on release; a consumer may wait
+    // on it but must never close it.
+    const int32_t acquireFenceFileDescriptor;
 
    private:
     Release release_;

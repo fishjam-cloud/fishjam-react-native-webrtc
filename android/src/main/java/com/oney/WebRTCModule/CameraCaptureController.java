@@ -32,6 +32,11 @@ public class CameraCaptureController extends AbstractVideoCaptureController {
 
     private boolean isFrontFacing;
 
+    /** Whether the camera currently feeding the capturer faces the user. */
+    public boolean isFrontFacing() {
+        return isFrontFacing;
+    }
+
     /**
      * Equivalent to the camera index as a String
      */

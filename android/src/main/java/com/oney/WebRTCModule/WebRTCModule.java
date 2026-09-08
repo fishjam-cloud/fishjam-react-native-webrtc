@@ -72,6 +72,8 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
     // routed to the matching custom video track.
     private FJVideoPushInstaller videoPushInstaller;
     private boolean videoPushInstallerInitialized;
+    private FJCameraFrameProcessorInstaller cameraFrameProcessorInstaller;
+    private boolean cameraFrameProcessorInstallerInitialized;
 
     private FJAudioPushInstaller audioPushInstaller;
     private boolean audioPushInstallerInitialized;
@@ -1094,6 +1096,42 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         if (inst != null) {
             inst.unregisterTrack(trackId);
         }
+    }
+
+    /**
+     * Lazily builds the camera-frame-processor JSI installer. Returns null when there is no JSI
+     * CallInvoker (the old architecture). Same latching rationale as {@link #getVideoPushInstaller}.
+     */
+    private synchronized FJCameraFrameProcessorInstaller getCameraFrameProcessorInstaller() {
+        if (cameraFrameProcessorInstallerInitialized) {
+            return cameraFrameProcessorInstaller;
+        }
+        try {
+            ReactApplicationContext ctx = getReactApplicationContext();
+            if (ctx.getJSCallInvokerHolder() instanceof CallInvokerHolderImpl) {
+                cameraFrameProcessorInstaller = new FJCameraFrameProcessorInstaller(ctx, getUserMediaImpl);
+            }
+            cameraFrameProcessorInstallerInitialized = true;
+        } catch (Throwable t) {
+            Log.w(TAG, "Camera frame processing unavailable: failed to build the JSI installer", t);
+        }
+        return cameraFrameProcessorInstaller;
+    }
+
+    @ReactMethod
+    public void installCameraFrameProcessorJSI(Promise promise) {
+        // Same API-26 gate as installCustomVideoJSI: the tap lives in the AHardwareBuffer library.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            promise.reject("E_UNSUPPORTED_API_LEVEL", "Camera frame processing requires Android 8.0 (API 26).");
+            return;
+        }
+        FJCameraFrameProcessorInstaller installer = getCameraFrameProcessorInstaller();
+        if (installer == null) {
+            promise.reject("E_NO_JSI", "Camera frame processing requires the New Architecture.");
+            return;
+        }
+        // Re-run the install on every call so a reloaded JS runtime gets the global again.
+        installer.install(promise);
     }
 
     @ReactMethod

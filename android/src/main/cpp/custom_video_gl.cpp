@@ -37,13 +37,45 @@
 
 #include <unistd.h>
 
+#include "custom_video_gl.h"
+
+namespace fishjam::video::gl {
+
+const EglExtensions &eglExtensions() {
+    static const EglExtensions extensions = [] {
+        EglExtensions table;
+        table.eglGetNativeClientBufferANDROID = reinterpret_cast<PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC>(
+                eglGetProcAddress("eglGetNativeClientBufferANDROID"));
+        table.eglCreateImageKHR =
+                reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
+        table.eglDestroyImageKHR =
+                reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
+        table.glEGLImageTargetTexture2DOES = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(
+                eglGetProcAddress("glEGLImageTargetTexture2DOES"));
+        table.eglCreateSyncKHR =
+                reinterpret_cast<PFNEGLCREATESYNCKHRPROC>(eglGetProcAddress("eglCreateSyncKHR"));
+        table.eglClientWaitSyncKHR =
+                reinterpret_cast<PFNEGLCLIENTWAITSYNCKHRPROC>(eglGetProcAddress("eglClientWaitSyncKHR"));
+        table.eglWaitSyncKHR =
+                reinterpret_cast<PFNEGLWAITSYNCKHRPROC>(eglGetProcAddress("eglWaitSyncKHR"));
+        table.eglDestroySyncKHR =
+                reinterpret_cast<PFNEGLDESTROYSYNCKHRPROC>(eglGetProcAddress("eglDestroySyncKHR"));
+        table.eglDupNativeFenceFDANDROID = reinterpret_cast<PFNEGLDUPNATIVEFENCEFDANDROIDPROC>(
+                eglGetProcAddress("eglDupNativeFenceFDANDROID"));
+        return table;
+    }();
+    return extensions;
+}
+
+}  // namespace fishjam::video::gl
+
 namespace {
 
 constexpr EGLTimeKHR kFenceWaitTimeoutNs = 2'000'000'000ULL;
 
-// Lazily-resolved extension entry points. Resolved once on first use from the
-// GL thread (where an EGL display/context are current). They are process-global
-// function pointers, so a plain one-shot init is safe.
+// Local aliases of the shared extension table (custom_video_gl.h), kept so the
+// entry points below read as before. Resolved once on first use from the GL
+// thread (where an EGL display/context are current).
 PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC eglGetNativeClientBufferANDROIDFn = nullptr;
 PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHRFn = nullptr;
 PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHRFn = nullptr;
@@ -51,38 +83,19 @@ PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOESFn = nullptr;
 PFNEGLCREATESYNCKHRPROC eglCreateSyncKHRFn = nullptr;
 PFNEGLCLIENTWAITSYNCKHRPROC eglClientWaitSyncKHRFn = nullptr;
 PFNEGLDESTROYSYNCKHRPROC eglDestroySyncKHRFn = nullptr;
-bool extensionsResolved = false;
 
-// Resolves the EGL/GLES extension entry points used in this file. Like every
-// entry point here it assumes the single shared-context GL thread (an EGL
-// context current on it) and is NOT thread-safe off it: the function-pointer
-// globals and the one-shot `extensionsResolved` guard are written without
-// synchronisation, so calling this (or any function below) from another thread
-// races and corrupts GL/EGL state.
+// Copies the shared table into the local aliases. Like every entry point here
+// it assumes the single shared-context GL thread and is NOT thread-safe off it.
 bool resolveExtensions() {
-    if (extensionsResolved) {
-        return eglGetNativeClientBufferANDROIDFn != nullptr && eglCreateImageKHRFn != nullptr &&
-                glEGLImageTargetTexture2DOESFn != nullptr;
-    }
-    extensionsResolved = true;
-
-    eglGetNativeClientBufferANDROIDFn = reinterpret_cast<PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC>(
-            eglGetProcAddress("eglGetNativeClientBufferANDROID"));
-    eglCreateImageKHRFn =
-            reinterpret_cast<PFNEGLCREATEIMAGEKHRPROC>(eglGetProcAddress("eglCreateImageKHR"));
-    eglDestroyImageKHRFn =
-            reinterpret_cast<PFNEGLDESTROYIMAGEKHRPROC>(eglGetProcAddress("eglDestroyImageKHR"));
-    glEGLImageTargetTexture2DOESFn = reinterpret_cast<PFNGLEGLIMAGETARGETTEXTURE2DOESPROC>(
-            eglGetProcAddress("glEGLImageTargetTexture2DOES"));
-    eglCreateSyncKHRFn =
-            reinterpret_cast<PFNEGLCREATESYNCKHRPROC>(eglGetProcAddress("eglCreateSyncKHR"));
-    eglClientWaitSyncKHRFn = reinterpret_cast<PFNEGLCLIENTWAITSYNCKHRPROC>(
-            eglGetProcAddress("eglClientWaitSyncKHR"));
-    eglDestroySyncKHRFn =
-            reinterpret_cast<PFNEGLDESTROYSYNCKHRPROC>(eglGetProcAddress("eglDestroySyncKHR"));
-
-    return eglGetNativeClientBufferANDROIDFn != nullptr && eglCreateImageKHRFn != nullptr &&
-            glEGLImageTargetTexture2DOESFn != nullptr;
+    const fishjam::video::gl::EglExtensions &extensions = fishjam::video::gl::eglExtensions();
+    eglGetNativeClientBufferANDROIDFn = extensions.eglGetNativeClientBufferANDROID;
+    eglCreateImageKHRFn = extensions.eglCreateImageKHR;
+    eglDestroyImageKHRFn = extensions.eglDestroyImageKHR;
+    glEGLImageTargetTexture2DOESFn = extensions.glEGLImageTargetTexture2DOES;
+    eglCreateSyncKHRFn = extensions.eglCreateSyncKHR;
+    eglClientWaitSyncKHRFn = extensions.eglClientWaitSyncKHR;
+    eglDestroySyncKHRFn = extensions.eglDestroySyncKHR;
+    return extensions.canImportImages();
 }
 
 }  // namespace

@@ -120,7 +120,7 @@ static FJCameraPixelFormat FJPixelFormatOf(CVPixelBufferRef pixelBuffer) {
     auto cameraFrame = std::make_shared<FJCameraFrame>(
         (uint64_t)(uintptr_t)pixelBuffer, frame.width, frame.height, FJRotationDegrees(frame.rotation),
         self.captureController.usingFrontCamera, frame.timeStampNs, FJPixelFormatOf(pixelBuffer),
-        [core, token, pixelBuffer]() {
+        /* acquireFenceFileDescriptor */ -1, [core, token, pixelBuffer]() {
             CVPixelBufferRelease(pixelBuffer);
             core->completed(token);
         });
