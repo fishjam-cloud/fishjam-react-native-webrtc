@@ -26,7 +26,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 @property(nonatomic, strong) CXProvider *provider;
 @property(strong) NSUUID *currentCallUUID;
 @property(assign) BOOL isCallAnswered;
-@property(assign) BOOL isOutgoingCall;
+@property(assign) BOOL isDialing;
 @property(assign) BOOL isCallOnHold;
 @property(copy, nullable) NSString *pendingAnswerRequestId;
 @property(copy, nullable) dispatch_block_t ringTimeoutBlock;
@@ -85,10 +85,13 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     [self.provider reportCallWithUUID:uuid updated:update];
 }
 
-- (void)startCallWithDisplayName:(NSString *)displayName handle:(NSString *)handle isVideo:(BOOL)isVideo {
+- (void)startCallWithDisplayName:(NSString *)displayName
+                          handle:(NSString *)handle
+                         isVideo:(BOOL)isVideo
+                       isDialing:(BOOL)isDialing {
     if (!NSThread.isMainThread) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            [self startCallWithDisplayName:displayName handle:handle isVideo:isVideo];
+            [self startCallWithDisplayName:displayName handle:handle isVideo:isVideo isDialing:isDialing];
         });
         return;
     }
@@ -99,7 +102,8 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 
     NSUUID *uuid = [NSUUID UUID];
     self.currentCallUUID = uuid;
-    self.isOutgoingCall = YES;
+    self.isDialing = isDialing;
+    self.isCallAnswered = !isDialing;
 
     // The handle is the identity persisted in Recents and handed back to us in the
     // redial intent, so it must be the caller's unique id.
@@ -163,7 +167,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     } else {
         self.currentCallUUID = uuid;
         self.isCallAnswered = NO;
-        self.isOutgoingCall = NO;
+        self.isDialing = NO;
     }
 
     CXCallUpdate *update = [[CXCallUpdate alloc] init];
@@ -318,13 +322,14 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
         return;
     }
     NSUUID *uuid = self.currentCallUUID;
-    if (uuid == nil || !self.isOutgoingCall) {
-        NSLog(@"[CallKitManager] No outgoing call to report as connected");
+    if (uuid == nil || !self.isDialing) {
+        NSLog(@"[CallKitManager] No dialling call to report as connected");
         return;
     }
 
     [self cancelRingTimeout];
     [[DialtonePlayer shared] stop];
+    self.isDialing = NO;
     self.isCallAnswered = YES;
     [self.provider reportOutgoingCallWithUUID:uuid connectedAtDate:[NSDate date]];
 }
@@ -445,7 +450,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     [[DialtonePlayer shared] stop];
     self.currentCallUUID = nil;
     self.isCallAnswered = NO;
-    self.isOutgoingCall = NO;
+    self.isDialing = NO;
     self.isCallOnHold = NO;
     self.pendingAnswerRequestId = nil;
     [[FulfillRequestManager shared] cancelAll];
@@ -481,7 +486,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 
     self.currentCallUUID = promoted;
     self.isCallAnswered = NO;
-    self.isOutgoingCall = NO;
+    self.isDialing = NO;
     self.isCallOnHold = NO;
     [self reportCallCapabilitiesForUUID:promoted supportsHolding:YES];
     [[VoIPManager shared] revealPendingSecondIncomingCall];
@@ -495,8 +500,13 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)provider:(CXProvider *)provider performStartCallAction:(CXStartCallAction *)action {
-    [provider reportOutgoingCallWithUUID:action.callUUID startedConnectingAtDate:[NSDate date]];
-    [self startRingTimeoutForCall:action.callUUID timeout:self.outgoingCallTimeout];
+    NSDate *now = [NSDate date];
+    [provider reportOutgoingCallWithUUID:action.callUUID startedConnectingAtDate:now];
+    if (self.isDialing) {
+        [self startRingTimeoutForCall:action.callUUID timeout:self.outgoingCallTimeout];
+    } else {
+        [provider reportOutgoingCallWithUUID:action.callUUID connectedAtDate:now];
+    }
     [action fulfill];
 }
 
@@ -605,11 +615,9 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 
 - (void)provider:(CXProvider *)provider didActivateAudioSession:(AVAudioSession *)audioSession {
     [[RTCAudioSession sharedInstance] audioSessionDidActivate:audioSession];
-    // Ringback only for one of our own outgoing VoIP calls that is still
-    // connecting (this delegate only fires for calls on our CXProvider, and the
-    // guard scopes it to an active, unanswered outgoing call). The session is now
-    // active so the tone follows the call route. Stopped on connect / end / deactivate.
-    if (self.currentCallUUID != nil && self.isOutgoingCall && !self.isCallAnswered) {
+    // Audio session is up, so start the ringback - but only if we're actually
+    // dialling out. Not for a room, not once the call connects.
+    if (self.currentCallUUID != nil && self.isDialing) {
         [[DialtonePlayer shared] play];
     }
 }

@@ -29,13 +29,16 @@ typedef NS_ENUM(NSInteger, IncomingCallSlot) {
 @property(copy) CallKitBoolCallback onCallHeld;
 @property(readonly) BOOL hasActiveCall;
 @property(readonly) BOOL isCallAnswered;
-@property(readonly) BOOL isOutgoingCall;
+@property(readonly) BOOL isDialing;
 @property(readonly) BOOL isCallOnHold;
 @property(readonly, nullable) NSString *pendingAnswerRequestId;
 
 + (instancetype)shared;
 
-- (void)startCallWithDisplayName:(NSString *)displayName handle:(NSString *)handle isVideo:(BOOL)isVideo;
+- (void)startCallWithDisplayName:(NSString *)displayName
+                          handle:(NSString *)handle
+                         isVideo:(BOOL)isVideo
+                       isDialing:(BOOL)isDialing;
 - (IncomingCallSlot)reportIncomingCallWithDisplayName:(NSString *)displayName
                                                handle:(NSString *)handle
                                               isVideo:(BOOL)isVideo;

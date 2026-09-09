@@ -15,6 +15,7 @@ export type CallKitConfig = {
      */
     handle?: string;
     isVideo: boolean;
+    isDialing?: boolean;
 };
 
 export type CallKitAction = {
@@ -36,6 +37,7 @@ export async function startCallKitSession(
         config.displayName,
         config.handle ?? config.displayName,
         config.isVideo,
+        config.isDialing ?? false,
     );
 }
 
