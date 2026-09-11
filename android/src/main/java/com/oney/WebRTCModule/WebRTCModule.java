@@ -963,8 +963,23 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                 return;
             }
             track.setEnabled(false);
+            removeTrackFromLocalStreams(track);
             getUserMediaImpl.disposeTrack(id);
         });
+    }
+
+    // Disposing a track leaves it unreachable: no stream can remove it afterwards, views keep
+    // rendering it, and releasing a stream that still holds it throws. Detach it first.
+    private void removeTrackFromLocalStreams(MediaStreamTrack track) {
+        for (Map.Entry<String, MediaStream> entry : localStreams.entrySet()) {
+            MediaStream stream = entry.getValue();
+            if (track instanceof VideoTrack && stream.videoTracks.contains(track)) {
+                stream.removeTrack((VideoTrack) track);
+                WebRTCView.notifyStreamVideoTrackChanged(entry.getKey());
+            } else if (track instanceof AudioTrack && stream.audioTracks.contains(track)) {
+                stream.removeTrack((AudioTrack) track);
+            }
+        }
     }
 
     @ReactMethod

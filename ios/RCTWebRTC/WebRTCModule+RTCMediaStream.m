@@ -712,6 +712,31 @@ RCT_EXPORT_METHOD(mediaStreamRelease : (nonnull NSString *)streamID) {
     }
 }
 
+// A released track stops capturing and leaves the registry, so mediaStreamRemoveTrack can no longer
+// find it and views keep rendering its last frame. Detach it from every local stream first.
+- (void)fj_removeTrackFromLocalStreams:(RTCMediaStreamTrack *)track {
+    for (NSString *streamID in [self.localStreams allKeys]) {
+        RTCMediaStream *stream = self.localStreams[streamID];
+        BOOL (^holdsTrack)(NSArray<RTCMediaStreamTrack *> *) = ^BOOL(NSArray<RTCMediaStreamTrack *> *tracks) {
+            for (RTCMediaStreamTrack *candidate in tracks) {
+                if ([candidate.trackId isEqualToString:track.trackId]) {
+                    return YES;
+                }
+            }
+            return NO;
+        };
+
+        if ([track isKindOfClass:[RTCVideoTrack class]] && holdsTrack(stream.videoTracks)) {
+            [stream removeVideoTrack:(RTCVideoTrack *)track];
+            [[NSNotificationCenter defaultCenter] postNotificationName:kMediaStreamVideoTracksChangedNotification
+                                                                object:nil
+                                                              userInfo:@{@"streamId" : streamID}];
+        } else if ([track isKindOfClass:[RTCAudioTrack class]] && holdsTrack(stream.audioTracks)) {
+            [stream removeAudioTrack:(RTCAudioTrack *)track];
+        }
+    }
+}
+
 RCT_EXPORT_METHOD(mediaStreamTrackRelease : (nonnull NSString *)trackID) {
 #if TARGET_OS_TV
     return;
@@ -720,6 +745,7 @@ RCT_EXPORT_METHOD(mediaStreamTrackRelease : (nonnull NSString *)trackID) {
     RTCMediaStreamTrack *track = self.localTracks[trackID];
     if (track) {
         track.isEnabled = NO;
+        [self fj_removeTrackFromLocalStreams:track];
         [self fj_detachTrackIdOnWorkerQueue:trackID];
 #if !TARGET_OS_OSX
         if ([track.captureController isKindOfClass:[CustomVideoCaptureController class]]) {
