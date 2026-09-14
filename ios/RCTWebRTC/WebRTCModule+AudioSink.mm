@@ -406,14 +406,26 @@ RCT_EXPORT_METHOD(stopAudioExtraction : (nonnull NSNumber *)pcId trackId : (nonn
     AVAudioEngine *engine = [[AVAudioEngine alloc] init];
     AVAudioInputNode *inputNode = engine.inputNode;
     AVAudioFormat *format = [inputNode outputFormatForBus:0];
+    // While WebRTC reconfigures the audio session (leaving a room, switching
+    // routes) the input has no format yet; installTapOnBus then throws an
+    // NSException, which a TurboModule turns into abort().
+    if (format == nil || format.sampleRate <= 0 || format.channelCount == 0) {
+        NSLog(@"[FJAudioSink] Local audio input has no format yet; not tapping");
+        return NO;
+    }
 
     __weak __typeof__(self) weakSelf = self;
-    [inputNode installTapOnBus:0
-                    bufferSize:4096
-                        format:format
-                         block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
-                             [weakSelf fj_deliverLocalAudioBuffer:buffer];
-                         }];
+    @try {
+        [inputNode installTapOnBus:0
+                        bufferSize:4096
+                            format:format
+                             block:^(AVAudioPCMBuffer *buffer, AVAudioTime *when) {
+                                 [weakSelf fj_deliverLocalAudioBuffer:buffer];
+                             }];
+    } @catch (NSException *exception) {
+        NSLog(@"[FJAudioSink] Installing the local audio tap failed: %@", exception.reason);
+        return NO;
+    }
 
     NSError *error = nil;
     [engine prepare];

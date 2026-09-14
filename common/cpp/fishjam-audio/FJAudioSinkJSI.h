@@ -31,6 +31,16 @@ class FJAudioSink : public std::enable_shared_from_this<FJAudioSink> {
    public:
     explicit FJAudioSink(std::shared_ptr<facebook::react::CallInvoker> jsInvoker) : jsInvoker_(std::move(jsInvoker)) {}
 
+    // The sink dies with the native module, which on iOS happens while the JS
+    // runtime is being torn down (reload, bridge invalidation). Releasing a
+    // jsi::Function then touches freed runtime memory and segfaults; leaking
+    // one handle per teardown is the lesser evil.
+    ~FJAudioSink() {
+        if (callback_) {
+            new std::shared_ptr<facebook::jsi::Function>(std::move(callback_));
+        }
+    }
+
     // Installs the global; invokes onInstalled on the JS thread once ready.
     void install(std::function<void()> onInstalled);
 
