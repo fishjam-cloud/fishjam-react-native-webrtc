@@ -42,6 +42,7 @@ public class AudioOutputManager {
 
     private volatile WritableMap cachedTelecomCurrent;
     private volatile boolean telecomOwnsRouting = false;
+    private boolean ownsCommunicationMode = false;
 
     private static final class PendingSelect {
         final Promise promise;
@@ -574,6 +575,55 @@ public class AudioOutputManager {
         params.putArray("availableAudioOutputs", available);
 
         webRTCModule.sendEvent("audioOutputChanged", params);
+    }
+
+    // WebRTC plays call audio as USAGE_VOICE_COMMUNICATION. Outside MODE_IN_COMMUNICATION the
+    // volume keys adjust media volume instead, so the call volume can't be changed. In that mode
+    // a Bluetooth headset must be selected explicitly, otherwise audio falls back to the earpiece.
+    // Telecom calls manage mode and routing themselves.
+    // Called from WebRTC playout start/stop, which always run on the same audio thread.
+    public void setInCommunication(boolean inCommunication) {
+        if (inCommunication) {
+            if (telecomOwnsRouting) return;
+            ownsCommunicationMode = true;
+            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            AudioDeviceInfo headset = findBluetoothHeadset();
+            if (headset == null) return;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager.setCommunicationDevice(headset);
+            } else {
+                dispatchSelectLegacy(headset);
+            }
+        } else {
+            // Undo only what we set, even if Telecom took over mid-call.
+            if (!ownsCommunicationMode) return;
+            ownsCommunicationMode = false;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                audioManager.clearCommunicationDevice();
+            } else {
+                audioManager.setBluetoothScoOn(false);
+                audioManager.stopBluetoothSco();
+            }
+            if (!telecomOwnsRouting) {
+                audioManager.setMode(AudioManager.MODE_NORMAL);
+            }
+        }
+    }
+
+    private AudioDeviceInfo findBluetoothHeadset() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            for (AudioDeviceInfo d : audioManager.getAvailableCommunicationDevices()) {
+                if (d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                        || d.getType() == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+                    return d;
+                }
+            }
+        } else {
+            for (AudioDeviceInfo d : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                if (d.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) return d;
+            }
+        }
+        return null;
     }
 
     public void setTelecomOwnsRouting(boolean owns) {

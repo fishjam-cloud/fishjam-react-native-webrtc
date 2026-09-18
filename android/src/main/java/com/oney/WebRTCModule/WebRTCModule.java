@@ -120,10 +120,23 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
             }
         }
 
+        audioOutputManager = new AudioOutputManager(this, reactContext);
+
         if (adm == null) {
             adm = JavaAudioDeviceModule.builder(reactContext)
                           .setEnableVolumeLogger(false)
                           .setSamplesReadyCallback(audioExtractionController::onLocalAudioSamplesReady)
+                          .setAudioTrackStateCallback(new JavaAudioDeviceModule.AudioTrackStateCallback() {
+                              @Override
+                              public void onWebRtcAudioTrackStart() {
+                                  audioOutputManager.setInCommunication(true);
+                              }
+
+                              @Override
+                              public void onWebRtcAudioTrackStop() {
+                                  audioOutputManager.setInCommunication(false);
+                              }
+                          })
                           .createAudioDeviceModule();
         }
 
@@ -147,7 +160,6 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
         getUserMediaImpl = new GetUserMediaImpl(this, reactContext);
         foregroundServiceController = ForegroundServiceController.getInstance();
         foregroundServiceController.setContext(reactContext);
-        audioOutputManager = new AudioOutputManager(this, reactContext);
 
         telecomController = new TelecomController(this, reactContext, audioOutputManager);
         voipController = new VoIPController(this);
