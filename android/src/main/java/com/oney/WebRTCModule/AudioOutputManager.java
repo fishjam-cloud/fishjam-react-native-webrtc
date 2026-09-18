@@ -627,7 +627,7 @@ public class AudioOutputManager {
         }
     }
 
-    public void setTelecomOwnsRouting(boolean owns) {
+    public synchronized void setTelecomOwnsRouting(boolean owns) {
         telecomOwnsRouting = owns;
         if (!owns) {
             cancelTelecomPending("Telecom call ended");
