@@ -52,7 +52,9 @@ android {
         }
 
         ndk {
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            // ReactAndroid::jsi exists only for the ABIs React Native builds.
+            def reactNativeArchitectures = rootProject.findProperty("reactNativeArchitectures")
+            abiFilters(*(reactNativeArchitectures ? reactNativeArchitectures.split(",") : ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]))
         }
     }
 
