@@ -514,6 +514,8 @@ public class AudioOutputManager {
         if (!isObserving) return;
         isObserving = false;
 
+        setInCommunication(false);
+
         if (audioDeviceCallback != null) {
             audioManager.unregisterAudioDeviceCallback(audioDeviceCallback);
             audioDeviceCallback = null;
@@ -578,25 +580,18 @@ public class AudioOutputManager {
         webRTCModule.sendEvent("audioOutputChanged", params);
     }
 
-    // WebRTC plays call audio as USAGE_VOICE_COMMUNICATION. Outside MODE_IN_COMMUNICATION the
-    // volume keys adjust media volume instead, so the call volume can't be changed. In that mode
-    // a Bluetooth headset must be selected explicitly, otherwise audio falls back to the earpiece.
-    // Telecom calls manage mode and routing themselves.
-    //
-    // Called when WebRTC playout starts and stops, on the audio thread.
     public synchronized void setInCommunication(boolean inCommunication) {
         if (inCommunication) {
             if (telecomOwnsRouting) return;
             ownsCommunicationMode = true;
             audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            routeToHeadset(audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS));
+            routeToBluetoothHeadset();
         } else {
-            // Undo only what we set, even if Telecom took over mid-call.
             if (!ownsCommunicationMode) return;
             ownsCommunicationMode = false;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 audioManager.clearCommunicationDevice();
-            } else {
+            } else if (!telecomOwnsRouting) {
                 audioManager.setBluetoothScoOn(false);
                 audioManager.stopBluetoothSco();
             }
@@ -606,25 +601,38 @@ public class AudioOutputManager {
         }
     }
 
-    // A headset connected mid-call takes over, as it does on iOS and in Telecom calls.
     private synchronized void onDevicesAddedDuringCall(AudioDeviceInfo[] addedDevices) {
-        if (ownsCommunicationMode && !telecomOwnsRouting) routeToHeadset(addedDevices);
+        if (!ownsCommunicationMode || telecomOwnsRouting) return;
+        for (AudioDeviceInfo d : addedDevices) {
+            if (d.isSink() && isBluetoothHeadset(d)) {
+                routeToBluetoothHeadset();
+                return;
+            }
+        }
     }
 
-    private void routeToHeadset(AudioDeviceInfo[] devices) {
-        for (AudioDeviceInfo d : devices) {
-            int type = d.getType();
-            boolean isHeadset = type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
-                    || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
-            if (!d.isSink() || !isHeadset) continue;
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                audioManager.setCommunicationDevice(d);
-            } else {
-                dispatchSelectLegacy(d);
+    private void routeToBluetoothHeadset() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            for (AudioDeviceInfo d : audioManager.getAvailableCommunicationDevices()) {
+                if (isBluetoothHeadset(d)) {
+                    audioManager.setCommunicationDevice(d);
+                    return;
+                }
             }
-            return;
+        } else {
+            for (AudioDeviceInfo d : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                if (isBluetoothHeadset(d)) {
+                    dispatchSelectLegacy(d);
+                    return;
+                }
+            }
         }
+    }
+
+    private static boolean isBluetoothHeadset(AudioDeviceInfo device) {
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
     }
 
     public synchronized void setTelecomOwnsRouting(boolean owns) {
