@@ -590,14 +590,18 @@ public class AudioOutputManager {
     public synchronized void exitCommunicationMode() {
         if (!ownsCommunicationMode) return;
         ownsCommunicationMode = false;
+        releaseCommunicationDevice();
+        if (!telecomOwnsRouting) {
+            audioManager.setMode(AudioManager.MODE_NORMAL);
+        }
+    }
+
+    private void releaseCommunicationDevice() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             audioManager.clearCommunicationDevice();
         } else if (!telecomOwnsRouting) {
             audioManager.setBluetoothScoOn(false);
             audioManager.stopBluetoothSco();
-        }
-        if (!telecomOwnsRouting) {
-            audioManager.setMode(AudioManager.MODE_NORMAL);
         }
     }
 
