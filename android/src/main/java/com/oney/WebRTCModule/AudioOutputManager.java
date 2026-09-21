@@ -42,6 +42,7 @@ public class AudioOutputManager {
 
     private volatile WritableMap cachedTelecomCurrent;
     private volatile boolean telecomOwnsRouting = false;
+    private boolean ownsCommunicationMode = false;
 
     private static final class PendingSelect {
         final Promise promise;
@@ -469,6 +470,7 @@ public class AudioOutputManager {
         audioDeviceCallback = new AudioDeviceCallback() {
             @Override
             public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+                onDevicesAddedDuringCall(addedDevices);
                 emitOutputChangedEvent();
                 maybeResolvePending();
             }
@@ -511,6 +513,8 @@ public class AudioOutputManager {
     public void stopObserving() {
         if (!isObserving) return;
         isObserving = false;
+
+        exitCommunicationMode();
 
         if (audioDeviceCallback != null) {
             audioManager.unregisterAudioDeviceCallback(audioDeviceCallback);
@@ -576,7 +580,66 @@ public class AudioOutputManager {
         webRTCModule.sendEvent("audioOutputChanged", params);
     }
 
-    public void setTelecomOwnsRouting(boolean owns) {
+    public synchronized void enterCommunicationMode() {
+        if (telecomOwnsRouting) return;
+        ownsCommunicationMode = true;
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        routeToBluetoothHeadset();
+    }
+
+    public synchronized void exitCommunicationMode() {
+        if (!ownsCommunicationMode) return;
+        ownsCommunicationMode = false;
+        releaseCommunicationDevice();
+        if (!telecomOwnsRouting) {
+            audioManager.setMode(AudioManager.MODE_NORMAL);
+        }
+    }
+
+    private void releaseCommunicationDevice() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.clearCommunicationDevice();
+        } else if (!telecomOwnsRouting) {
+            audioManager.setBluetoothScoOn(false);
+            audioManager.stopBluetoothSco();
+        }
+    }
+
+    private synchronized void onDevicesAddedDuringCall(AudioDeviceInfo[] addedDevices) {
+        if (!ownsCommunicationMode || telecomOwnsRouting) return;
+        for (AudioDeviceInfo d : addedDevices) {
+            if (d.isSink() && isBluetoothHeadset(d)) {
+                routeToBluetoothHeadset();
+                return;
+            }
+        }
+    }
+
+    private void routeToBluetoothHeadset() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            for (AudioDeviceInfo d : audioManager.getAvailableCommunicationDevices()) {
+                if (isBluetoothHeadset(d)) {
+                    audioManager.setCommunicationDevice(d);
+                    return;
+                }
+            }
+        } else {
+            for (AudioDeviceInfo d : audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)) {
+                if (isBluetoothHeadset(d)) {
+                    dispatchSelectLegacy(d);
+                    return;
+                }
+            }
+        }
+    }
+
+    private static boolean isBluetoothHeadset(AudioDeviceInfo device) {
+        int type = device.getType();
+        return type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                || (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET);
+    }
+
+    public synchronized void setTelecomOwnsRouting(boolean owns) {
         telecomOwnsRouting = owns;
         if (!owns) {
             cancelTelecomPending("Telecom call ended");
