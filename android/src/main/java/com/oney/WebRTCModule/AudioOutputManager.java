@@ -514,7 +514,7 @@ public class AudioOutputManager {
         if (!isObserving) return;
         isObserving = false;
 
-        setInCommunication(false);
+        exitCommunicationMode();
 
         if (audioDeviceCallback != null) {
             audioManager.unregisterAudioDeviceCallback(audioDeviceCallback);
@@ -580,24 +580,24 @@ public class AudioOutputManager {
         webRTCModule.sendEvent("audioOutputChanged", params);
     }
 
-    public synchronized void setInCommunication(boolean inCommunication) {
-        if (inCommunication) {
-            if (telecomOwnsRouting) return;
-            ownsCommunicationMode = true;
-            audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            routeToBluetoothHeadset();
-        } else {
-            if (!ownsCommunicationMode) return;
-            ownsCommunicationMode = false;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                audioManager.clearCommunicationDevice();
-            } else if (!telecomOwnsRouting) {
-                audioManager.setBluetoothScoOn(false);
-                audioManager.stopBluetoothSco();
-            }
-            if (!telecomOwnsRouting) {
-                audioManager.setMode(AudioManager.MODE_NORMAL);
-            }
+    public synchronized void enterCommunicationMode() {
+        if (telecomOwnsRouting) return;
+        ownsCommunicationMode = true;
+        audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        routeToBluetoothHeadset();
+    }
+
+    public synchronized void exitCommunicationMode() {
+        if (!ownsCommunicationMode) return;
+        ownsCommunicationMode = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            audioManager.clearCommunicationDevice();
+        } else if (!telecomOwnsRouting) {
+            audioManager.setBluetoothScoOn(false);
+            audioManager.stopBluetoothSco();
+        }
+        if (!telecomOwnsRouting) {
+            audioManager.setMode(AudioManager.MODE_NORMAL);
         }
     }
 

@@ -129,12 +129,12 @@ public class WebRTCModule extends ReactContextBaseJavaModule {
                           .setAudioTrackStateCallback(new JavaAudioDeviceModule.AudioTrackStateCallback() {
                               @Override
                               public void onWebRtcAudioTrackStart() {
-                                  audioOutputManager.setInCommunication(true);
+                                  audioOutputManager.enterCommunicationMode();
                               }
 
                               @Override
                               public void onWebRtcAudioTrackStop() {
-                                  audioOutputManager.setInCommunication(false);
+                                  audioOutputManager.exitCommunicationMode();
                               }
                           })
                           .createAudioDeviceModule();
