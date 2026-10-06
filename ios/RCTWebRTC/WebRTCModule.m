@@ -7,6 +7,7 @@
 #import <React/RCTLog.h>
 #import <React/RCTUtils.h>
 
+#import "AudioSessionGuard.h"
 #import "CustomVideoCaptureController.h"
 #import "H264BackgroundSafeEncoderFactory.h"
 #import "RTCMediaStreamTrack+React.h"
@@ -70,6 +71,10 @@
             fieldTrials = @{kRTCFieldTrialUseNWPathMonitor : kRTCFieldTrialEnabledValue};
         }
         RTCInitFieldTrialDictionary(fieldTrials);
+
+#if TARGET_OS_IOS
+        [AudioSessionGuard activate];
+#endif
 
         // Initialize logging.
         RTCSetMinDebugLogLevel(loggingSeverity);
