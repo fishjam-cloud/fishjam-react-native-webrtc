@@ -455,6 +455,13 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     self.pendingAnswerRequestId = nil;
     [[FulfillRequestManager shared] cancelAll];
     [[VoIPManager shared] clearPendingIncomingCall];
+    [self setWebRTCAudioEnabled:YES];
+}
+
+- (void)setWebRTCAudioEnabled:(BOOL)enabled {
+    RTCAudioSession *session = [RTCAudioSession sharedInstance];
+    session.useManualAudio = !enabled;
+    session.isAudioEnabled = enabled;
 }
 
 - (void)cleanupWaitingCall {
@@ -596,6 +603,9 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     }
 
     self.isCallOnHold = action.isOnHold;
+    if (action.isOnHold) {
+        [self setWebRTCAudioEnabled:NO];
+    }
     if (self.onCallHeld) {
         self.onCallHeld(action.isOnHold);
     }
@@ -615,6 +625,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 
 - (void)provider:(CXProvider *)provider didActivateAudioSession:(AVAudioSession *)audioSession {
     [[RTCAudioSession sharedInstance] audioSessionDidActivate:audioSession];
+    [self setWebRTCAudioEnabled:YES];
     // Audio session is up, so start the ringback - but only if we're actually
     // dialling out. Not for a room, not once the call connects.
     if (self.currentCallUUID != nil && self.isDialing) {
