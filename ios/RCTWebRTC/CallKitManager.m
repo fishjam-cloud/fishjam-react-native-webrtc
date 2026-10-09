@@ -455,6 +455,20 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     self.pendingAnswerRequestId = nil;
     [[FulfillRequestManager shared] cancelAll];
     [[VoIPManager shared] clearPendingIncomingCall];
+    [self setWebRTCAudioEnabled:YES];
+}
+
+- (void)setWebRTCAudioEnabled:(BOOL)enabled {
+    RTCAudioSession *session = [RTCAudioSession sharedInstance];
+    // Both setters make libwebrtc recompute canPlayOrRecord (!useManualAudio || isAudioEnabled)
+    // and start or stop the audio unit only if it differs from a cached value. That cache starts
+    // as NO although the value is YES, so a first switch to NO would go unnoticed. While
+    // useManualAudio is NO, isAudioEnabled has no effect, so setting it to YES just syncs the cache.
+    if (!session.useManualAudio) {
+        session.isAudioEnabled = YES;
+    }
+    session.useManualAudio = !enabled;
+    session.isAudioEnabled = enabled;
 }
 
 - (void)cleanupWaitingCall {
@@ -596,6 +610,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     }
 
     self.isCallOnHold = action.isOnHold;
+    if (action.isOnHold && [action.callUUID isEqual:self.currentCallUUID]) {
+        [self setWebRTCAudioEnabled:NO];
+    } else if (!action.isOnHold) {
+        // Enable here, not only in didActivateAudioSession, which never runs on the simulator.
+        [self setWebRTCAudioEnabled:YES];
+    }
     if (self.onCallHeld) {
         self.onCallHeld(action.isOnHold);
     }
@@ -614,6 +634,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)provider:(CXProvider *)provider didActivateAudioSession:(AVAudioSession *)audioSession {
+    [self setWebRTCAudioEnabled:YES];
     [[RTCAudioSession sharedInstance] audioSessionDidActivate:audioSession];
     // Audio session is up, so start the ringback - but only if we're actually
     // dialling out. Not for a room, not once the call connects.
