@@ -460,7 +460,10 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 
 - (void)setWebRTCAudioEnabled:(BOOL)enabled {
     RTCAudioSession *session = [RTCAudioSession sharedInstance];
-    // RTCAudioSession's cached canPlayOrRecord starts as NO; sync it so a switch to NO is reported.
+    // Both setters make libwebrtc recompute canPlayOrRecord (!useManualAudio || isAudioEnabled)
+    // and start or stop the audio unit only if it differs from a cached value. That cache starts
+    // as NO although the value is YES, so a first switch to NO would go unnoticed. While
+    // useManualAudio is NO, isAudioEnabled has no effect, so setting it to YES just syncs the cache.
     if (!session.useManualAudio) {
         session.isAudioEnabled = YES;
     }
