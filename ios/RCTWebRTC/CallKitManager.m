@@ -460,6 +460,10 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 
 - (void)setWebRTCAudioEnabled:(BOOL)enabled {
     RTCAudioSession *session = [RTCAudioSession sharedInstance];
+    // RTCAudioSession's cached canPlayOrRecord starts as NO; sync it so a switch to NO is reported.
+    if (!session.useManualAudio) {
+        session.isAudioEnabled = YES;
+    }
     session.useManualAudio = !enabled;
     session.isAudioEnabled = enabled;
 }
@@ -603,8 +607,11 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     }
 
     self.isCallOnHold = action.isOnHold;
-    if (action.isOnHold) {
+    if (action.isOnHold && [action.callUUID isEqual:self.currentCallUUID]) {
         [self setWebRTCAudioEnabled:NO];
+    } else if (!action.isOnHold) {
+        // Enable here, not only in didActivateAudioSession, which never runs on the simulator.
+        [self setWebRTCAudioEnabled:YES];
     }
     if (self.onCallHeld) {
         self.onCallHeld(action.isOnHold);
@@ -624,8 +631,8 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 }
 
 - (void)provider:(CXProvider *)provider didActivateAudioSession:(AVAudioSession *)audioSession {
-    [[RTCAudioSession sharedInstance] audioSessionDidActivate:audioSession];
     [self setWebRTCAudioEnabled:YES];
+    [[RTCAudioSession sharedInstance] audioSessionDidActivate:audioSession];
     // Audio session is up, so start the ringback - but only if we're actually
     // dialling out. Not for a room, not once the call connects.
     if (self.currentCallUUID != nil && self.isDialing) {
