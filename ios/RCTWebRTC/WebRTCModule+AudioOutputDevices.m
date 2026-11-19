@@ -10,6 +10,7 @@
 #import "WebRTCModule.h"
 
 static void *AudioRouteObserverKey = &AudioRouteObserverKey;
+static void *AudioRoutePickerKey = &AudioRoutePickerKey;
 
 @implementation WebRTCModule (AudioOutputDevices)
 
@@ -194,8 +195,6 @@ RCT_EXPORT_METHOD(showAudioRoutePicker) {
     [self ensureAudioRouteObserver];
 
     dispatch_async(dispatch_get_main_queue(), ^{
-        AVRoutePickerView *routePickerView = [[AVRoutePickerView alloc] initWithFrame:CGRectZero];
-
         UIWindow *keyWindow = nil;
         for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]]) {
@@ -209,8 +208,16 @@ RCT_EXPORT_METHOD(showAudioRoutePicker) {
             }
         }
 
-        if (keyWindow) {
+        if (!keyWindow) {
+            return;
+        }
+
+        AVRoutePickerView *routePickerView = objc_getAssociatedObject(keyWindow, AudioRoutePickerKey);
+        if (!routePickerView) {
+            routePickerView = [[AVRoutePickerView alloc] initWithFrame:CGRectZero];
             [keyWindow addSubview:routePickerView];
+            objc_setAssociatedObject(
+                keyWindow, AudioRoutePickerKey, routePickerView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
 
         for (UIView *subview in routePickerView.subviews) {
@@ -219,8 +226,6 @@ RCT_EXPORT_METHOD(showAudioRoutePicker) {
                 break;
             }
         }
-
-        [routePickerView removeFromSuperview];
     });
 }
 
