@@ -2,6 +2,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <WebRTC/RTCAudioSession.h>
+#import <os/lock.h>
 #import "DialtonePlayer.h"
 #import "FulfillRequestManager.h"
 #import "VoIPManager.h"
@@ -19,6 +20,19 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
         }
     }
     return fallback;
+}
+
+static CallKitManager *sharedInstance = nil;
+static os_unfair_lock sharedInstanceLock = OS_UNFAIR_LOCK_INIT;
+static __weak id<CallKitEventSink> currentEventSink = nil;
+// Guards the sink so removeEventSink: can compare and clear atomically.
+static os_unfair_lock eventSinkLock = OS_UNFAIR_LOCK_INIT;
+
+static id<CallKitEventSink> eventSink(void) {
+    os_unfair_lock_lock(&eventSinkLock);
+    id<CallKitEventSink> sink = currentEventSink;
+    os_unfair_lock_unlock(&eventSinkLock);
+    return sink;
 }
 
 @interface CallKitManager ()
@@ -40,14 +54,37 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 @implementation CallKitManager
 
 + (instancetype)shared {
-    static CallKitManager *sharedInstance = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
+    os_unfair_lock_lock(&sharedInstanceLock);
+    if (sharedInstance == nil) {
         sharedInstance = [[CallKitManager alloc] init];
-    });
-    return sharedInstance;
+    }
+    CallKitManager *instance = sharedInstance;
+    os_unfair_lock_unlock(&sharedInstanceLock);
+    return instance;
 }
 
++ (instancetype)sharedIfExists {
+    os_unfair_lock_lock(&sharedInstanceLock);
+    CallKitManager *instance = sharedInstance;
+    os_unfair_lock_unlock(&sharedInstanceLock);
+    return instance;
+}
+
++ (void)setEventSink:(id<CallKitEventSink>)sink {
+    os_unfair_lock_lock(&eventSinkLock);
+    currentEventSink = sink;
+    os_unfair_lock_unlock(&eventSinkLock);
+}
+
++ (void)removeEventSink:(id<CallKitEventSink>)sink {
+    os_unfair_lock_lock(&eventSinkLock);
+    if (currentEventSink == sink) {
+        currentEventSink = nil;
+    }
+    os_unfair_lock_unlock(&eventSinkLock);
+}
+
+// Runs under sharedInstanceLock, which is not recursive: never call +shared/+sharedIfExists here.
 - (instancetype)init {
     self = [super init];
     if (self) {
@@ -121,16 +158,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
                     if (error) {
                         NSLog(@"[CallKitManager] Failed to start call: %@", error.localizedDescription);
                         weakSelf.currentCallUUID = nil;
-                        if (weakSelf.onCallFailed) {
-                            weakSelf.onCallFailed(error.localizedDescription);
-                        }
+                        [eventSink() callKitCallFailed:error.localizedDescription];
                         [weakSelf cleanupCurrentCall];
                         return;
                     }
 
-                    if (weakSelf.onCallStarted) {
-                        weakSelf.onCallStarted();
-                    }
+                    [eventSink() callKitCallStarted];
 
                     CXCallUpdate *update = [[CXCallUpdate alloc] init];
                     update.supportsHolding = YES;
@@ -195,9 +228,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
                                    if (becomesWaiting) {
                                        [strongSelf cleanupWaitingCall];
                                    } else {
-                                       if (strongSelf.onCallFailed) {
-                                           strongSelf.onCallFailed(error.localizedDescription);
-                                       }
+                                       [eventSink() callKitCallFailed:error.localizedDescription];
                                        [strongSelf cleanupCurrentCall];
                                    }
                                    return;
@@ -291,7 +322,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
                             NSLog(@"[CallKitManager] Failed to end call: %@", error.localizedDescription);
                             return;
                         }
-                        // onCallEnded fires from performEndCallAction once the transaction
+                        // The ended event fires from performEndCallAction once the transaction
                         // fulfills, so it is not duplicated here.
                     }];
         return;
@@ -300,9 +331,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     // (missed / remote / answeredElsewhere / failed)
     NSUUID *uuid = self.currentCallUUID;
     [self.provider reportCallWithUUID:uuid endedAtDate:[NSDate date] reason:[self cxEndedReasonForReason:reason]];
-    if (self.onCallEnded) {
-        self.onCallEnded(reason);
-    }
+    [eventSink() callKitCallEnded:reason];
     [self cleanupCurrentCall];
 }
 
@@ -386,9 +415,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     }
 
     [self.provider reportCallWithUUID:uuid endedAtDate:[NSDate date] reason:CXCallEndedReasonFailed];
-    if (self.onCallEnded) {
-        self.onCallEnded(@"failed");
-    }
+    [eventSink() callKitCallEnded:@"failed"];
     [self cleanupCurrentCall];
 }
 
@@ -492,9 +519,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
     self.waitingCallUUID = nil;
 
     if (self.currentCallUUID != nil) {
-        if (self.onCallEnded) {
-            self.onCallEnded(@"local");
-        }
+        [eventSink() callKitCallEnded:@"local"];
         [self cleanupCurrentCall];
     }
 
@@ -509,6 +534,11 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
 #pragma mark - CXProviderDelegate
 
 - (void)providerDidReset:(CXProvider *)provider {
+    // Without a call there is nothing to clean up, and cleanupCurrentCall would rewrite the
+    // app's RTCAudioSession configuration.
+    if (self.currentCallUUID == nil && self.waitingCallUUID == nil) {
+        return;
+    }
     [self cleanupCurrentCall];
     [self cleanupWaitingCall];
 }
@@ -540,9 +570,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
         return;
     }
 
-    if (self.onCallEnded) {
-        self.onCallEnded(@"local");
-    }
+    [eventSink() callKitCallEnded:@"local"];
     [action fulfill];
     [self cleanupCurrentCall];
 }
@@ -584,9 +612,7 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
                       }];
 
     self.pendingAnswerRequestId = requestId;
-    if (self.onCallAnswered) {
-        self.onCallAnswered(requestId);
-    }
+    [eventSink() callKitCallAnswered:requestId];
 }
 
 - (void)provider:(CXProvider *)provider timedOutPerformingAction:(CXAction *)action {
@@ -616,16 +642,12 @@ static NSTimeInterval timeoutFromInfoPlist(NSString *key, NSTimeInterval fallbac
         // Enable here, not only in didActivateAudioSession, which never runs on the simulator.
         [self setWebRTCAudioEnabled:YES];
     }
-    if (self.onCallHeld) {
-        self.onCallHeld(action.isOnHold);
-    }
+    [eventSink() callKitCallHeld:action.isOnHold];
     [action fulfill];
 }
 
 - (void)provider:(CXProvider *)provider performSetMutedCallAction:(CXSetMutedCallAction *)action {
-    if (self.onCallMuted) {
-        self.onCallMuted(action.isMuted);
-    }
+    [eventSink() callKitCallMuted:action.isMuted];
     [action fulfill];
 }
 
