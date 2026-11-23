@@ -10,8 +10,8 @@
 
 @implementation WebRTCModule (CallKit)
 
-// Only registers for events: the manager is created when a call starts or a VoIP push arrives,
-// so apps that never use CallKit through this module get no CXProvider.
+// Sets this module as the receiver of call events without creating the CallKit manager. The manager
+// is created when a call starts or a VoIP push arrives.
 - (void)startObserving {
     [super startObserving];
     [CallKitManager setEventSink:self];

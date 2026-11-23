@@ -534,8 +534,6 @@ static id<CallKitEventSink> eventSink(void) {
 #pragma mark - CXProviderDelegate
 
 - (void)providerDidReset:(CXProvider *)provider {
-    // Without a call there is nothing to clean up, and cleanupCurrentCall would rewrite the
-    // app's RTCAudioSession configuration.
     if (self.currentCallUUID == nil && self.waitingCallUUID == nil) {
         return;
     }
