@@ -15,7 +15,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Colors } from 'react-native/Libraries/NewAppScreen';
-import { mediaDevices, startIOSPIP, stopIOSPIP, RTCPIPView } from 'react-native-webrtc';
+import { mediaDevices, startPIP, stopPIP, RTCPIPView } from '@fishjam-cloud/react-native-webrtc';
 
 
 const App = () => {
@@ -33,10 +33,10 @@ const App = () => {
     }
   };
   const startPIP = () => {
-    startIOSPIP(view);
+    startPIP(view);
   };
   const stopPIP = () => {
-    stopIOSPIP(view);
+    stopPIP(view);
   };
   const stop = () => {
     console.log('stop');
